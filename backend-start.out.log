@@ -1,0 +1,40 @@
+
+> projectlvqi-backend@0.1.0 start
+> node dist/main.js
+
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCommonModule dependencies initialized[39m[38;5;3m +10ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAuthModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mProjectsModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCostsModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mDashboardModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAiModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mRequirementsModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mSchedulesModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAppController {/}:[39m[38;5;3m +27ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/health, GET} route[39m[38;5;3m +3ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAuthController {/api/v1/auth}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/auth/login, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mProjectsController {/api/v1/projects}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mRequirementsController {/api/v1/requirements}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/requirements, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/requirements, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/requirements/:id/review, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/requirements/:id/change, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCostsController {/api/v1/cost-entries}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/cost-entries, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/cost-entries, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/cost-entries/summary, GET} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mSchedulesController {/api/v1/projects}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects/:id/schedule, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects/tasks, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects/milestones, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/projects/:id/risks, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mDashboardController {/api/v1/dashboard}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/dashboard/overview, GET} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mAiController {/api/v1/ai/reports}:[39m[38;5;3m +1ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/api/v1/ai/reports/weekly, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 19920  - [39m2026/02/21 13:56:12 [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +1ms[39m

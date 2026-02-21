@@ -1,0 +1,29 @@
+[31m[Nest] 29300  - [39m2026/02/21 17:31:35 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (C:\Users\Administrator\project\projectlvqi\node_modules\@nestjs\platform-express\adapters\express-adapter.js:95:32)
+    at C:\Users\Administrator\project\projectlvqi\node_modules\@nestjs\core\nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (C:\Users\Administrator\project\projectlvqi\node_modules\@nestjs\core\nest-application.js:173:16)
+    at async bootstrap (C:\Users\Administrator\project\projectlvqi\backend\dist\src\main.js:15:5) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v24.13.1
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path C:\Users\Administrator\project\projectlvqi\backend
+npm error workspace projectlvqi-backend@0.1.0
+npm error location C:\Users\Administrator\project\projectlvqi\backend
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c node dist/src/main.js
