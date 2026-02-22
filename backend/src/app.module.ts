@@ -17,6 +17,7 @@ import { AuditInterceptor } from './audit/audit.interceptor';
 import { FeishuModule } from './modules/feishu/feishu.module';
 import { UsersModule } from './modules/users/users.module';
 import { RisksModule } from './modules/risks/risks.module';
+import { ConfigModule } from './modules/config/config.module';
 
 @Module({
   imports: [
@@ -33,7 +34,8 @@ import { RisksModule } from './modules/risks/risks.module';
     AuditLogsModule,
     UsersModule,
     FeishuModule,
-    RisksModule
+    RisksModule,
+    ConfigModule
   ],
   controllers: [AppController],
   providers: [
@@ -44,4 +46,4 @@ import { RisksModule } from './modules/risks/risks.module';
     }
   ]
 })
-export class AppModule {}
+export class AppModule { }

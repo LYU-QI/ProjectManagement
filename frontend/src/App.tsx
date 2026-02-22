@@ -38,8 +38,9 @@ import FeishuView from './views/FeishuView';
 import NotificationsView from './views/NotificationsView';
 import AuditView from './views/AuditView';
 import AiView from './views/AiView';
+import SettingsView from './views/SettingsView';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global' | 'settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 
 function focusInlineEditor(selector: string) {
@@ -126,7 +127,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'global'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'global', 'settings'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -1892,6 +1893,7 @@ function App() {
         {canWrite && <button className={view === 'audit' ? 'active' : ''} onClick={() => { setView('audit'); void loadAuditLogs(); }}>[ 审计日志 ]</button>}
         <button className={view === 'feishu' ? 'active' : ''} onClick={() => setView('feishu')}>[ 飞书记录 ]</button>
         <button className={view === 'ai' ? 'active' : ''} onClick={() => setView('ai')}>[ AI 驱动核心 ]</button>
+        {canWrite && <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>[ 系统配置 ]</button>}
       </aside>
 
       <main className="main">
@@ -2289,6 +2291,10 @@ function App() {
 
         {view === 'audit' && canWrite && (
           <AuditView auditLogs={auditLogs} />
+        )}
+
+        {view === 'settings' && canWrite && (
+          <SettingsView onError={setError} onMessage={setMessage} />
         )}
       </main>
     </div>
