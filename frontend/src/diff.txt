@@ -1,0 +1,1686 @@
+2a3,9
+> import {
+>   createFeishuRecord,
+>   deleteFeishuRecord,
+>   listFeishuRecords,
+>   updateFeishuRecord,
+>   FeishuRecord
+> } from './api/feishu';
+4c11
+< type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit';
+---
+> type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit' | 'feishu';
+101a109,155
+> type FeishuFormState = {
+>   任务ID: string;
+>   任务名称: string;
+>   状态: string;
+>   优先级: string;
+>   负责人: string;
+>   开始时间: string;
+>   截止时间: string;
+>   进度: string;
+>   所属项目: string;
+>   是否阻塞: string;
+>   阻塞原因: string;
+>   风险等级: string;
+> };
+> 
+> const FEISHU_FIELDS: Array<{ key: keyof FeishuFormState; label: string; type: 'text' | 'select' | 'date' | 'number'; options?: string[]; required?: boolean }> = [
+>   { key: '任务ID', label: '任务ID', type: 'text', required: true },
+>   { key: '任务名称', label: '任务名称', type: 'text', required: true },
+>   { key: '状态', label: '状态', type: 'select', options: ['待办', '进行中', '已完成'], required: true },
+>   { key: '优先级', label: '优先级', type: 'select', options: ['低', '中', '高'], required: true },
+>   { key: '负责人', label: '负责人(姓名)', type: 'text', required: true },
+>   { key: '开始时间', label: '开始时间', type: 'date' },
+>   { key: '截止时间', label: '截止时间', type: 'date' },
+>   { key: '进度', label: '进度(0-100)', type: 'number' },
+>   { key: '所属项目', label: '所属项目', type: 'select' },
+>   { key: '是否阻塞', label: '是否阻塞', type: 'select', options: ['是', '否'], required: true },
+>   { key: '阻塞原因', label: '阻塞原因', type: 'text' },
+>   { key: '风险等级', label: '风险等级', type: 'select', options: ['低', '中', '高'], required: true }
+> ];
+> 
+> const FEISHU_FIELD_NAMES = FEISHU_FIELDS.map((item) => item.key).join(',');
+> 
+> const FEISHU_DEFAULT_FORM: FeishuFormState = {
+>   任务ID: '',
+>   任务名称: '',
+>   状态: '待办',
+>   优先级: '中',
+>   负责人: '',
+>   开始时间: '',
+>   截止时间: '',
+>   进度: '',
+>   所属项目: '',
+>   是否阻塞: '否',
+>   阻塞原因: '',
+>   风险等级: '中'
+> };
+> 
+126a181,219
+>   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+>   const [projectDraft, setProjectDraft] = useState<ProjectItem | null>(null);
+>   const [editingProjectField, setEditingProjectField] = useState<keyof ProjectItem | null>(null);
+>   const [editingRequirementId, setEditingRequirementId] = useState<number | null>(null);
+>   const [editingRequirementField, setEditingRequirementField] = useState<keyof Requirement | null>(null);
+>   const [requirementDraft, setRequirementDraft] = useState<Requirement | null>(null);
+>   const [editingCostId, setEditingCostId] = useState<number | null>(null);
+>   const [editingCostField, setEditingCostField] = useState<keyof CostEntryItem | null>(null);
+>   const [costDraft, setCostDraft] = useState<CostEntryItem | null>(null);
+>   const [editingWorklogId, setEditingWorklogId] = useState<number | null>(null);
+>   const [editingWorklogField, setEditingWorklogField] = useState<keyof Worklog | null>(null);
+>   const [worklogDraft, setWorklogDraft] = useState<Worklog | null>(null);
+>   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+>   const [editingTaskField, setEditingTaskField] = useState<keyof ScheduleData['tasks'][number] | null>(null);
+>   const [taskDraft, setTaskDraft] = useState<ScheduleData['tasks'][number] | null>(null);
+>   const [editingMilestoneId, setEditingMilestoneId] = useState<number | null>(null);
+>   const [editingMilestoneField, setEditingMilestoneField] = useState<keyof ScheduleData['milestones'][number] | null>(null);
+>   const [milestoneDraft, setMilestoneDraft] = useState<ScheduleData['milestones'][number] | null>(null);
+>   const [feishuRecords, setFeishuRecords] = useState<FeishuRecord[]>([]);
+>   const [feishuLoading, setFeishuLoading] = useState(false);
+>   const [feishuError, setFeishuError] = useState('');
+>   const [feishuMessage, setFeishuMessage] = useState('');
+>   const [feishuForm, setFeishuForm] = useState<FeishuFormState>(FEISHU_DEFAULT_FORM);
+>   const [feishuEditingId, setFeishuEditingId] = useState<string | null>(null);
+>   const [feishuEditingField, setFeishuEditingField] = useState<keyof FeishuFormState | null>(null);
+>   const [feishuRecordDraft, setFeishuRecordDraft] = useState<FeishuFormState | null>(null);
+>   const [feishuPageSize, setFeishuPageSize] = useState(20);
+>   const [feishuPageToken, setFeishuPageToken] = useState<string | undefined>(undefined);
+>   const [feishuPageStack, setFeishuPageStack] = useState<string[]>([]);
+>   const [feishuNextToken, setFeishuNextToken] = useState<string | undefined>(undefined);
+>   const [feishuHasMore, setFeishuHasMore] = useState(false);
+>   const [feishuSearch, setFeishuSearch] = useState('');
+>   const [feishuSearchFields, setFeishuSearchFields] = useState('任务ID,任务名称,负责人');
+>   const [feishuFilter, setFeishuFilter] = useState('');
+>   const [feishuSort, setFeishuSort] = useState('');
+>   const [feishuFilterProject, setFeishuFilterProject] = useState('');
+>   const [feishuFilterStatus, setFeishuFilterStatus] = useState('');
+>   const [feishuFilterAssignee, setFeishuFilterAssignee] = useState('');
+>   const [feishuFilterRisk, setFeishuFilterRisk] = useState('');
+188c281,569
+<   function logout() {
+---
+>   function normalizeDateInput(value: unknown) {
+>     if (value === null || value === undefined || value === '') return '';
+>     if (typeof value === 'number') {
+>       const d = new Date(value);
+>       if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+>       return '';
+>     }
+>     if (typeof value === 'string') {
+>       if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+>       const d = new Date(value);
+>       if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+>     }
+>     return '';
+>   }
+> 
+>   function extractAssigneeName(value: unknown) {
+>     if (Array.isArray(value) && value.length > 0) {
+>       const first = value[0] as any;
+>       if (typeof first?.name === 'string') return first.name;
+>       if (typeof first?.en_name === 'string') return first.en_name;
+>     }
+>     if (typeof value === 'string') return value;
+>     return '';
+>   }
+> 
+>     function getAssigneeName(value: unknown) {
+>     if (Array.isArray(value) && value.length > 0) {
+>       const first = value[0] as any;
+>       if (typeof first?.name === 'string') return first.name;
+>       if (typeof first?.en_name === 'string') return first.en_name;
+>     }
+>     if (typeof value === 'string') return value;
+>     return '';
+>   }
+> 
+> function normalizeProgress(value: unknown) {
+>     if (typeof value === 'number') return String(value);
+>     if (typeof value === 'string') return value.replace('%', '').trim();
+>     return '';
+>   }
+> 
+>   function resetFeishuForm() {
+>     setFeishuForm(FEISHU_DEFAULT_FORM);
+>     setFeishuEditingId(null);
+>   }
+> 
+>   function mapRecordToForm(record: FeishuRecord): FeishuFormState {
+>     const fields = (record.fields || {}) as Record<string, unknown>;
+>     return {
+>       任务ID: String(fields['任务ID'] ?? ''),
+>       任务名称: String(fields['任务名称'] ?? ''),
+>       状态: String(fields['状态'] ?? '待办'),
+>       优先级: String(fields['优先级'] ?? '中'),
+>       负责人: extractAssigneeName(fields['负责人']),
+>       开始时间: normalizeDateInput(fields['开始时间']),
+>       截止时间: normalizeDateInput(fields['截止时间']),
+>       进度: normalizeProgress(fields['进度']),
+>       所属项目: String(fields['所属项目'] ?? ''),
+>       是否阻塞: String(fields['是否阻塞'] ?? '否'),
+>       阻塞原因: String(fields['阻塞原因'] ?? ''),
+>       风险等级: String(fields['风险等级'] ?? '中')
+>     };
+>   }
+> 
+>   function buildFeishuFieldsPayload(form: FeishuFormState) {
+>     const payload: Record<string, unknown> = {
+>       任务ID: form.任务ID.trim(),
+>       任务名称: form.任务名称.trim(),
+>       状态: form.状态.trim(),
+>       优先级: form.优先级.trim(),
+>       负责人: form.负责人.trim(),
+>       所属项目: form.所属项目.trim(),
+>       是否阻塞: form.是否阻塞.trim(),
+>       阻塞原因: form.阻塞原因.trim(),
+>       风险等级: form.风险等级.trim()
+>     };
+> 
+>     const start = form.开始时间 ? new Date(form.开始时间).getTime() : null;
+>     const end = form.截止时间 ? new Date(form.截止时间).getTime() : null;
+>     payload['开始时间'] = Number.isFinite(start) ? start : null;
+>     payload['截止时间'] = Number.isFinite(end) ? end : null;
+> 
+>     const progress = Number(form.进度);
+>     payload['进度'] = Number.isFinite(progress) ? progress : null;
+>     return payload;
+>   }
+> 
+>   async function loadFeishuRecords(options?: { resetPage?: boolean }) {
+>     if (!token) return;
+>     setFeishuLoading(true);
+>     setFeishuError('');
+>     try {
+>       const pageToken = options?.resetPage ? undefined : feishuPageToken;
+>       if (options?.resetPage) {
+>         setFeishuPageStack([]);
+>       }
+>       const res = await listFeishuRecords({
+>         pageSize: feishuPageSize,
+>         pageToken,
+>         filter: feishuFilter || undefined,
+>         sort: feishuSort || undefined,
+>         fieldNames: FEISHU_FIELD_NAMES,
+>         search: feishuSearch || undefined,
+>         searchFields: feishuSearchFields || undefined
+>       });
+>       setFeishuRecords(res.items || []);
+>       setFeishuHasMore(Boolean(res.has_more));
+>       setFeishuNextToken(res.page_token);
+>       setFeishuPageToken(pageToken);
+>     } catch (err) {
+>       const detail = err instanceof Error ? err.message : 'unknown';
+>       setFeishuError(`获取飞书记录失败。（${detail}）`);
+>     } finally {
+>       setFeishuLoading(false);
+>     }
+>   }
+> 
+>   function startInlineFeishuEdit(record: FeishuRecord, field?: keyof FeishuFormState) {
+>     setFeishuEditingId(record.record_id);
+>     setFeishuRecordDraft((prev) => (prev ? prev : mapRecordToForm(record)));
+>     setFeishuEditingField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-feishu-edit="${record.record_id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+>     }
+>   }
+> 
+>   function updateFeishuRecordDraft(field: keyof FeishuFormState, value: string) {
+>     setFeishuRecordDraft((prev) => {
+>       if (!prev) return prev;
+>       return { ...prev, [field]: value } as FeishuFormState;
+>     });
+>   }
+> 
+>   function hasFeishuRecordDraftChanges(original: FeishuFormState, draft: FeishuFormState | null) {
+>     if (!draft) return false;
+>     return Object.keys(original).some((key) => (original as any)[key] !== (draft as any)[key]);
+>   }
+> 
+>   function finalizeInlineFeishuEdit(original: FeishuRecord) {
+>     const originalForm = mapRecordToForm(original);
+>     if (!feishuRecordDraft) return;
+>     if (!hasFeishuRecordDraftChanges(originalForm, feishuRecordDraft)) {
+>       cancelInlineFeishuEdit();
+>     }
+>   }
+> 
+>   async function saveInlineFeishuEdit(original: FeishuRecord) {
+>     if (!feishuRecordDraft) return;
+>     const originalForm = mapRecordToForm(original);
+>     if (!hasFeishuRecordDraftChanges(originalForm, feishuRecordDraft)) return;
+>     setFeishuError('');
+>     setFeishuMessage('');
+>     try {
+>       const payload = buildFeishuFieldsPayload(feishuRecordDraft);
+>       await updateFeishuRecord(original.record_id, payload);
+>       setFeishuMessage('飞书记录已更新。');
+>       cancelInlineFeishuEdit();
+>       await loadFeishuRecords();
+>     } catch (err) {
+>       const detail = err instanceof Error ? err.message : 'unknown';
+>       setFeishuError(`更新失败。（${detail}）`);
+>     }
+>   }
+> 
+>   function cancelInlineFeishuEdit() {
+>     setFeishuEditingId(null);
+>     setFeishuEditingField(null);
+>     setFeishuRecordDraft(null);
+>   }
+> 
+>   async function submitFeishuRecord(e: FormEvent<HTMLFormElement>) {
+>     e.preventDefault();
+>     if (!canWrite) return;
+>     setFeishuError('');
+>     setFeishuMessage('');
+>     try {
+>       const payload = buildFeishuFieldsPayload(feishuForm);
+>       if (feishuEditingId) {
+>         await updateFeishuRecord(feishuEditingId, payload);
+>         setFeishuMessage('飞书记录已更新。');
+>       } else {
+>         await createFeishuRecord(payload);
+>         setFeishuMessage('飞书记录已创建。');
+>       }
+>       resetFeishuForm();
+>       await loadFeishuRecords({ resetPage: true });
+>     } catch (err) {
+>       const detail = err instanceof Error ? err.message : 'unknown';
+>       setFeishuError(`提交失败。（${detail}）`);
+>     }
+>   }
+> 
+>   async function removeFeishuRecord(record: FeishuRecord) {
+>     if (!canWrite) return;
+>     if (!window.confirm('确定删除该飞书记录？')) return;
+>     setFeishuError('');
+>     setFeishuMessage('');
+>     try {
+>       await deleteFeishuRecord(record.record_id);
+>       setFeishuMessage('飞书记录已删除。');
+>       await loadFeishuRecords();
+>     } catch (err) {
+>       const detail = err instanceof Error ? err.message : 'unknown';
+>       setFeishuError(`删除失败。（${detail}）`);
+>     }
+>   }
+> 
+>   function goFeishuNextPage() {
+>     if (!feishuNextToken) return;
+>     setFeishuPageStack((prev) => [...prev, feishuPageToken || '']);
+>     setFeishuPageToken(feishuNextToken);
+>   }
+> 
+>   function goFeishuPrevPage() {
+>     setFeishuPageStack((prev) => {
+>       if (prev.length === 0) return prev;
+>       const next = [...prev];
+>       const token = next.pop();
+>       setFeishuPageToken(token || undefined);
+>       return next;
+>     });
+>   }
+> 
+>   function updateFeishuField(key: keyof FeishuFormState, value: string) {
+>     setFeishuForm((prev) => ({ ...prev, [key]: value }));
+>   }
+> 
+>   function formatFeishuValue(value: unknown) {
+>     if (value === null || value === undefined || value === '') return '-';
+>     if (Array.isArray(value)) {
+>       const names = value
+>         .map((item) => {
+>           if (item && typeof item === 'object' && 'name' in item) return String((item as any).name);
+>           return formatFeishuValue(item);
+>         })
+>         .filter((item) => item && item !== '-');
+>       if (names.length > 0) return names.join(', ');
+>       return value.map((item) => formatFeishuValue(item)).join(', ');
+>     }
+>     if (typeof value === 'object') {
+>       if (value && 'name' in (value as any)) return String((value as any).name);
+>       return JSON.stringify(value);
+>     }
+>     return String(value);
+>   }
+> 
+>   const FEISHU_DATE_FIELDS: Array<keyof FeishuFormState> = ['开始时间', '截止时间'];
+> 
+>   function formatProgressValue(value: unknown) {
+>     if (value === null || value === undefined || value === '') return '-';
+>     if (typeof value === 'number' && Number.isFinite(value)) {
+>       const num = value <= 1 ? value * 100 : value;
+>       return `${Math.round(num)}%`;
+>     }
+>     if (typeof value === 'string') {
+>       const trimmed = value.replace('%', '').trim();
+>       const num = Number(trimmed);
+>       if (Number.isFinite(num)) {
+>         const normalized = num <= 1 ? num * 100 : num;
+>         return `${Math.round(normalized)}%`;
+>       }
+>       return value;
+>     }
+>     return String(value);
+>   }
+> 
+> function formatDateValue(value: unknown) {
+>     if (value === null || value === undefined || value === '') return null;
+>     if (typeof value === 'number' && Number.isFinite(value)) {
+>       if (value < 100000000000) return null;
+>       const d = new Date(value);
+>       if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+>       return null;
+>     }
+>     if (typeof value === 'string') {
+>       if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+>       if (!value.includes('-') && !value.includes('T')) return null;
+>       const d = new Date(value);
+>       if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+>       return null;
+>     }
+>     return null;
+>   }
+> 
+> function logout() {
+205a587,614
+>     setFeishuRecords([]);
+>     setEditingProjectId(null);
+>     setProjectDraft(null);
+>     setEditingProjectField(null);
+>     setEditingRequirementId(null);
+>     setEditingRequirementField(null);
+>     setRequirementDraft(null);
+>     setEditingCostId(null);
+>     setEditingCostField(null);
+>     setCostDraft(null);
+>     setEditingWorklogId(null);
+>     setEditingWorklogField(null);
+>     setWorklogDraft(null);
+>     setEditingTaskId(null);
+>     setEditingTaskField(null);
+>     setTaskDraft(null);
+>     setEditingMilestoneId(null);
+>     setEditingMilestoneField(null);
+>     setMilestoneDraft(null);
+>     setFeishuForm(FEISHU_DEFAULT_FORM);
+>     setFeishuEditingId(null);
+>     setFeishuPageToken(undefined);
+>     setFeishuPageStack([]);
+>     setFeishuNextToken(undefined);
+>     setFeishuHasMore(false);
+>     setFeishuSearch('');
+>     setFeishuFilter('');
+>     setFeishuSort('');
+233a643,654
+>   useEffect(() => {
+>     if (token && view === 'feishu') {
+>       void loadFeishuRecords({ resetPage: true });
+>     }
+>   }, [token, view]);
+> 
+>   useEffect(() => {
+>     if (token && view === 'feishu') {
+>       void loadFeishuRecords();
+>     }
+>   }, [feishuPageToken]);
+> 
+253,264c674,683
+<   async function submitProject(e: FormEvent<HTMLFormElement>) {
+<     e.preventDefault();
+<     const formEl = e.currentTarget;
+<     setMessage('');
+<     setError('');
+<     const form = new FormData(formEl);
+<     const name = String(form.get('name'));
+<     const budget = Number(form.get('budget'));
+< 
+<     if (!Number.isFinite(budget) || budget <= 0) {
+<       setError('预算必须是大于 0 的数字。');
+<       return;
+---
+>   function startInlineProjectEdit(project: ProjectItem, field?: keyof ProjectItem) {
+>     setEditingProjectId(project.id);
+>     setProjectDraft((prev) => (prev && prev.id === project.id ? prev : { ...project }));
+>     setEditingProjectField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-project-edit="${project.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+265a685
+>   }
+267,283c687,694
+<     try {
+<       const created = await apiPost<{ id: number }>('/projects', {
+<         name,
+<         ownerId: 1,
+<         budget,
+<         startDate: String(form.get('startDate') || ''),
+<         endDate: String(form.get('endDate') || '')
+<       });
+<       formEl?.reset();
+<       setMessage(`项目「${name}」已创建。`);
+<       await refreshAll(created.id);
+<     } catch (err) {
+<       if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+<         logout();
+<         setError('登录已失效，请重新登录后再试。');
+<       } else if (err instanceof Error && err.message === 'FORBIDDEN') {
+<         setError('当前账号没有创建项目权限，请使用 pm/lead 账号。');
+---
+>   function updateProjectDraft(field: keyof ProjectItem, value: string) {
+>     setProjectDraft((prev) => {
+>       if (!prev) return prev;
+>       const next = { ...prev } as ProjectItem;
+>       if (field === 'budget') {
+>         next.budget = Number(value);
+>       } else if (field === 'startDate' || field === 'endDate') {
+>         next[field] = value || null;
+285,286c696
+<         const detail = err instanceof Error ? err.message : 'unknown';
+<         setError(`新增项目失败，请检查输入或后端服务状态。（${detail}）`);
+---
+>         (next as any)[field] = value;
+287a698,717
+>       return next;
+>     });
+>   }
+> 
+>   function hasProjectDraftChanges(original: ProjectItem, draft: ProjectItem | null) {
+>     if (!draft) return false;
+>     return (
+>       original.name !== draft.name ||
+>       original.budget !== draft.budget ||
+>       (original.startDate ?? '') !== (draft.startDate ?? '') ||
+>       (original.endDate ?? '') !== (draft.endDate ?? '')
+>     );
+>   }
+> 
+> 
+> 
+>   function finalizeInlineProjectEdit(project: ProjectItem) {
+>     if (!projectDraft) return;
+>     if (!hasProjectDraftChanges(project, projectDraft)) {
+>       cancelInlineProjectEdit();
+291,292c721,722
+<   async function editProject(project: ProjectItem) {
+<     if (!canWrite) return;
+---
+>   async function saveInlineProjectEdit(original: ProjectItem) {
+>     if (!projectDraft || !hasProjectDraftChanges(original, projectDraft)) return;
+295,308d724
+<     const name = window.prompt('项目名称', project.name);
+<     if (name === null) return;
+<     const budgetRaw = window.prompt('预算', String(project.budget));
+<     if (budgetRaw === null) return;
+<     const budget = Number(budgetRaw);
+<     if (!Number.isFinite(budget) || budget <= 0) {
+<       setError('预算必须是大于 0 的数字。');
+<       return;
+<     }
+<     const startDate = window.prompt('开始日期(YYYY-MM-DD, 可留空)', project.startDate ?? '');
+<     if (startDate === null) return;
+<     const endDate = window.prompt('结束日期(YYYY-MM-DD, 可留空)', project.endDate ?? '');
+<     if (endDate === null) return;
+< 
+310,314c726,730
+<       await apiPatch(`/projects/${project.id}`, {
+<         name,
+<         budget,
+<         startDate: startDate || null,
+<         endDate: endDate || null
+---
+>       await apiPatch(`/projects/${original.id}`, {
+>         name: projectDraft.name,
+>         budget: projectDraft.budget,
+>         startDate: projectDraft.startDate || null,
+>         endDate: projectDraft.endDate || null
+316,317c732,734
+<       setMessage(`项目「${name}」已更新。`);
+<       await refreshAll(project.id);
+---
+>       setMessage(`项目「${projectDraft.name}」已更新。`);
+>       cancelInlineProjectEdit();
+>       await refreshAll(original.id);
+324,337c741,744
+<   async function deleteProject(project: ProjectItem) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除项目「${project.name}」？该项目下需求/成本/任务会一起删除。`)) return;
+<     setMessage('');
+<     setError('');
+<     try {
+<       await apiDelete(`/projects/${project.id}`);
+<       setMessage(`项目「${project.name}」已删除。`);
+<       const fallback = projects.find((item) => item.id !== project.id)?.id ?? null;
+<       await refreshAll(fallback);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`删除项目失败。（${detail}）`);
+<     }
+---
+>   function cancelInlineProjectEdit() {
+>     setEditingProjectId(null);
+>     setEditingProjectField(null);
+>     setProjectDraft(null);
+340,356c747,756
+<   async function deleteSelectedProjects() {
+<     if (!canWrite || selectedProjectIds.length === 0) return;
+<     if (!window.confirm(`确定批量删除 ${selectedProjectIds.length} 个项目？关联需求/成本/任务会一起删除。`)) return;
+<     setMessage('');
+<     setError('');
+<     try {
+<       for (const id of selectedProjectIds) {
+<         await apiDelete(`/projects/${id}`);
+<       }
+<       const remain = projects.filter((item) => !selectedProjectIds.includes(item.id));
+<       const fallback = remain[0]?.id ?? null;
+<       setSelectedProjectIds([]);
+<       setMessage(`已批量删除 ${selectedProjectIds.length} 个项目。`);
+<       await refreshAll(fallback);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`批量删除项目失败。（${detail}）`);
+---
+>   function startInlineRequirementEdit(req: Requirement, field?: keyof Requirement) {
+>     setEditingRequirementId(req.id);
+>     setRequirementDraft((prev) => (prev && prev.id === req.id ? prev : { ...req }));
+>     setEditingRequirementField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-requirement-edit="${req.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+360,366c760,763
+<   function toggleProjectSelection(id: number, checked: boolean) {
+<     setSelectedProjectIds((prev) => {
+<       if (checked) {
+<         if (prev.includes(id)) return prev;
+<         return [...prev, id];
+<       }
+<       return prev.filter((item) => item !== id);
+---
+>   function updateRequirementDraft(field: keyof Requirement, value: string) {
+>     setRequirementDraft((prev) => {
+>       if (!prev) return prev;
+>       return { ...prev, [field]: value } as Requirement;
+370,375c767,782
+<   async function submitCost(e: FormEvent<HTMLFormElement>) {
+<     e.preventDefault();
+<     const formEl = e.currentTarget;
+<     if (!selectedProjectId) {
+<       setError('请先选择项目。');
+<       return;
+---
+>   function hasRequirementDraftChanges(original: Requirement, draft: Requirement | null) {
+>     if (!draft) return false;
+>     return (
+>       original.title !== draft.title ||
+>       original.description !== draft.description ||
+>       original.priority !== draft.priority ||
+>       original.status !== draft.status
+>     );
+>   }
+> 
+> 
+> 
+>   function finalizeInlineRequirementEdit(original: Requirement) {
+>     if (!requirementDraft) return;
+>     if (!hasRequirementDraftChanges(original, requirementDraft)) {
+>       cancelInlineRequirementEdit();
+377,386d783
+<     const form = new FormData(formEl);
+<     await apiPost('/cost-entries', {
+<       projectId: selectedProjectId,
+<       type: String(form.get('type')),
+<       amount: Number(form.get('amount')),
+<       occurredOn: String(form.get('occurredOn')),
+<       note: String(form.get('note'))
+<     });
+<     formEl?.reset();
+<     await refreshAll(selectedProjectId);
+389,390c786,787
+<   async function editCostEntry(entry: CostEntryItem) {
+<     if (!canWrite) return;
+---
+>   async function saveInlineRequirementEdit(original: Requirement) {
+>     if (!requirementDraft || !hasRequirementDraftChanges(original, requirementDraft)) return;
+393,410d789
+<     const type = window.prompt('成本类型(labor/outsource/cloud)', entry.type);
+<     if (type === null) return;
+<     if (!['labor', 'outsource', 'cloud'].includes(type)) {
+<       setError('成本类型只能是 labor/outsource/cloud。');
+<       return;
+<     }
+<     const amountRaw = window.prompt('金额', String(entry.amount));
+<     if (amountRaw === null) return;
+<     const amount = Number(amountRaw);
+<     if (!Number.isFinite(amount) || amount < 0) {
+<       setError('金额必须是非负数字。');
+<       return;
+<     }
+<     const occurredOn = window.prompt('发生日期(YYYY-MM-DD)', entry.occurredOn);
+<     if (occurredOn === null) return;
+<     const note = window.prompt('备注', entry.note ?? '');
+<     if (note === null) return;
+< 
+412,416c791,795
+<       await apiPatch(`/cost-entries/${entry.id}`, {
+<         type,
+<         amount,
+<         occurredOn,
+<         note
+---
+>       await apiPatch(`/requirements/${original.id}`, {
+>         title: requirementDraft.title,
+>         description: requirementDraft.description,
+>         priority: requirementDraft.priority,
+>         status: requirementDraft.status
+418c797,798
+<       setMessage(`成本条目 #${entry.id} 已更新。`);
+---
+>       setMessage(`需求 #${original.id} 已更新。`);
+>       cancelInlineRequirementEdit();
+422c802
+<       setError(`更新成本失败。（${detail}）`);
+---
+>       setError(`更新需求失败。（${detail}）`);
+426,438c806,809
+<   async function deleteCostEntry(entry: CostEntryItem) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除成本条目 #${entry.id}？`)) return;
+<     setMessage('');
+<     setError('');
+<     try {
+<       await apiDelete(`/cost-entries/${entry.id}`);
+<       setMessage(`成本条目 #${entry.id} 已删除。`);
+<       await refreshAll(selectedProjectId);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`删除成本失败。（${detail}）`);
+<     }
+---
+>   function cancelInlineRequirementEdit() {
+>     setEditingRequirementId(null);
+>     setEditingRequirementField(null);
+>     setRequirementDraft(null);
+441,446c812,821
+<   async function submitWorklog(e: FormEvent<HTMLFormElement>) {
+<     e.preventDefault();
+<     const formEl = e.currentTarget;
+<     if (!selectedProjectId) {
+<       setError('请先选择项目。');
+<       return;
+---
+>   function startInlineCostEdit(entry: CostEntryItem, field?: keyof CostEntryItem) {
+>     setEditingCostId(entry.id);
+>     setCostDraft((prev) => (prev && prev.id === entry.id ? prev : { ...entry }));
+>     setEditingCostField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-cost-edit="${entry.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+448,456c823,834
+<     const form = new FormData(formEl);
+<     await apiPost('/worklogs', {
+<       projectId: selectedProjectId,
+<       userId: user?.id,
+<       taskTitle: String(form.get('taskTitle') || ''),
+<       hours: Number(form.get('hours')),
+<       hourlyRate: Number(form.get('hourlyRate')),
+<       workedOn: String(form.get('workedOn')),
+<       note: String(form.get('note') || '')
+---
+>   }
+> 
+>   function updateCostDraft(field: keyof CostEntryItem, value: string) {
+>     setCostDraft((prev) => {
+>       if (!prev) return prev;
+>       const next = { ...prev } as CostEntryItem;
+>       if (field === 'amount') {
+>         next.amount = Number(value);
+>       } else {
+>         (next as any)[field] = value;
+>       }
+>       return next;
+458,459d835
+<     formEl?.reset();
+<     await refreshAll(selectedProjectId);
+462,485c838,846
+<   async function editWorklog(worklog: Worklog) {
+<     if (!canWrite) return;
+<     setMessage('');
+<     setError('');
+<     const taskTitle = window.prompt('工时任务', worklog.taskTitle ?? '');
+<     if (taskTitle === null) return;
+<     const hoursRaw = window.prompt('工时(小时)', String(worklog.hours));
+<     if (hoursRaw === null) return;
+<     const hours = Number(hoursRaw);
+<     if (!Number.isFinite(hours) || hours <= 0) {
+<       setError('工时必须是大于 0 的数字。');
+<       return;
+<     }
+<     const hourlyRateRaw = window.prompt('时薪', String(worklog.hourlyRate));
+<     if (hourlyRateRaw === null) return;
+<     const hourlyRate = Number(hourlyRateRaw);
+<     if (!Number.isFinite(hourlyRate) || hourlyRate < 0) {
+<       setError('时薪必须是非负数字。');
+<       return;
+<     }
+<     const workedOn = window.prompt('工作日期(YYYY-MM-DD)', worklog.workedOn);
+<     if (workedOn === null) return;
+<     const note = window.prompt('备注', worklog.note ?? '');
+<     if (note === null) return;
+---
+>   function hasCostDraftChanges(original: CostEntryItem, draft: CostEntryItem | null) {
+>     if (!draft) return false;
+>     return (
+>       original.type !== draft.type ||
+>       original.amount !== draft.amount ||
+>       original.occurredOn !== draft.occurredOn ||
+>       (original.note ?? '') !== (draft.note ?? '')
+>     );
+>   }
+487,499c848,853
+<     try {
+<       await apiPatch(`/worklogs/${worklog.id}`, {
+<         taskTitle,
+<         hours,
+<         hourlyRate,
+<         workedOn,
+<         note
+<       });
+<       setMessage(`工时 #${worklog.id} 已更新。`);
+<       await refreshAll(selectedProjectId);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`更新工时失败。（${detail}）`);
+---
+> 
+> 
+>   function finalizeInlineCostEdit(original: CostEntryItem) {
+>     if (!costDraft) return;
+>     if (!hasCostDraftChanges(original, costDraft)) {
+>       cancelInlineCostEdit();
+503,505c857,858
+<   async function deleteWorklog(worklog: Worklog) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除工时记录 #${worklog.id}？`)) return;
+---
+>   async function saveInlineCostEdit(original: CostEntryItem) {
+>     if (!costDraft || !hasCostDraftChanges(original, costDraft)) return;
+509,510c862,869
+<       await apiDelete(`/worklogs/${worklog.id}`);
+<       setMessage(`工时 #${worklog.id} 已删除。`);
+---
+>       await apiPatch(`/cost-entries/${original.id}`, {
+>         type: costDraft.type,
+>         amount: costDraft.amount,
+>         occurredOn: costDraft.occurredOn,
+>         note: costDraft.note
+>       });
+>       setMessage(`成本条目 #${original.id} 已更新。`);
+>       cancelInlineCostEdit();
+514c873
+<       setError(`删除工时失败。（${detail}）`);
+---
+>       setError(`更新成本失败。（${detail}）`);
+518,529c877,905
+<   async function submitMilestone(e: FormEvent<HTMLFormElement>) {
+<     e.preventDefault();
+<     const formEl = e.currentTarget;
+<     if (!selectedProjectId) {
+<       setError('请先选择项目。');
+<       return;
+<     }
+<     const form = new FormData(formEl);
+<     await apiPost('/projects/milestones', {
+<       projectId: selectedProjectId,
+<       name: String(form.get('name')),
+<       plannedDate: String(form.get('plannedDate'))
+---
+>   function cancelInlineCostEdit() {
+>     setEditingCostId(null);
+>     setEditingCostField(null);
+>     setCostDraft(null);
+>   }
+> 
+>   function startInlineWorklogEdit(entry: Worklog, field?: keyof Worklog) {
+>     setEditingWorklogId(entry.id);
+>     setWorklogDraft((prev) => (prev && prev.id === entry.id ? prev : { ...entry }));
+>     setEditingWorklogField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-worklog-edit="${entry.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+>     }
+>   }
+> 
+>   function updateWorklogDraft(field: keyof Worklog, value: string) {
+>     setWorklogDraft((prev) => {
+>       if (!prev) return prev;
+>       const next = { ...prev } as Worklog;
+>       if (field === 'hours' || field === 'hourlyRate') {
+>         (next as any)[field] = Number(value);
+>       } else {
+>         (next as any)[field] = value;
+>       }
+>       return next;
+531,532d906
+<     formEl?.reset();
+<     await refreshAll(selectedProjectId);
+535,544c909,918
+<   async function editMilestone(milestone: ScheduleData['milestones'][number]) {
+<     if (!canWrite) return;
+<     setMessage('');
+<     setError('');
+<     const name = window.prompt('里程碑名称', milestone.name);
+<     if (name === null) return;
+<     const plannedDate = window.prompt('计划日期(YYYY-MM-DD)', milestone.plannedDate);
+<     if (plannedDate === null) return;
+<     const actualDate = window.prompt('实际日期(YYYY-MM-DD, 可留空)', milestone.actualDate ?? '');
+<     if (actualDate === null) return;
+---
+>   function hasWorklogDraftChanges(original: Worklog, draft: Worklog | null) {
+>     if (!draft) return false;
+>     return (
+>       (original.taskTitle ?? '') !== (draft.taskTitle ?? '') ||
+>       original.hours !== draft.hours ||
+>       original.hourlyRate !== draft.hourlyRate ||
+>       original.workedOn !== draft.workedOn ||
+>       (original.note ?? '') !== (draft.note ?? '')
+>     );
+>   }
+546,556c920,925
+<     try {
+<       await apiPatch(`/projects/milestones/${milestone.id}`, {
+<         name,
+<         plannedDate,
+<         actualDate: actualDate || null
+<       });
+<       setMessage(`里程碑 #${milestone.id} 已更新。`);
+<       await refreshAll(selectedProjectId);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`更新里程碑失败。（${detail}）`);
+---
+> 
+> 
+>   function finalizeInlineWorklogEdit(original: Worklog) {
+>     if (!worklogDraft) return;
+>     if (!hasWorklogDraftChanges(original, worklogDraft)) {
+>       cancelInlineWorklogEdit();
+560,562c929,930
+<   async function deleteMilestone(milestone: ScheduleData['milestones'][number]) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除里程碑「${milestone.name}」？`)) return;
+---
+>   async function saveInlineWorklogEdit(original: Worklog) {
+>     if (!worklogDraft || !hasWorklogDraftChanges(original, worklogDraft)) return;
+566,567c934,942
+<       await apiDelete(`/projects/milestones/${milestone.id}`);
+<       setMessage(`里程碑 #${milestone.id} 已删除。`);
+---
+>       await apiPatch(`/worklogs/${original.id}`, {
+>         taskTitle: worklogDraft.taskTitle,
+>         hours: worklogDraft.hours,
+>         hourlyRate: worklogDraft.hourlyRate,
+>         workedOn: worklogDraft.workedOn,
+>         note: worklogDraft.note
+>       });
+>       setMessage(`工时 #${original.id} 已更新。`);
+>       cancelInlineWorklogEdit();
+571c946
+<       setError(`删除里程碑失败。（${detail}）`);
+---
+>       setError(`更新工时失败。（${detail}）`);
+575,580c950,965
+<   async function submitTask(e: FormEvent<HTMLFormElement>) {
+<     e.preventDefault();
+<     const formEl = e.currentTarget;
+<     if (!selectedProjectId) {
+<       setError('请先选择项目。');
+<       return;
+---
+>   function cancelInlineWorklogEdit() {
+>     setEditingWorklogId(null);
+>     setEditingWorklogField(null);
+>     setWorklogDraft(null);
+>   }
+> 
+>   function startInlineTaskEdit(entry: ScheduleData['tasks'][number], field?: keyof ScheduleData['tasks'][number]) {
+>     setEditingTaskId(entry.id);
+>     setTaskDraft((prev) => (prev && prev.id === entry.id ? prev : { ...entry }));
+>     setEditingTaskField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-task-edit="${entry.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+582,589c967,972
+<     const form = new FormData(formEl);
+<     await apiPost('/projects/tasks', {
+<       projectId: selectedProjectId,
+<       title: String(form.get('title')),
+<       assignee: String(form.get('assignee')),
+<       status: String(form.get('status')),
+<       plannedStart: String(form.get('plannedStart')),
+<       plannedEnd: String(form.get('plannedEnd'))
+---
+>   }
+> 
+>   function updateTaskDraft(field: keyof ScheduleData['tasks'][number], value: string) {
+>     setTaskDraft((prev) => {
+>       if (!prev) return prev;
+>       return { ...prev, [field]: value } as ScheduleData['tasks'][number];
+591,592d973
+<     formEl?.reset();
+<     await refreshAll(selectedProjectId);
+595,612c976,985
+<   async function editTask(task: ScheduleData['tasks'][number]) {
+<     if (!canWrite) return;
+<     setMessage('');
+<     setError('');
+<     const title = window.prompt('任务标题', task.title);
+<     if (title === null) return;
+<     const assignee = window.prompt('负责人', task.assignee);
+<     if (assignee === null) return;
+<     const status = window.prompt('状态(todo/in_progress/blocked/done)', task.status);
+<     if (status === null) return;
+<     if (!['todo', 'in_progress', 'blocked', 'done'].includes(status)) {
+<       setError('状态只能是 todo/in_progress/blocked/done。');
+<       return;
+<     }
+<     const plannedStart = window.prompt('计划开始(YYYY-MM-DD)', task.plannedStart);
+<     if (plannedStart === null) return;
+<     const plannedEnd = window.prompt('计划结束(YYYY-MM-DD)', task.plannedEnd);
+<     if (plannedEnd === null) return;
+---
+>   function hasTaskDraftChanges(original: ScheduleData['tasks'][number], draft: ScheduleData['tasks'][number] | null) {
+>     if (!draft) return false;
+>     return (
+>       original.title !== draft.title ||
+>       original.assignee !== draft.assignee ||
+>       original.status !== draft.status ||
+>       original.plannedStart !== draft.plannedStart ||
+>       original.plannedEnd !== draft.plannedEnd
+>     );
+>   }
+614,626c987,992
+<     try {
+<       await apiPatch(`/projects/tasks/${task.id}`, {
+<         title,
+<         assignee,
+<         status,
+<         plannedStart,
+<         plannedEnd
+<       });
+<       setMessage(`任务 #${task.id} 已更新。`);
+<       await refreshAll(selectedProjectId);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`更新任务失败。（${detail}）`);
+---
+> 
+> 
+>   function finalizeInlineTaskEdit(original: ScheduleData['tasks'][number]) {
+>     if (!taskDraft) return;
+>     if (!hasTaskDraftChanges(original, taskDraft)) {
+>       cancelInlineTaskEdit();
+630,632c996,997
+<   async function deleteTask(task: ScheduleData['tasks'][number]) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除任务「${task.title}」？`)) return;
+---
+>   async function saveInlineTaskEdit(original: ScheduleData['tasks'][number]) {
+>     if (!taskDraft || !hasTaskDraftChanges(original, taskDraft)) return;
+636,637c1001,1009
+<       await apiDelete(`/projects/tasks/${task.id}`);
+<       setMessage(`任务 #${task.id} 已删除。`);
+---
+>       await apiPatch(`/projects/tasks/${original.id}`, {
+>         title: taskDraft.title,
+>         assignee: taskDraft.assignee,
+>         status: taskDraft.status,
+>         plannedStart: taskDraft.plannedStart,
+>         plannedEnd: taskDraft.plannedEnd
+>       });
+>       setMessage(`任务 #${original.id} 已更新。`);
+>       cancelInlineTaskEdit();
+641c1013
+<       setError(`删除任务失败。（${detail}）`);
+---
+>       setError(`更新任务失败。（${detail}）`);
+645,657c1017,1032
+<   async function editRequirement(req: Requirement) {
+<     if (!canWrite) return;
+<     setMessage('');
+<     setError('');
+<     const title = window.prompt('需求标题', req.title);
+<     if (title === null) return;
+<     const description = window.prompt('需求描述', req.description);
+<     if (description === null) return;
+<     const priority = window.prompt('优先级(low/medium/high)', req.priority);
+<     if (priority === null) return;
+<     if (!['low', 'medium', 'high'].includes(priority)) {
+<       setError('优先级只能是 low/medium/high。');
+<       return;
+---
+>   function cancelInlineTaskEdit() {
+>     setEditingTaskId(null);
+>     setEditingTaskField(null);
+>     setTaskDraft(null);
+>   }
+> 
+>   function startInlineMilestoneEdit(entry: ScheduleData['milestones'][number], field?: keyof ScheduleData['milestones'][number]) {
+>     setEditingMilestoneId(entry.id);
+>     setMilestoneDraft((prev) => (prev && prev.id === entry.id ? prev : { ...entry }));
+>     setEditingMilestoneField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-milestone-edit="${entry.id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+659,664c1034
+<     const status = window.prompt('状态(draft/in_review/approved/planned/done)', req.status);
+<     if (status === null) return;
+<     if (!['draft', 'in_review', 'approved', 'planned', 'done'].includes(status)) {
+<       setError('状态只能是 draft/in_review/approved/planned/done。');
+<       return;
+<     }
+---
+>   }
+666,677c1036,1071
+<     try {
+<       await apiPatch(`/requirements/${req.id}`, {
+<         title,
+<         description,
+<         priority,
+<         status
+<       });
+<       setMessage(`需求 #${req.id} 已更新。`);
+<       await refreshAll(selectedProjectId);
+<     } catch (err) {
+<       const detail = err instanceof Error ? err.message : 'unknown';
+<       setError(`更新需求失败。（${detail}）`);
+---
+>   function updateMilestoneDraft(field: keyof ScheduleData['milestones'][number], value: string) {
+>     setMilestoneDraft((prev) => {
+>       if (!prev) return prev;
+>       return { ...prev, [field]: value } as ScheduleData['milestones'][number];
+>     });
+>   }
+> 
+>   function hasMilestoneDraftChanges(original: ScheduleData['milestones'][number], draft: ScheduleData['milestones'][number] | null) {
+>     if (!draft) return false;
+>     const filteredFeishuRecords = feishuRecords.filter((record) => {
+>     const fields = (record.fields || {}) as Record<string, unknown>;
+>     const project = String(fields['所属项目'] ?? '');
+>     const status = String(fields['状态'] ?? '');
+>     const risk = String(fields['风险等级'] ?? '');
+>     const assignee = getAssigneeName(fields['负责人']);
+> 
+>     if (feishuFilterProject && project !== feishuFilterProject) return false;
+>     if (feishuFilterStatus && status !== feishuFilterStatus) return false;
+>     if (feishuFilterRisk && risk !== feishuFilterRisk) return false;
+>     if (feishuFilterAssignee && !assignee.includes(feishuFilterAssignee)) return false;
+>     return true;
+>   });
+> 
+>   return (
+>       original.name !== draft.name ||
+>       original.plannedDate !== draft.plannedDate ||
+>       (original.actualDate ?? '') !== (draft.actualDate ?? '')
+>     );
+>   }
+> 
+> 
+> 
+>   function finalizeInlineMilestoneEdit(original: ScheduleData['milestones'][number]) {
+>     if (!milestoneDraft) return;
+>     if (!hasMilestoneDraftChanges(original, milestoneDraft)) {
+>       cancelInlineMilestoneEdit();
+681,683c1075,1076
+<   async function deleteRequirement(req: Requirement) {
+<     if (!canWrite) return;
+<     if (!window.confirm(`确定删除需求「${req.title}」？`)) return;
+---
+>   async function saveInlineMilestoneEdit(original: ScheduleData['milestones'][number]) {
+>     if (!milestoneDraft || !hasMilestoneDraftChanges(original, milestoneDraft)) return;
+687,688c1080,1086
+<       await apiDelete(`/requirements/${req.id}`);
+<       setMessage(`需求 #${req.id} 已删除。`);
+---
+>       await apiPatch(`/projects/milestones/${original.id}`, {
+>         name: milestoneDraft.name,
+>         plannedDate: milestoneDraft.plannedDate,
+>         actualDate: milestoneDraft.actualDate || null
+>       });
+>       setMessage(`里程碑 #${original.id} 已更新。`);
+>       cancelInlineMilestoneEdit();
+692c1090
+<       setError(`删除需求失败。（${detail}）`);
+---
+>       setError(`更新里程碑失败。（${detail}）`);
+696,702c1094,1097
+<   async function reviewRequirementAction(id: number, decision: 'approved' | 'rejected') {
+<     if (!canWrite) return;
+<     await apiPost(`/requirements/${id}/review`, {
+<       reviewer: user?.name ?? 'PM Demo',
+<       decision
+<     });
+<     await refreshAll(selectedProjectId);
+---
+>   function cancelInlineMilestoneEdit() {
+>     setEditingMilestoneId(null);
+>     setEditingMilestoneField(null);
+>     setMilestoneDraft(null);
+705,711c1100,1110
+<   async function markRequirementChanged(req: Requirement) {
+<     if (!canWrite) return;
+<     await apiPost(`/requirements/${req.id}/change`, {
+<       description: req.description,
+<       version: `v${req.changeCount + 1}.0`
+<     });
+<     await refreshAll(selectedProjectId);
+---
+>   function startInlineFeishuEdit(record: FeishuRecord, field?: keyof FeishuFormState) {
+>     setFeishuEditingId(record.record_id);
+>     setFeishuRecordDraft((prev) => (prev ? prev : mapRecordToForm(record)));
+>     setFeishuEditingField(field ?? null);
+>     if (field) {
+>       setTimeout(() => {
+>         const el = document.querySelector(`[data-feishu-edit="${record.record_id}-${String(field)}"]`) as HTMLInputElement | null;
+>         el?.focus();
+>         el?.select();
+>       }, 0);
+>     }
+714,724c1113,1116
+<   async function generateReport() {
+<     if (!selectedProjectId) {
+<       setError('请先选择项目。');
+<       return;
+<     }
+<     const res = await apiPost<{ report: string }>('/ai/reports/weekly', {
+<       projectIds: [selectedProjectId],
+<       weekStart: '2026-02-16',
+<       weekEnd: '2026-02-22',
+<       includeRisks: true,
+<       includeBudget: true
+---
+>   function updateFeishuRecordDraft(field: keyof FeishuFormState, value: string) {
+>     setFeishuRecordDraft((prev) => {
+>       if (!prev) return prev;
+>       return { ...prev, [field]: value } as FeishuFormState;
+726d1117
+<     setAiReport(res.report);
+729,732c1120,1122
+<   async function loadAuditLogs() {
+<     if (!selectedProjectId || !canWrite) return;
+<     const rows = await apiGet<AuditLogItem[]>(`/audit-logs?projectId=${selectedProjectId}`);
+<     setAuditLogs(rows);
+---
+>   function hasFeishuRecordDraftChanges(original: FeishuFormState, draft: FeishuFormState | null) {
+>     if (!draft) return false;
+>     return Object.keys(original).some((key) => (original as any)[key] !== (draft as any)[key]);
+735,737c1125,1130
+<   async function markNotificationRead(id: number) {
+<     await apiPost(`/notifications/${id}/read`, {});
+<     await refreshAll(selectedProjectId);
+---
+>   function finalizeInlineFeishuEdit(original: FeishuRecord) {
+>     const originalForm = mapRecordToForm(original);
+>     if (!feishuRecordDraft) return;
+>     if (!hasFeishuRecordDraftChanges(originalForm, feishuRecordDraft)) {
+>       cancelInlineFeishuEdit();
+>     }
+740,743c1133,1149
+<   const riskText = useMemo(() => {
+<     if (!risk) return 'N/A';
+<     return `${risk.riskLevel} (blocked: ${risk.blockedCount})`;
+<   }, [risk]);
+---
+>   async function saveInlineFeishuEdit(original: FeishuRecord) {
+>     if (!feishuRecordDraft) return;
+>     const originalForm = mapRecordToForm(original);
+>     if (!hasFeishuRecordDraftChanges(originalForm, feishuRecordDraft)) return;
+>     setFeishuError('');
+>     setFeishuMessage('');
+>     try {
+>       const payload = buildFeishuFieldsPayload(feishuRecordDraft);
+>       await updateFeishuRecord(original.record_id, payload);
+>       setFeishuMessage('飞书记录已更新。');
+>       cancelInlineFeishuEdit();
+>       await loadFeishuRecords();
+>     } catch (err) {
+>       const detail = err instanceof Error ? err.message : 'unknown';
+>       setFeishuError(`更新失败。（${detail}）`);
+>     }
+>   }
+745,772c1151,1154
+<   const selectedProjectName = useMemo(() => {
+<     if (!selectedProjectId) return '未选择';
+<     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
+<   }, [projects, selectedProjectId]);
+<   const canWrite = user?.role === 'pm' || user?.role === 'lead';
+< 
+<   if (!token) {
+<     return (
+<       <div className="app" style={{ gridTemplateColumns: '1fr' }}>
+<         <main className="main" style={{ maxWidth: 480, margin: '80px auto', width: '100%' }}>
+<           <h2><span style={{ color: 'var(--neon-blue)' }}>&lt;天枢系统&gt;</span> 统一认证网关</h2>
+<           <div className="card" style={{ marginTop: '30px', borderTop: '2px solid var(--neon-blue)' }}>
+<             <form className="form" style={{ gridTemplateColumns: '1fr' }} onSubmit={submitLogin}>
+<               <div>
+<                 <label style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 5, display: 'block' }}>[ 账号.凭据 ]</label>
+<                 <input name="username" placeholder="pm / lead / viewer" required style={{ background: 'rgba(0,0,0,0.5)' }} />
+<               </div>
+<               <div style={{ marginTop: 5 }}>
+<                 <label style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 5, display: 'block' }}>[ 登录.密钥 ]</label>
+<                 <input name="password" type="password" placeholder="***" required style={{ background: 'rgba(0,0,0,0.5)' }} />
+<               </div>
+<               <button className="btn" type="submit" style={{ marginTop: '15px' }}>[ 初始化会话 ]</button>
+<             </form>
+<             {error && <p className="warn" style={{ marginTop: 15 }}>[错误]: {error}</p>}
+<           </div>
+<         </main>
+<       </div>
+<     );
+---
+>   function cancelInlineFeishuEdit() {
+>     setFeishuEditingId(null);
+>     setFeishuEditingField(null);
+>     setFeishuRecordDraft(null);
+775,999c1157,1194
+<   return (
+<     <div className="app">
+<       <aside className="sidebar">
+<         <h1 style={{ fontSize: '22px', letterSpacing: '2px' }}>天枢·全局管控矩阵</h1>
+<         <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>[ 系统看板 ]</button>
+<         <button className={view === 'requirements' ? 'active' : ''} onClick={() => setView('requirements')}>[ 需求管理 ]</button>
+<         <button className={view === 'costs' ? 'active' : ''} onClick={() => setView('costs')}>[ 成本监控 ]</button>
+<         <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>[ 进度同步 ]</button>
+<         <button className={view === 'notifications' ? 'active' : ''} onClick={() => setView('notifications')}>
+<           [ 系统预警 ]{notifications.filter((n) => !n.readAt).length > 0 ? ` [${notifications.filter((n) => !n.readAt).length}]` : ''}
+<         </button>
+<         {canWrite && <button className={view === 'audit' ? 'active' : ''} onClick={() => { setView('audit'); void loadAuditLogs(); }}>[ 审计日志 ]</button>}
+<         <button className={view === 'ai' ? 'active' : ''} onClick={() => setView('ai')}>[ AI 驱动核心 ]</button>
+<       </aside>
+< 
+<       <main className="main">
+<         <div className="view-header" style={{ borderBottom: '1px solid var(--border-tech)', paddingBottom: '15px', marginBottom: '25px' }}>
+<           <h2>核心系统_看板 <span style={{ fontSize: 12, color: 'var(--neon-green)', border: '1px solid var(--neon-green)', padding: '2px 6px', borderRadius: 2, marginLeft: 10 }}>在线运转</span></h2>
+<           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 }}>
+<             <span style={{ color: 'var(--text-muted)', fontSize: 13, fontFamily: 'Orbitron', letterSpacing: 1 }}>
+<               &gt; 活动节点: {user?.name ?? 'UNKNOWN'}::{user?.role?.toUpperCase() ?? 'GUEST'}
+<             </span>
+<             <button className="btn" onClick={logout} style={{ padding: '6px 15px', fontSize: 11 }}>终止会话</button>
+<           </div>
+<         </div>
+< 
+<         <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
+<           <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
+<             <div>
+<               <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block', fontFamily: 'Orbitron' }}>目标工作区</label>
+<               <select
+<                 value={selectedProjectId ?? ''}
+<                 onChange={(e) => {
+<                   const value = e.target.value;
+<                   if (!value) {
+<                     void refreshAll(null);
+<                     return;
+<                   }
+<                   void refreshAll(Number(value));
+<                 }}
+<               >
+<                 {projects.length === 0 && <option value="">暂无项目</option>}
+<                 {projects.map((project) => (
+<                   <option key={project.id} value={project.id}>
+<                     {project.name} (#{project.id})
+<                   </option>
+<                 ))}
+<               </select>
+<             </div>
+<           </div>
+<           <div style={{ display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--text-main)', marginTop: 15, borderTop: '1px solid rgba(0, 243, 255, 0.1)', paddingTop: 10 }}>
+<             <span style={{ color: 'var(--text-muted)', marginRight: 10 }}>当前项目：</span> <strong style={{ color: 'var(--neon-blue)', letterSpacing: 1 }}>{selectedProjectName}</strong>
+<           </div>
+<         </div>
+< 
+<         {loading && <p>Loading...</p>}
+<         {message && <p>{message}</p>}
+<         {error && <p className="warn">{error}</p>}
+<         {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
+< 
+<         {view === 'dashboard' && (
+<           <div>
+<             {canWrite && (
+<               <form className="form" onSubmit={submitProject} style={{ marginBottom: 12 }}>
+<                 <input name="name" placeholder="项目名称" required />
+<                 <input name="budget" type="number" step="0.01" placeholder="预算" required />
+<                 <input name="startDate" type="date" />
+<                 <input name="endDate" type="date" />
+<                 <button className="btn" type="submit">新增项目</button>
+<               </form>
+<             )}
+<             <div className="grid">
+<               <div className="card"><h3>项目数</h3><p>{overview?.summary.projectCount ?? 0}</p></div>
+<               <div className="card"><h3>需求数</h3><p>{overview?.summary.requirementCount ?? 0}</p></div>
+<               <div className="card"><h3>高风险项目</h3><p className="warn">{overview?.summary.riskProjectCount ?? 0}</p></div>
+<             </div>
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+<                 <h3>项目管理</h3>
+<                 {canWrite && (
+<                   <button className="btn" type="button" disabled={selectedProjectIds.length === 0} onClick={() => void deleteSelectedProjects()}>
+<                     批量删除 ({selectedProjectIds.length})
+<                   </button>
+<                 )}
+<               </div>
+<               <table className="table">
+<                 <thead>
+<                   <tr>
+<                     {canWrite && (
+<                       <th>
+<                         <input
+<                           type="checkbox"
+<                           checked={projects.length > 0 && selectedProjectIds.length === projects.length}
+<                           onChange={(e) => setSelectedProjectIds(e.target.checked ? projects.map((item) => item.id) : [])}
+<                         />
+<                       </th>
+<                     )}
+<                     <th>ID</th>
+<                     <th>名称</th>
+<                     <th>预算</th>
+<                     <th>开始</th>
+<                     <th>结束</th>
+<                     {canWrite && <th>操作</th>}
+<                   </tr>
+<                 </thead>
+<                 <tbody>
+<                   {projects.map((project) => (
+<                     <tr key={project.id}>
+<                       {canWrite && (
+<                         <td>
+<                           <input
+<                             type="checkbox"
+<                             checked={selectedProjectIds.includes(project.id)}
+<                             onChange={(e) => toggleProjectSelection(project.id, e.target.checked)}
+<                           />
+<                         </td>
+<                       )}
+<                       <td>{project.id}</td>
+<                       <td>{project.name}</td>
+<                       <td>{project.budget}</td>
+<                       <td>{project.startDate || '-'}</td>
+<                       <td>{project.endDate || '-'}</td>
+<                       {canWrite && (
+<                         <td style={{ display: 'flex', gap: 6 }}>
+<                           <button className="btn" type="button" onClick={() => void editProject(project)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void deleteProject(project)}>删除</button>
+<                         </td>
+<                       )}
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <h3>项目健康度</h3>
+<               <table className="table">
+<                 <thead><tr><th>项目</th><th>健康度</th><th>预算偏差%</th><th>阻塞任务</th><th>需求数</th></tr></thead>
+<                 <tbody>
+<                   {overview?.projects.map((p) => (
+<                     <tr key={p.projectId}>
+<                       <td>{p.projectName}</td><td>{p.healthScore}</td><td>{p.varianceRate}</td><td>{p.blockedTasks}</td><td>{p.requirementCount}</td>
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+<           </div>
+<         )}
+< 
+<         {view === 'requirements' && (
+<           <div>
+<             {canWrite && (
+<               <form className="form" onSubmit={submitRequirement}>
+<                 <input name="title" placeholder="需求标题" required />
+<                 <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+<                 <input name="description" placeholder="需求描述" required />
+<                 <button className="btn" type="submit">新增需求</button>
+<               </form>
+<             )}
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <table className="table">
+<                 <thead><tr><th>ID</th><th>标题</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}</tr></thead>
+<                 <tbody>
+<                   {requirements.map((r) => (
+<                     <tr key={r.id}>
+<                       <td>{r.id}</td>
+<                       <td>{r.title}</td>
+<                       <td>{r.priority}</td>
+<                       <td>{r.status}</td>
+<                       <td>{r.changeCount}</td>
+<                       {canWrite && (
+<                         <td style={{ display: 'flex', gap: 6 }}>
+<                           <button className="btn" type="button" onClick={() => void editRequirement(r)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void reviewRequirementAction(r.id, 'approved')}>通过</button>
+<                           <button className="btn" type="button" onClick={() => void reviewRequirementAction(r.id, 'rejected')}>驳回</button>
+<                           <button className="btn" type="button" onClick={() => void markRequirementChanged(r)}>记变更</button>
+<                           <button className="btn" type="button" onClick={() => void deleteRequirement(r)}>删除</button>
+<                         </td>
+<                       )}
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+<           </div>
+<         )}
+< 
+<         {view === 'costs' && (
+<           <div>
+<             {canWrite && (
+<               <>
+<                 <form className="form" onSubmit={submitCost}>
+<                   <select name="type" defaultValue="labor"><option value="labor">labor</option><option value="outsource">outsource</option><option value="cloud">cloud</option></select>
+<                   <input name="amount" type="number" step="0.01" placeholder="金额" required />
+<                   <input name="occurredOn" type="date" required />
+<                   <input name="note" placeholder="备注" />
+<                   <button className="btn" type="submit">新增成本</button>
+<                 </form>
+<                 <form className="form" onSubmit={submitWorklog} style={{ marginTop: 10 }}>
+<                   <input name="taskTitle" placeholder="工时任务" required />
+<                   <input name="hours" type="number" step="0.5" placeholder="工时(小时)" required />
+<                   <input name="hourlyRate" type="number" step="0.01" placeholder="时薪" required />
+<                   <input name="workedOn" type="date" required />
+<                   <input name="note" placeholder="备注" />
+<                   <button className="btn" type="submit">新增工时</button>
+<                 </form>
+<               </>
+<             )}
+<             <div className="grid" style={{ marginTop: 12 }}>
+<               <div className="card"><h3>预算</h3><p>{costSummary?.budget ?? 0}</p></div>
+<               <div className="card"><h3>实际</h3><p>{costSummary?.actual ?? 0}</p></div>
+<               <div className="card"><h3>偏差%</h3><p className={costSummary && costSummary.varianceRate > 10 ? 'warn' : ''}>{costSummary?.varianceRate ?? 0}</p></div>
+<             </div>
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <h3>成本条目</h3>
+<               <table className="table">
+<                 <thead><tr><th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
+<                 <tbody>
+<                   {costEntries.map((entry) => (
+<                     <tr key={entry.id}>
+<                       <td>{entry.id}</td>
+<                       <td>{entry.type}</td>
+<                       <td>{entry.amount}</td>
+<                       <td>{entry.occurredOn}</td>
+<                       <td>{entry.note || '-'}</td>
+---
+> return (
+>                           <td key={field.key} onDoubleClick={() => startInlineFeishuEdit(record, field.key)} className={feishuEditingId === record.record_id && feishuEditingField === field.key ? 'editing' : ''}>
+>                             {isEditing ? (
+>                               field.type === 'select' ? (
+>                                 <select
+>                                   data-feishu-edit={`${record.record_id}-${String(field.key)}`}
+>                                   value={String(draftValue ?? '')}
+>                                   onChange={(e) => updateFeishuRecordDraft(field.key, e.target.value)}
+>                                   onBlur={() => {
+>                                     setFeishuEditingField(null);
+>                                     finalizeInlineFeishuEdit(record);
+>                                   }}
+>                                 >
+>                                   {(field.key === '所属项目'
+>                                     ? Array.from(new Set(projects.map((p) => p.name)))
+>                                     : field.options || []
+>                                   ).map((opt) => (
+>                                     <option key={opt} value={opt}>{opt}</option>
+>                                   ))}
+>                                 </select>
+>                               ) : (
+>                                 <input
+>                                   data-feishu-edit={`${record.record_id}-${String(field.key)}`}
+>                                   type={field.type}
+>                                   value={String(draftValue ?? '')}
+>                                   onChange={(e) => updateFeishuRecordDraft(field.key, e.target.value)}
+>                                   onBlur={() => {
+>                                     setFeishuEditingField(null);
+>                                     finalizeInlineFeishuEdit(record);
+>                                   }}
+>                                 />
+>                               )
+>                             ) : (
+>                               displayValue
+>                             )}
+>                           </td>
+>                         );
+>                       })}
+1002,1003c1197,1212
+<                           <button className="btn" type="button" onClick={() => void editCostEntry(entry)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void deleteCostEntry(entry)}>删除</button>
+---
+>                           {feishuEditingId === record.record_id ? (
+>                             <>
+>                               <button
+>                                 className="btn"
+>                                 type="button"
+>                                 disabled={!hasFeishuRecordDraftChanges(mapRecordToForm(record), feishuRecordDraft)}
+>                                 onClick={() => void saveInlineFeishuEdit(record)}
+>                               >
+>                                 保存
+>                               </button>
+>                               <button className="btn" type="button" onClick={cancelInlineFeishuEdit}>取消</button>
+>                             </>
+>                           ) : null}
+>                           {feishuEditingId !== record.record_id && (
+>                             <button className="btn" type="button" onClick={() => void removeFeishuRecord(record)}>删除</button>
+>                           )}
+1009a1219
+>               {filteredFeishuRecords.length === 0 && !feishuLoading && <p style={{ marginTop: 10 }}>暂无数据</p>}
+1011,1033d1220
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <h3>工时明细</h3>
+<               <table className="table">
+<                 <thead><tr><th>日期</th><th>任务</th><th>工时</th><th>时薪</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
+<                 <tbody>
+<                   {worklogs.map((w) => (
+<                     <tr key={w.id}>
+<                       <td>{w.workedOn}</td>
+<                       <td>{w.taskTitle || '-'}</td>
+<                       <td>{w.hours}</td>
+<                       <td>{w.hourlyRate}</td>
+<                       <td>{(w.hours * w.hourlyRate).toFixed(2)}</td>
+<                       {canWrite && (
+<                         <td style={{ display: 'flex', gap: 6 }}>
+<                           <button className="btn" type="button" onClick={() => void editWorklog(w)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void deleteWorklog(w)}>删除</button>
+<                         </td>
+<                       )}
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+1037,1102d1223
+<         {view === 'schedule' && (
+<           <div>
+<             {canWrite && (
+<               <>
+<                 <form className="form" onSubmit={submitTask}>
+<                   <input name="title" placeholder="任务标题" required />
+<                   <input name="assignee" placeholder="负责人" required />
+<                   <select name="status" defaultValue="todo"><option value="todo">todo</option><option value="in_progress">in_progress</option><option value="blocked">blocked</option><option value="done">done</option></select>
+<                   <input name="plannedStart" type="date" required />
+<                   <input name="plannedEnd" type="date" required />
+<                   <button className="btn" type="submit">新增任务</button>
+<                 </form>
+<                 <form className="form" onSubmit={submitMilestone} style={{ marginTop: 10 }}>
+<                   <input name="name" placeholder="里程碑名称" required />
+<                   <input name="plannedDate" type="date" required />
+<                   <button className="btn" type="submit">新增里程碑</button>
+<                 </form>
+<               </>
+<             )}
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <h3>风险等级: {riskText}</h3>
+<               <table className="table">
+<                 <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th>{canWrite && <th>操作</th>}</tr></thead>
+<                 <tbody>
+<                   {schedule?.tasks.map((t) => (
+<                     <tr key={t.id}>
+<                       <td>{t.title}</td>
+<                       <td>{t.assignee}</td>
+<                       <td>{t.status}</td>
+<                       <td>{t.plannedStart}</td>
+<                       <td>{t.plannedEnd}</td>
+<                       {canWrite && (
+<                         <td style={{ display: 'flex', gap: 6 }}>
+<                           <button className="btn" type="button" onClick={() => void editTask(t)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void deleteTask(t)}>删除</button>
+<                         </td>
+<                       )}
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+<             <div className="card" style={{ marginTop: 12 }}>
+<               <h3>里程碑</h3>
+<               <table className="table">
+<                 <thead><tr><th>名称</th><th>计划日期</th><th>实际日期</th>{canWrite && <th>操作</th>}</tr></thead>
+<                 <tbody>
+<                   {schedule?.milestones.map((m) => (
+<                     <tr key={m.id}>
+<                       <td>{m.name}</td>
+<                       <td>{m.plannedDate}</td>
+<                       <td>{m.actualDate || '-'}</td>
+<                       {canWrite && (
+<                         <td style={{ display: 'flex', gap: 6 }}>
+<                           <button className="btn" type="button" onClick={() => void editMilestone(m)}>编辑</button>
+<                           <button className="btn" type="button" onClick={() => void deleteMilestone(m)}>删除</button>
+<                         </td>
+<                       )}
+<                     </tr>
+<                   ))}
+<                 </tbody>
+<               </table>
+<             </div>
+<           </div>
+<         )}
+< 

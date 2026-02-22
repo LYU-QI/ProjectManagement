@@ -14,6 +14,7 @@ import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
+import { FeishuModule } from './modules/feishu/feishu.module';
 
 @Module({
   imports: [
@@ -27,7 +28,8 @@ import { AuditInterceptor } from './audit/audit.interceptor';
     WorklogsModule,
     DashboardModule,
     AiModule,
-    AuditLogsModule
+    AuditLogsModule,
+    FeishuModule
   ],
   controllers: [AppController],
   providers: [

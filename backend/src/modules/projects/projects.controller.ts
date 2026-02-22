@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
-import { IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ProjectsService } from './projects.service';
 import { Roles } from '../auth/roles.decorator';
 
@@ -13,7 +13,12 @@ class CreateProjectDto {
   @IsNumber()
   budget!: number;
 
+  @IsOptional()
+  @IsString()
   startDate?: string;
+
+  @IsOptional()
+  @IsString()
   endDate?: string;
 }
 
@@ -27,9 +32,11 @@ class UpdateProjectDto {
   budget?: number;
 
   @IsOptional()
+  @IsString()
   startDate?: string;
 
   @IsOptional()
+  @IsString()
   endDate?: string;
 }
 
