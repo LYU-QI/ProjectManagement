@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/app_old.tsx","./src/main.tsx","./src/api/client.ts","./src/api/feishu.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/app_old.tsx","./src/feishuconfig.ts","./src/main.tsx","./src/types.ts","./src/api/client.ts","./src/api/feishu.ts","./src/views/aiview.tsx","./src/views/auditview.tsx","./src/views/costsview.tsx","./src/views/dashboardview.tsx","./src/views/feishuview.tsx","./src/views/notificationsview.tsx","./src/views/requirementsview.tsx","./src/views/scheduleview.tsx"],"version":"5.9.3"}

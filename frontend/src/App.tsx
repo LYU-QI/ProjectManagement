@@ -8,152 +8,31 @@ import {
   updateFeishuRecord,
   FeishuRecord
 } from './api/feishu';
+import { FEISHU_DEFAULT_FORM, FEISHU_FIELD_NAMES } from './feishuConfig';
+import type {
+  AuthUser,
+  AuditLogItem,
+  CostEntryItem,
+  CostSummary,
+  DashboardOverview,
+  FeishuFormState,
+  NotificationItem,
+  ProjectItem,
+  Requirement,
+  RiskData,
+  ScheduleData,
+  Worklog
+} from './types';
+import DashboardView from './views/DashboardView';
+import RequirementsView from './views/RequirementsView';
+import CostsView from './views/CostsView';
+import ScheduleView from './views/ScheduleView';
+import FeishuView from './views/FeishuView';
+import NotificationsView from './views/NotificationsView';
+import AuditView from './views/AuditView';
+import AiView from './views/AiView';
 
 type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit' | 'feishu';
-
-type FeishuFormState = {
-  任务ID: string;
-  任务名称: string;
-  状态: string;
-  优先级: string;
-  负责人: string;
-  开始时间: string;
-  截止时间: string;
-  进度: string;
-  所属项目: string;
-  是否阻塞: string;
-  阻塞原因: string;
-  风险等级: string;
-};
-
-const FEISHU_FIELDS: Array<{ key: keyof FeishuFormState; label: string; type: 'text' | 'select' | 'date' | 'number'; options?: string[]; required?: boolean }> = [
-  { key: '任务ID', label: '任务ID', type: 'text', required: true },
-  { key: '任务名称', label: '任务名称', type: 'text', required: true },
-  { key: '状态', label: '状态', type: 'select', options: ['待办', '进行中', '已完成'], required: true },
-  { key: '优先级', label: '优先级', type: 'select', options: ['低', '中', '高'], required: true },
-  { key: '负责人', label: '负责人(姓名)', type: 'text', required: true },
-  { key: '开始时间', label: '开始时间', type: 'date' },
-  { key: '截止时间', label: '截止时间', type: 'date' },
-  { key: '进度', label: '进度(0-100)', type: 'number' },
-  { key: '所属项目', label: '所属项目', type: 'select' },
-  { key: '是否阻塞', label: '是否阻塞', type: 'select', options: ['是', '否'], required: true },
-  { key: '阻塞原因', label: '阻塞原因', type: 'text' },
-  { key: '风险等级', label: '风险等级', type: 'select', options: ['低', '中', '高'], required: true }
-];
-
-const FEISHU_FIELD_NAMES = FEISHU_FIELDS.map((item) => item.key).join(',');
-
-const FEISHU_DEFAULT_FORM: FeishuFormState = {
-  任务ID: '',
-  任务名称: '',
-  状态: '待办',
-  优先级: '中',
-  负责人: '',
-  开始时间: '',
-  截止时间: '',
-  进度: '',
-  所属项目: '',
-  是否阻塞: '否',
-  阻塞原因: '',
-  风险等级: '中'
-};
-
-
-interface DashboardOverview {
-  summary: { projectCount: number; requirementCount: number; riskProjectCount: number };
-  projects: Array<{
-    projectId: number;
-    projectName: string;
-    healthScore: number;
-    varianceRate: number;
-    blockedTasks: number;
-    requirementCount: number;
-  }>;
-}
-
-interface Requirement {
-  id: number;
-  projectId: number;
-  title: string;
-  description: string;
-  priority: string;
-  status: string;
-  changeCount: number;
-}
-
-interface CostSummary {
-  projectId: number;
-  budget: number;
-  actual: number;
-  varianceRate: number;
-  byType: { labor: number; outsource: number; cloud: number };
-}
-
-interface ScheduleData {
-  tasks: Array<{ id: number; title: string; assignee: string; status: string; plannedStart: string; plannedEnd: string }>;
-  milestones: Array<{ id: number; name: string; plannedDate: string; actualDate?: string | null }>;
-}
-
-interface RiskData {
-  projectId: number;
-  blockedCount: number;
-  inProgressCount: number;
-  riskLevel: string;
-}
-
-interface ProjectItem {
-  id: number;
-  name: string;
-  budget: number;
-  startDate?: string | null;
-  endDate?: string | null;
-}
-
-interface CostEntryItem {
-  id: number;
-  projectId: number;
-  type: 'labor' | 'outsource' | 'cloud';
-  amount: number;
-  occurredOn: string;
-  note?: string | null;
-}
-
-interface Worklog {
-  id: number;
-  projectId: number;
-  userId?: number;
-  taskTitle?: string;
-  hours: number;
-  hourlyRate: number;
-  workedOn: string;
-  note?: string;
-}
-
-interface NotificationItem {
-  id: number;
-  projectId?: number;
-  level: 'info' | 'warning' | 'error';
-  title: string;
-  message: string;
-  readAt?: string | null;
-  createdAt: string;
-}
-
-interface AuditLogItem {
-  id: number;
-  userName?: string;
-  userRole?: string;
-  method: string;
-  path: string;
-  projectId?: number;
-  createdAt: string;
-}
-
-interface AuthUser {
-  id: number;
-  name: string;
-  role: string;
-}
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -1334,1014 +1213,131 @@ function App() {
         {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
 
         {view === 'dashboard' && (
-          <div>
-            {canWrite && (
-              <form className="form" onSubmit={submitProject} style={{ marginBottom: 12 }}>
-                <input name="name" placeholder="项目名称" required />
-                <input name="budget" type="number" step="0.01" placeholder="预算" required />
-                <input name="startDate" type="date" />
-                <input name="endDate" type="date" />
-                <button className="btn" type="submit">新增项目</button>
-              </form>
-            )}
-            <div className="grid">
-              <div className="card"><h3>项目数</h3><p>{overview?.summary.projectCount ?? 0}</p></div>
-              <div className="card"><h3>需求数</h3><p>{overview?.summary.requirementCount ?? 0}</p></div>
-              <div className="card"><h3>高风险项目</h3><p className="warn">{overview?.summary.riskProjectCount ?? 0}</p></div>
-            </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3>项目管理</h3>
-                {canWrite && (
-                  <button className="btn" type="button" disabled={selectedProjectIds.length === 0} onClick={() => void deleteSelectedProjects()}>
-                    批量删除 ({selectedProjectIds.length})
-                  </button>
-                )}
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    {canWrite && (
-                      <th>
-                        <input
-                          type="checkbox"
-                          checked={projects.length > 0 && selectedProjectIds.length === projects.length}
-                          onChange={(e) => setSelectedProjectIds(e.target.checked ? projects.map((item) => item.id) : [])}
-                        />
-                      </th>
-                    )}
-                    <th>ID</th>
-                    <th>名称</th>
-                    <th>预算</th>
-                    <th>开始</th>
-                    <th>结束</th>
-                    {canWrite && <th>操作</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((project) => (
-                    (() => {
-                      const isEditing = projectEdit.editingId === project.id;
-                      const rowDraft = isEditing ? (projectEdit.draft ?? project) : project;
-                      const isDirty = isEditing && projectEdit.hasDirty(project);
-                      return (
-                        <tr key={project.id} className={isEditing ? 'editing-row' : ''}>
-                          {canWrite && (
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selectedProjectIds.includes(project.id)}
-                                onChange={(e) => toggleProjectSelection(project.id, e.target.checked)}
-                              />
-                            </td>
-                          )}
-                          <td>{project.id}</td>
-                          <td
-                            className={isEditing && projectEdit.editingField === 'name' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'name')}
-                          >
-                            {isEditing && projectEdit.editingField === 'name' ? (
-                              <input
-                                data-project-edit={`${project.id}-name`}
-                                value={rowDraft.name ?? ''}
-                                onChange={(e) => projectEdit.updateDraft('name', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineProjectEdit(project), projectEdit.cancel)}
-                                onBlur={() => projectEdit.finalize(project)}
-                              />
-                            ) : (
-                              rowDraft.name
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && projectEdit.editingField === 'budget' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'budget')}
-                          >
-                            {isEditing && projectEdit.editingField === 'budget' ? (
-                              <input
-                                data-project-edit={`${project.id}-budget`}
-                                type="number"
-                                step="0.01"
-                                value={rowDraft.budget ?? ''}
-                                onChange={(e) => projectEdit.updateDraft('budget', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineProjectEdit(project), projectEdit.cancel)}
-                                onBlur={() => projectEdit.finalize(project)}
-                              />
-                            ) : (
-                              rowDraft.budget
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && projectEdit.editingField === 'startDate' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'startDate')}
-                          >
-                            {isEditing && projectEdit.editingField === 'startDate' ? (
-                              <input
-                                data-project-edit={`${project.id}-startDate`}
-                                type="date"
-                                value={rowDraft.startDate ?? ''}
-                                onChange={(e) => projectEdit.updateDraft('startDate', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineProjectEdit(project), projectEdit.cancel)}
-                                onBlur={() => projectEdit.finalize(project)}
-                              />
-                            ) : (
-                              rowDraft.startDate || '-'
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && projectEdit.editingField === 'endDate' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'endDate')}
-                          >
-                            {isEditing && projectEdit.editingField === 'endDate' ? (
-                              <input
-                                data-project-edit={`${project.id}-endDate`}
-                                type="date"
-                                value={rowDraft.endDate ?? ''}
-                                onChange={(e) => projectEdit.updateDraft('endDate', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineProjectEdit(project), projectEdit.cancel)}
-                                onBlur={() => projectEdit.finalize(project)}
-                              />
-                            ) : (
-                              rowDraft.endDate || '-'
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineProjectEdit(project)}>保存</button>
-                                  <button className="btn" type="button" onClick={projectEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <button className="btn" type="button" onClick={() => void deleteProject(project)}>删除</button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>项目健康度</h3>
-              <table className="table">
-                <thead><tr><th>项目</th><th>健康度</th><th>预算偏差%</th><th>阻塞任务</th><th>需求数</th></tr></thead>
-                <tbody>
-                  {overview?.projects.map((p) => (
-                    <tr key={p.projectId}>
-                      <td>{p.projectName}</td><td>{p.healthScore}</td><td>{p.varianceRate}</td><td>{p.blockedTasks}</td><td>{p.requirementCount}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DashboardView
+            canWrite={canWrite}
+            overview={overview}
+            projects={projects}
+            selectedProjectIds={selectedProjectIds}
+            onToggleProjectSelection={toggleProjectSelection}
+            onDeleteSelectedProjects={() => void deleteSelectedProjects()}
+            onSubmitProject={submitProject}
+            onDeleteProject={(project) => void deleteProject(project)}
+            projectEdit={projectEdit}
+            onSaveProject={(project) => void saveInlineProjectEdit(project)}
+            onInlineKeyDown={handleInlineKeyDown}
+          />
         )}
 
         {view === 'requirements' && (
-          <div>
-            {canWrite && (
-              <form className="form" onSubmit={submitRequirement}>
-                <input name="title" placeholder="需求标题" required />
-                <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
-                <input name="description" placeholder="需求描述" required />
-                <button className="btn" type="submit">新增需求</button>
-              </form>
-            )}
-            <div className="card" style={{ marginTop: 12 }}>
-              <table className="table">
-                <thead><tr><th>ID</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}</tr></thead>
-                <tbody>
-                  {requirements.map((r) => (
-                    (() => {
-                      const isEditing = requirementEdit.editingId === r.id;
-                      const rowDraft = isEditing ? (requirementEdit.draft ?? r) : r;
-                      const isDirty = isEditing && requirementEdit.hasDirty(r);
-                      return (
-                        <tr key={r.id} className={isEditing ? 'editing-row' : ''}>
-                          <td>{r.id}</td>
-                          <td
-                            className={isEditing && requirementEdit.editingField === 'title' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'title')}
-                          >
-                            {isEditing && requirementEdit.editingField === 'title' ? (
-                              <input
-                                data-requirement-edit={`${r.id}-title`}
-                                value={rowDraft.title ?? ''}
-                                onChange={(e) => requirementEdit.updateDraft('title', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineRequirementEdit(r), requirementEdit.cancel)}
-                                onBlur={() => requirementEdit.finalize(r)}
-                              />
-                            ) : (
-                              rowDraft.title
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && requirementEdit.editingField === 'description' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'description')}
-                          >
-                            {isEditing && requirementEdit.editingField === 'description' ? (
-                              <input
-                                data-requirement-edit={`${r.id}-description`}
-                                value={rowDraft.description ?? ''}
-                                onChange={(e) => requirementEdit.updateDraft('description', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineRequirementEdit(r), requirementEdit.cancel)}
-                                onBlur={() => requirementEdit.finalize(r)}
-                              />
-                            ) : (
-                              rowDraft.description
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && requirementEdit.editingField === 'priority' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'priority')}
-                          >
-                            {isEditing && requirementEdit.editingField === 'priority' ? (
-                              <select
-                                data-requirement-edit={`${r.id}-priority`}
-                                value={rowDraft.priority ?? 'medium'}
-                                onChange={(e) => requirementEdit.updateDraft('priority', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineRequirementEdit(r), requirementEdit.cancel)}
-                                onBlur={() => requirementEdit.finalize(r)}
-                              >
-                                {['low', 'medium', 'high'].map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              rowDraft.priority
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && requirementEdit.editingField === 'status' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'status')}
-                          >
-                            {isEditing && requirementEdit.editingField === 'status' ? (
-                              <select
-                                data-requirement-edit={`${r.id}-status`}
-                                value={rowDraft.status ?? 'draft'}
-                                onChange={(e) => requirementEdit.updateDraft('status', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineRequirementEdit(r), requirementEdit.cancel)}
-                                onBlur={() => requirementEdit.finalize(r)}
-                              >
-                                {['draft', 'in_review', 'approved', 'planned', 'done'].map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              rowDraft.status
-                            )}
-                          </td>
-                          <td>{r.changeCount}</td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineRequirementEdit(r)}>保存</button>
-                                  <button className="btn" type="button" onClick={requirementEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button className="btn" type="button" onClick={() => void reviewRequirementAction(r.id, 'approved')}>通过</button>
-                                  <button className="btn" type="button" onClick={() => void reviewRequirementAction(r.id, 'rejected')}>驳回</button>
-                                  <button className="btn" type="button" onClick={() => void markRequirementChanged(r)}>记变更</button>
-                                  <button className="btn" type="button" onClick={() => void deleteRequirement(r)}>删除</button>
-                                </>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <RequirementsView
+            canWrite={canWrite}
+            requirements={requirements}
+            onSubmitRequirement={submitRequirement}
+            requirementEdit={requirementEdit}
+            onSaveRequirement={(req) => void saveInlineRequirementEdit(req)}
+            onReviewRequirement={(id, decision) => void reviewRequirementAction(id, decision)}
+            onMarkRequirementChanged={(req) => void markRequirementChanged(req)}
+            onDeleteRequirement={(req) => void deleteRequirement(req)}
+            onInlineKeyDown={handleInlineKeyDown}
+          />
         )}
 
         {view === 'costs' && (
-          <div>
-            {canWrite && (
-              <>
-                <form className="form" onSubmit={submitCost}>
-                  <select name="type" defaultValue="labor"><option value="labor">labor</option><option value="outsource">outsource</option><option value="cloud">cloud</option></select>
-                  <input name="amount" type="number" step="0.01" placeholder="金额" required />
-                  <input name="occurredOn" type="date" required />
-                  <input name="note" placeholder="备注" />
-                  <button className="btn" type="submit">新增成本</button>
-                </form>
-                <form className="form" onSubmit={submitWorklog} style={{ marginTop: 10 }}>
-                  <input name="taskTitle" placeholder="工时任务" required />
-                  <input name="hours" type="number" step="0.5" placeholder="工时(小时)" required />
-                  <input name="hourlyRate" type="number" step="0.01" placeholder="时薪" required />
-                  <input name="workedOn" type="date" required />
-                  <input name="note" placeholder="备注" />
-                  <button className="btn" type="submit">新增工时</button>
-                </form>
-              </>
-            )}
-            <div className="grid" style={{ marginTop: 12 }}>
-              <div className="card"><h3>预算</h3><p>{costSummary?.budget ?? 0}</p></div>
-              <div className="card"><h3>实际</h3><p>{costSummary?.actual ?? 0}</p></div>
-              <div className="card"><h3>偏差%</h3><p className={costSummary && costSummary.varianceRate > 10 ? 'warn' : ''}>{costSummary?.varianceRate ?? 0}</p></div>
-            </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>成本条目</h3>
-              <table className="table">
-                <thead><tr><th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
-                <tbody>
-                  {costEntries.map((entry) => (
-                    (() => {
-                      const isEditing = costEdit.editingId === entry.id;
-                      const rowDraft = isEditing ? (costEdit.draft ?? entry) : entry;
-                      const isDirty = isEditing && costEdit.hasDirty(entry);
-                      return (
-                        <tr key={entry.id} className={isEditing ? 'editing-row' : ''}>
-                          <td>{entry.id}</td>
-                          <td
-                            className={isEditing && costEdit.editingField === 'type' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && costEdit.startEdit(entry, 'type')}
-                          >
-                            {isEditing && costEdit.editingField === 'type' ? (
-                              <select
-                                data-cost-edit={`${entry.id}-type`}
-                                value={rowDraft.type ?? 'labor'}
-                                onChange={(e) => costEdit.updateDraft('type', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineCostEdit(entry), costEdit.cancel)}
-                                onBlur={() => costEdit.finalize(entry)}
-                              >
-                                {['labor', 'outsource', 'cloud'].map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              rowDraft.type
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && costEdit.editingField === 'amount' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && costEdit.startEdit(entry, 'amount')}
-                          >
-                            {isEditing && costEdit.editingField === 'amount' ? (
-                              <input
-                                data-cost-edit={`${entry.id}-amount`}
-                                type="number"
-                                step="0.01"
-                                value={rowDraft.amount ?? ''}
-                                onChange={(e) => costEdit.updateDraft('amount', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineCostEdit(entry), costEdit.cancel)}
-                                onBlur={() => costEdit.finalize(entry)}
-                              />
-                            ) : (
-                              rowDraft.amount
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && costEdit.editingField === 'occurredOn' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && costEdit.startEdit(entry, 'occurredOn')}
-                          >
-                            {isEditing && costEdit.editingField === 'occurredOn' ? (
-                              <input
-                                data-cost-edit={`${entry.id}-occurredOn`}
-                                type="date"
-                                value={rowDraft.occurredOn ?? ''}
-                                onChange={(e) => costEdit.updateDraft('occurredOn', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineCostEdit(entry), costEdit.cancel)}
-                                onBlur={() => costEdit.finalize(entry)}
-                              />
-                            ) : (
-                              rowDraft.occurredOn
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && costEdit.editingField === 'note' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && costEdit.startEdit(entry, 'note')}
-                          >
-                            {isEditing && costEdit.editingField === 'note' ? (
-                              <input
-                                data-cost-edit={`${entry.id}-note`}
-                                value={rowDraft.note ?? ''}
-                                onChange={(e) => costEdit.updateDraft('note', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineCostEdit(entry), costEdit.cancel)}
-                                onBlur={() => costEdit.finalize(entry)}
-                              />
-                            ) : (
-                              rowDraft.note || '-'
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineCostEdit(entry)}>保存</button>
-                                  <button className="btn" type="button" onClick={costEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <button className="btn" type="button" onClick={() => void deleteCostEntry(entry)}>删除</button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>工时明细</h3>
-              <table className="table">
-                <thead><tr><th>日期</th><th>任务</th><th>工时</th><th>时薪</th><th>成本</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
-                <tbody>
-                  {worklogs.map((w) => (
-                    (() => {
-                      const isEditing = worklogEdit.editingId === w.id;
-                      const rowDraft = isEditing ? (worklogEdit.draft ?? w) : w;
-                      const isDirty = isEditing && worklogEdit.hasDirty(w);
-                      const hours = Number(rowDraft.hours);
-                      const hourlyRate = Number(rowDraft.hourlyRate);
-                      const cost = Number.isFinite(hours) && Number.isFinite(hourlyRate) ? (hours * hourlyRate).toFixed(2) : '-';
-                      return (
-                        <tr key={w.id} className={isEditing ? 'editing-row' : ''}>
-                          <td
-                            className={isEditing && worklogEdit.editingField === 'workedOn' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'workedOn')}
-                          >
-                            {isEditing && worklogEdit.editingField === 'workedOn' ? (
-                              <input
-                                data-worklog-edit={`${w.id}-workedOn`}
-                                type="date"
-                                value={rowDraft.workedOn ?? ''}
-                                onChange={(e) => worklogEdit.updateDraft('workedOn', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineWorklogEdit(w), worklogEdit.cancel)}
-                                onBlur={() => worklogEdit.finalize(w)}
-                              />
-                            ) : (
-                              rowDraft.workedOn
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && worklogEdit.editingField === 'taskTitle' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'taskTitle')}
-                          >
-                            {isEditing && worklogEdit.editingField === 'taskTitle' ? (
-                              <input
-                                data-worklog-edit={`${w.id}-taskTitle`}
-                                value={rowDraft.taskTitle ?? ''}
-                                onChange={(e) => worklogEdit.updateDraft('taskTitle', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineWorklogEdit(w), worklogEdit.cancel)}
-                                onBlur={() => worklogEdit.finalize(w)}
-                              />
-                            ) : (
-                              rowDraft.taskTitle || '-'
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && worklogEdit.editingField === 'hours' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'hours')}
-                          >
-                            {isEditing && worklogEdit.editingField === 'hours' ? (
-                              <input
-                                data-worklog-edit={`${w.id}-hours`}
-                                type="number"
-                                step="0.5"
-                                value={rowDraft.hours ?? ''}
-                                onChange={(e) => worklogEdit.updateDraft('hours', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineWorklogEdit(w), worklogEdit.cancel)}
-                                onBlur={() => worklogEdit.finalize(w)}
-                              />
-                            ) : (
-                              rowDraft.hours
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && worklogEdit.editingField === 'hourlyRate' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'hourlyRate')}
-                          >
-                            {isEditing && worklogEdit.editingField === 'hourlyRate' ? (
-                              <input
-                                data-worklog-edit={`${w.id}-hourlyRate`}
-                                type="number"
-                                step="0.01"
-                                value={rowDraft.hourlyRate ?? ''}
-                                onChange={(e) => worklogEdit.updateDraft('hourlyRate', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineWorklogEdit(w), worklogEdit.cancel)}
-                                onBlur={() => worklogEdit.finalize(w)}
-                              />
-                            ) : (
-                              rowDraft.hourlyRate
-                            )}
-                          </td>
-                          <td>{cost}</td>
-                          <td
-                            className={isEditing && worklogEdit.editingField === 'note' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'note')}
-                          >
-                            {isEditing && worklogEdit.editingField === 'note' ? (
-                              <input
-                                data-worklog-edit={`${w.id}-note`}
-                                value={rowDraft.note ?? ''}
-                                onChange={(e) => worklogEdit.updateDraft('note', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineWorklogEdit(w), worklogEdit.cancel)}
-                                onBlur={() => worklogEdit.finalize(w)}
-                              />
-                            ) : (
-                              rowDraft.note || '-'
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineWorklogEdit(w)}>保存</button>
-                                  <button className="btn" type="button" onClick={worklogEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <button className="btn" type="button" onClick={() => void deleteWorklog(w)}>删除</button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <CostsView
+            canWrite={canWrite}
+            costSummary={costSummary}
+            costEntries={costEntries}
+            worklogs={worklogs}
+            onSubmitCost={submitCost}
+            onSubmitWorklog={submitWorklog}
+            costEdit={costEdit}
+            worklogEdit={worklogEdit}
+            onSaveCost={(entry) => void saveInlineCostEdit(entry)}
+            onSaveWorklog={(worklog) => void saveInlineWorklogEdit(worklog)}
+            onDeleteCost={(entry) => void deleteCostEntry(entry)}
+            onDeleteWorklog={(worklog) => void deleteWorklog(worklog)}
+            onInlineKeyDown={handleInlineKeyDown}
+          />
         )}
 
         {view === 'schedule' && (
-          <div>
-            {canWrite && (
-              <>
-                <form className="form" onSubmit={submitTask}>
-                  <input name="title" placeholder="任务标题" required />
-                  <input name="assignee" placeholder="负责人" required />
-                  <select name="status" defaultValue="todo"><option value="todo">todo</option><option value="in_progress">in_progress</option><option value="blocked">blocked</option><option value="done">done</option></select>
-                  <input name="plannedStart" type="date" required />
-                  <input name="plannedEnd" type="date" required />
-                  <button className="btn" type="submit">新增任务</button>
-                </form>
-                <form className="form" onSubmit={submitMilestone} style={{ marginTop: 10 }}>
-                  <input name="name" placeholder="里程碑名称" required />
-                  <input name="plannedDate" type="date" required />
-                  <button className="btn" type="submit">新增里程碑</button>
-                </form>
-              </>
-            )}
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>风险等级: {riskText}</h3>
-              <table className="table">
-                <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th>{canWrite && <th>操作</th>}</tr></thead>
-                <tbody>
-                  {schedule?.tasks.map((t) => (
-                    (() => {
-                      const isEditing = taskEdit.editingId === t.id;
-                      const rowDraft = isEditing ? (taskEdit.draft ?? t) : t;
-                      const isDirty = isEditing && taskEdit.hasDirty(t);
-                      return (
-                        <tr key={t.id} className={isEditing ? 'editing-row' : ''}>
-                          <td
-                            className={isEditing && taskEdit.editingField === 'title' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'title')}
-                          >
-                            {isEditing && taskEdit.editingField === 'title' ? (
-                              <input
-                                data-task-edit={`${t.id}-title`}
-                                value={rowDraft.title ?? ''}
-                                onChange={(e) => taskEdit.updateDraft('title', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineTaskEdit(t), taskEdit.cancel)}
-                                onBlur={() => taskEdit.finalize(t)}
-                              />
-                            ) : (
-                              rowDraft.title
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && taskEdit.editingField === 'assignee' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'assignee')}
-                          >
-                            {isEditing && taskEdit.editingField === 'assignee' ? (
-                              <input
-                                data-task-edit={`${t.id}-assignee`}
-                                value={rowDraft.assignee ?? ''}
-                                onChange={(e) => taskEdit.updateDraft('assignee', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineTaskEdit(t), taskEdit.cancel)}
-                                onBlur={() => taskEdit.finalize(t)}
-                              />
-                            ) : (
-                              rowDraft.assignee
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && taskEdit.editingField === 'status' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'status')}
-                          >
-                            {isEditing && taskEdit.editingField === 'status' ? (
-                              <select
-                                data-task-edit={`${t.id}-status`}
-                                value={rowDraft.status ?? 'todo'}
-                                onChange={(e) => taskEdit.updateDraft('status', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineTaskEdit(t), taskEdit.cancel)}
-                                onBlur={() => taskEdit.finalize(t)}
-                              >
-                                {['todo', 'in_progress', 'blocked', 'done'].map((option) => (
-                                  <option key={option} value={option}>{option}</option>
-                                ))}
-                              </select>
-                            ) : (
-                              rowDraft.status
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && taskEdit.editingField === 'plannedStart' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'plannedStart')}
-                          >
-                            {isEditing && taskEdit.editingField === 'plannedStart' ? (
-                              <input
-                                data-task-edit={`${t.id}-plannedStart`}
-                                type="date"
-                                value={rowDraft.plannedStart ?? ''}
-                                onChange={(e) => taskEdit.updateDraft('plannedStart', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineTaskEdit(t), taskEdit.cancel)}
-                                onBlur={() => taskEdit.finalize(t)}
-                              />
-                            ) : (
-                              rowDraft.plannedStart
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && taskEdit.editingField === 'plannedEnd' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'plannedEnd')}
-                          >
-                            {isEditing && taskEdit.editingField === 'plannedEnd' ? (
-                              <input
-                                data-task-edit={`${t.id}-plannedEnd`}
-                                type="date"
-                                value={rowDraft.plannedEnd ?? ''}
-                                onChange={(e) => taskEdit.updateDraft('plannedEnd', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineTaskEdit(t), taskEdit.cancel)}
-                                onBlur={() => taskEdit.finalize(t)}
-                              />
-                            ) : (
-                              rowDraft.plannedEnd
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineTaskEdit(t)}>保存</button>
-                                  <button className="btn" type="button" onClick={taskEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <button className="btn" type="button" onClick={() => void deleteTask(t)}>删除</button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>里程碑</h3>
-              <table className="table">
-                <thead><tr><th>名称</th><th>计划日期</th><th>实际日期</th>{canWrite && <th>操作</th>}</tr></thead>
-                <tbody>
-                  {schedule?.milestones.map((m) => (
-                    (() => {
-                      const isEditing = milestoneEdit.editingId === m.id;
-                      const rowDraft = isEditing ? (milestoneEdit.draft ?? m) : m;
-                      const isDirty = isEditing && milestoneEdit.hasDirty(m);
-                      return (
-                        <tr key={m.id} className={isEditing ? 'editing-row' : ''}>
-                          <td
-                            className={isEditing && milestoneEdit.editingField === 'name' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'name')}
-                          >
-                            {isEditing && milestoneEdit.editingField === 'name' ? (
-                              <input
-                                data-milestone-edit={`${m.id}-name`}
-                                value={rowDraft.name ?? ''}
-                                onChange={(e) => milestoneEdit.updateDraft('name', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineMilestoneEdit(m), milestoneEdit.cancel)}
-                                onBlur={() => milestoneEdit.finalize(m)}
-                              />
-                            ) : (
-                              rowDraft.name
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && milestoneEdit.editingField === 'plannedDate' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'plannedDate')}
-                          >
-                            {isEditing && milestoneEdit.editingField === 'plannedDate' ? (
-                              <input
-                                data-milestone-edit={`${m.id}-plannedDate`}
-                                type="date"
-                                value={rowDraft.plannedDate ?? ''}
-                                onChange={(e) => milestoneEdit.updateDraft('plannedDate', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineMilestoneEdit(m), milestoneEdit.cancel)}
-                                onBlur={() => milestoneEdit.finalize(m)}
-                              />
-                            ) : (
-                              rowDraft.plannedDate
-                            )}
-                          </td>
-                          <td
-                            className={isEditing && milestoneEdit.editingField === 'actualDate' ? 'editing' : ''}
-                            onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'actualDate')}
-                          >
-                            {isEditing && milestoneEdit.editingField === 'actualDate' ? (
-                              <input
-                                data-milestone-edit={`${m.id}-actualDate`}
-                                type="date"
-                                value={rowDraft.actualDate ?? ''}
-                                onChange={(e) => milestoneEdit.updateDraft('actualDate', e.target.value)}
-                                onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineMilestoneEdit(m), milestoneEdit.cancel)}
-                                onBlur={() => milestoneEdit.finalize(m)}
-                              />
-                            ) : (
-                              rowDraft.actualDate || '-'
-                            )}
-                          </td>
-                          {canWrite && (
-                            <td style={{ display: 'flex', gap: 6 }}>
-                              {isEditing && isDirty ? (
-                                <>
-                                  <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineMilestoneEdit(m)}>保存</button>
-                                  <button className="btn" type="button" onClick={milestoneEdit.cancel}>取消</button>
-                                </>
-                              ) : (
-                                <button className="btn" type="button" onClick={() => void deleteMilestone(m)}>删除</button>
-                              )}
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })()
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <ScheduleView
+            canWrite={canWrite}
+            schedule={schedule}
+            riskText={riskText}
+            onSubmitTask={submitTask}
+            onSubmitMilestone={submitMilestone}
+            taskEdit={taskEdit}
+            milestoneEdit={milestoneEdit}
+            onSaveTask={(task) => void saveInlineTaskEdit(task)}
+            onSaveMilestone={(milestone) => void saveInlineMilestoneEdit(milestone)}
+            onDeleteTask={(task) => void deleteTask(task)}
+            onDeleteMilestone={(milestone) => void deleteMilestone(milestone)}
+            onInlineKeyDown={handleInlineKeyDown}
+          />
         )}
 
         {view === 'feishu' && (
-          <div>
-            <div className="card" style={{ marginBottom: 12 }}>
-              <h3>飞书多维表格</h3>
-              {canWrite && (
-                <form className="form" onSubmit={submitFeishuRecord} style={{ marginTop: 8 }}>
-                  {FEISHU_FIELDS.map((field) => {
-                    const value = feishuForm[field.key] ?? '';
-                    const options = field.key === '所属项目'
-                      ? feishuProjectOptions
-                      : field.options ?? [];
-                    if (field.type === 'select') {
-                      return (
-                        <select
-                          key={String(field.key)}
-                          value={value}
-                          onChange={(e) => updateFeishuField(field.key, e.target.value)}
-                          required={field.required}
-                        >
-                          {!value && <option value="">请选择{field.label}</option>}
-                          {options.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      );
-                    }
-                    return (
-                      <input
-                        key={String(field.key)}
-                        type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
-                        value={value}
-                        placeholder={field.label}
-                        required={field.required}
-                        onChange={(e) => updateFeishuField(field.key, e.target.value)}
-                      />
-                    );
-                  })}
-                  <button className="btn" type="submit">提交记录</button>
-                </form>
-              )}
-              {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
-              {feishuMessage && <p>{feishuMessage}</p>}
-              {feishuError && <p className="warn">{feishuError}</p>}
-            </div>
-
-            <div className="card">
-              <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 8 }}>
-                <input
-                  placeholder="搜索关键词"
-                  value={feishuSearch}
-                  onChange={(e) => setFeishuSearch(e.target.value)}
-                />
-                <input
-                  placeholder="搜索字段(逗号分隔)"
-                  value={feishuSearchFields}
-                  onChange={(e) => setFeishuSearchFields(e.target.value)}
-                />
-                <select value={feishuFilterProject} onChange={(e) => setFeishuFilterProject(e.target.value)}>
-                  <option value="">所属项目(全部)</option>
-                  {feishuProjectOptions.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-                <select value={feishuFilterStatus} onChange={(e) => setFeishuFilterStatus(e.target.value)}>
-                  <option value="">状态(全部)</option>
-                  {['待办', '进行中', '已完成'].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-                <input
-                  placeholder="负责人(包含匹配)"
-                  value={feishuFilterAssignee}
-                  onChange={(e) => setFeishuFilterAssignee(e.target.value)}
-                />
-                <select value={feishuFilterRisk} onChange={(e) => setFeishuFilterRisk(e.target.value)}>
-                  <option value="">风险等级(全部)</option>
-                  {['低', '中', '高'].map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-                <select value={feishuPageSize} onChange={(e) => setFeishuPageSize(Number(e.target.value))}>
-                  {[10, 20, 50, 100].map((size) => (
-                    <option key={size} value={size}>每页 {size}</option>
-                  ))}
-                </select>
-                <button className="btn" type="button" onClick={() => void loadFeishuRecords({ resetPage: true })}>查询/刷新</button>
-              </div>
-
-              {feishuLoading && <p>Loading...</p>}
-              <table className="table table-wrap">
-                <thead>
-                  <tr>
-                    {FEISHU_FIELDS.map((field) => (
-                      <th key={String(field.key)}>{field.label}</th>
-                    ))}
-                    {canWrite && <th>操作</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredFeishuRecords.map((record) => {
-                    const fields = (record.fields || {}) as Record<string, unknown>;
-                    const originalForm = mapRecordToForm(record);
-                    const isEditing = feishuEditingId === record.record_id;
-                    const rowDraft = isEditing ? (feishuRecordDraft ?? originalForm) : originalForm;
-                    const isDirty = isEditing && hasFeishuRecordDraftChanges(originalForm, feishuRecordDraft);
-
-                    return (
-                      <tr key={record.record_id} className={isEditing ? 'editing-row' : ''}>
-                        {FEISHU_FIELDS.map((field) => {
-                          const cellValue = rowDraft[field.key];
-                          const isCellEditing = isEditing && feishuEditingField === field.key;
-                          const displayValue = (() => {
-                            const value = isEditing ? rowDraft[field.key] : fields[field.key];
-                            if (field.key === '负责人') {
-                              const name = isEditing ? String(value ?? '') : getAssigneeName(fields['负责人']);
-                              return name || '-';
-                            }
-                            if (field.key === '开始时间' || field.key === '截止时间') {
-                              return formatDateValue(value) || '-';
-                            }
-                            if (field.key === '进度') {
-                              return formatProgressValue(value);
-                            }
-                            return formatFeishuValue(value);
-                          })();
-
-                          if (isCellEditing) {
-                            const options = field.key === '所属项目'
-                              ? feishuProjectOptions
-                              : field.options ?? [];
-                            if (field.type === 'select') {
-                              return (
-                                <td key={String(field.key)} className="editing">
-                                  <select
-                                    data-feishu-edit={`${record.record_id}-${String(field.key)}`}
-                                    value={cellValue ?? ''}
-                                    onChange={(e) => updateFeishuRecordDraft(field.key, e.target.value)}
-                                    onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineFeishuEdit(record), cancelInlineFeishuEdit)}
-                                    onBlur={() => finalizeInlineFeishuEdit(record)}
-                                  >
-                                    {options.map((option) => (
-                                      <option key={option} value={option}>{option}</option>
-                                    ))}
-                                  </select>
-                                </td>
-                              );
-                            }
-                            return (
-                              <td key={String(field.key)} className="editing">
-                                <input
-                                  data-feishu-edit={`${record.record_id}-${String(field.key)}`}
-                                  type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
-                                  value={cellValue ?? ''}
-                                  onChange={(e) => updateFeishuRecordDraft(field.key, e.target.value)}
-                                  onKeyDown={(e) => handleInlineKeyDown(e, () => void saveInlineFeishuEdit(record), cancelInlineFeishuEdit)}
-                                  onBlur={() => finalizeInlineFeishuEdit(record)}
-                                />
-                              </td>
-                            );
-                          }
-
-                          return (
-                            <td
-                              key={String(field.key)}
-                              onDoubleClick={() => canWrite && startInlineFeishuEdit(record, field.key)}
-                            >
-                              {displayValue}
-                            </td>
-                          );
-                        })}
-                        {canWrite && (
-                          <td style={{ display: 'flex', gap: 6 }}>
-                            {isEditing && isDirty ? (
-                              <>
-                                <button className="btn" type="button" disabled={!isDirty} onClick={() => void saveInlineFeishuEdit(record)}>保存</button>
-                                <button className="btn" type="button" onClick={cancelInlineFeishuEdit}>取消</button>
-                              </>
-                            ) : (
-                              <button className="btn" type="button" onClick={() => void removeFeishuRecord(record)}>删除</button>
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-                <button className="btn" type="button" onClick={goFeishuPrevPage} disabled={feishuPageStack.length === 0}>上一页</button>
-                <button className="btn" type="button" onClick={goFeishuNextPage} disabled={!feishuHasMore}>下一页</button>
-                <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-                  记录数: {filteredFeishuRecords.length} / {feishuRecords.length}
-                </span>
-              </div>
-            </div>
-          </div>
+          <FeishuView
+            canWrite={canWrite}
+            projects={projects}
+            feishuForm={feishuForm}
+            feishuMessage={feishuMessage}
+            feishuError={feishuError}
+            feishuLoading={feishuLoading}
+            feishuRecords={feishuRecords}
+            filteredFeishuRecords={filteredFeishuRecords}
+            feishuProjectOptions={feishuProjectOptions}
+            feishuSearch={feishuSearch}
+            feishuSearchFields={feishuSearchFields}
+            feishuFilterProject={feishuFilterProject}
+            feishuFilterStatus={feishuFilterStatus}
+            feishuFilterAssignee={feishuFilterAssignee}
+            feishuFilterRisk={feishuFilterRisk}
+            feishuPageSize={feishuPageSize}
+            feishuHasMore={feishuHasMore}
+            feishuPageStack={feishuPageStack}
+            onUpdateFeishuField={updateFeishuField}
+            onSubmitFeishu={submitFeishuRecord}
+            onSetFeishuSearch={setFeishuSearch}
+            onSetFeishuSearchFields={setFeishuSearchFields}
+            onSetFeishuFilterProject={setFeishuFilterProject}
+            onSetFeishuFilterStatus={setFeishuFilterStatus}
+            onSetFeishuFilterAssignee={setFeishuFilterAssignee}
+            onSetFeishuFilterRisk={setFeishuFilterRisk}
+            onSetFeishuPageSize={setFeishuPageSize}
+            onLoadFeishu={() => void loadFeishuRecords({ resetPage: true })}
+            onPrevPage={goFeishuPrevPage}
+            onNextPage={goFeishuNextPage}
+            onRemoveFeishu={(record) => void removeFeishuRecord(record)}
+            onStartInlineEdit={startInlineFeishuEdit}
+            onUpdateRecordDraft={updateFeishuRecordDraft}
+            onFinalizeInlineEdit={finalizeInlineFeishuEdit}
+            onSaveInlineEdit={(record) => void saveInlineFeishuEdit(record)}
+            onCancelInlineEdit={cancelInlineFeishuEdit}
+            onInlineKeyDown={handleInlineKeyDown}
+            feishuEditingId={feishuEditingId}
+            feishuEditingField={feishuEditingField}
+            feishuRecordDraft={feishuRecordDraft}
+            onHasDraftChanges={hasFeishuRecordDraftChanges}
+            onMapRecordToForm={mapRecordToForm}
+            formatFeishuValue={formatFeishuValue}
+            formatDateValue={formatDateValue}
+            formatProgressValue={formatProgressValue}
+            getAssigneeName={getAssigneeName}
+          />
         )}
 
         {view === 'ai' && (
-          <div>
-            <button className="btn" onClick={generateReport}>生成周报草稿</button>
-            <div className="card" style={{ marginTop: 12 }}>
-              <h3>AI 周报草稿</h3>
-              <pre>{aiReport || '点击上方按钮生成'}</pre>
-            </div>
-          </div>
+          <AiView aiReport={aiReport} onGenerate={generateReport} />
         )}
 
         {view === 'notifications' && (
-          <div className="card">
-            <h3>通知中心</h3>
-            <table className="table">
-              <thead><tr><th>级别</th><th>标题</th><th>内容</th><th>时间</th><th>状态</th></tr></thead>
-              <tbody>
-                {notifications.map((n) => (
-                  <tr key={n.id}>
-                    <td>{n.level}</td>
-                    <td>{n.title}</td>
-                    <td>{n.message}</td>
-                    <td>{new Date(n.createdAt).toLocaleString()}</td>
-                    <td>
-                      {n.readAt ? '已读' : <button className="btn" type="button" onClick={() => void markNotificationRead(n.id)}>标记已读</button>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <NotificationsView notifications={notifications} onMarkRead={(id) => void markNotificationRead(id)} />
         )}
 
         {view === 'audit' && canWrite && (
-          <div className="card">
-            <h3>审计日志</h3>
-            <table className="table">
-              <thead><tr><th>时间</th><th>用户</th><th>角色</th><th>方法</th><th>路径</th></tr></thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id}>
-                    <td>{new Date(log.createdAt).toLocaleString()}</td>
-                    <td>{log.userName || '-'}</td>
-                    <td>{log.userRole || '-'}</td>
-                    <td>{log.method}</td>
-                    <td>{log.path}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <AuditView auditLogs={auditLogs} />
         )}
       </main>
     </div>
