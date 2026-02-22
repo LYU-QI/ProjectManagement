@@ -1907,7 +1907,7 @@ function App() {
           </div>
         </div>
 
-        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && (
+        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && (
           <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
             <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
               <div>

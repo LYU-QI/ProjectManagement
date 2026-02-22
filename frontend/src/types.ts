@@ -23,6 +23,8 @@ export interface DashboardOverview {
     varianceRate: number;
     blockedTasks: number;
     requirementCount: number;
+    actualCost: number;
+    budget: number;
   }>;
 }
 
