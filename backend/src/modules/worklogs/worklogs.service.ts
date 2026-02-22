@@ -8,7 +8,6 @@ interface CreateWorklogInput {
   hours: number;
   hourlyRate: number;
   workedOn: string;
-  note?: string;
 }
 
 interface UpdateWorklogInput {
@@ -16,7 +15,6 @@ interface UpdateWorklogInput {
   hours?: number;
   hourlyRate?: number;
   workedOn?: string;
-  note?: string;
 }
 
 @Injectable()

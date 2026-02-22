@@ -452,6 +452,25 @@ input[type="checkbox"] {
   color: #fff;
 }
 
+.table-toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pagination-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.pagination-summary {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .table tr.editing-row td {
   background: rgba(0, 243, 255, 0.08);
   transition: background 0.2s ease;
@@ -581,4 +600,96 @@ pre::before {
   .main { padding: 20px; }
   .grid { grid-template-columns: 1fr; }
   .form { grid-template-columns: 1fr; }
+}
+
+.gantt-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.gantt-header,
+.gantt-row {
+  display: grid;
+  align-items: center;
+}
+
+.gantt-cell {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border-tech);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.gantt-label {
+  text-align: left;
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.gantt-bar {
+  height: 12px;
+  background: linear-gradient(90deg, rgba(0, 243, 255, 0.8), rgba(0, 134, 255, 0.8));
+  border-radius: 6px;
+  margin: 6px 2px;
+}
+
+.gantt-milestone {
+  background: linear-gradient(90deg, rgba(57, 255, 20, 0.8), rgba(0, 255, 170, 0.8));
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.calendar-cell {
+  min-height: 110px;
+  border: 1px solid var(--border-tech);
+  padding: 6px;
+  font-size: 12px;
+  background: rgba(7, 16, 30, 0.6);
+}
+
+.calendar-header {
+  text-align: center;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(7, 16, 30, 0.9);
+}
+
+.calendar-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.calendar-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  margin-bottom: 4px;
+  color: var(--text-main);
+}
+
+.calendar-tag {
+  font-size: 10px;
+  border: 1px solid var(--neon-blue);
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--neon-blue);
+}
+
+.calendar-muted {
+  opacity: 0.5;
+}
+
+.btn.active {
+  border-color: var(--neon-blue);
+  color: var(--neon-blue);
 }

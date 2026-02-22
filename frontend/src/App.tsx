@@ -8,7 +8,7 @@ import {
   updateFeishuRecord,
   FeishuRecord
 } from './api/feishu';
-import { FEISHU_DEFAULT_FORM, FEISHU_FIELD_NAMES } from './feishuConfig';
+import { FEISHU_DEFAULT_FORM, FEISHU_FIELD_NAMES, FEISHU_FIELDS } from './feishuConfig';
 import type {
   AuthUser,
   AuditLogItem,
@@ -19,8 +19,6 @@ import type {
   NotificationItem,
   ProjectItem,
   Requirement,
-  RiskData,
-  ScheduleData,
   Worklog
 } from './types';
 import DashboardView from './views/DashboardView';
@@ -32,7 +30,8 @@ import NotificationsView from './views/NotificationsView';
 import AuditView from './views/AuditView';
 import AiView from './views/AiView';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit' | 'feishu';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global';
+type FeishuScheduleRow = FeishuFormState & { recordId: string };
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -118,7 +117,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'ai', 'notifications', 'audit', 'feishu'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'ai', 'notifications', 'audit', 'feishu', 'global'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -129,60 +128,56 @@ function App() {
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [costEntries, setCostEntries] = useState<CostEntryItem[]>([]);
   const [worklogs, setWorklogs] = useState<Worklog[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleData | null>(null);
-  const [risk, setRisk] = useState<RiskData | null>(null);
   const [aiReport, setAiReport] = useState<string>('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [lastRetry, setLastRetry] = useState<{ label: string; action: () => Promise<void> } | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   async function refreshAll(projectIdOverride?: number | null) {
     if (!token) return;
     setLoading(true);
     setError('');
     try {
-      const [dashboardRes, projectList, unreadNotifications] = await Promise.all([
-        apiGet<DashboardOverview>('/dashboard/overview'),
-        apiGet<ProjectItem[]>('/projects'),
-        apiGet<NotificationItem[]>('/notifications?unread=true')
-      ]);
+      await runWithRetry('刷新数据', async () => {
+        const [dashboardRes, projectList, unreadNotifications] = await Promise.all([
+          apiGet<DashboardOverview>('/dashboard/overview'),
+          apiGet<ProjectItem[]>('/projects'),
+          apiGet<NotificationItem[]>('/notifications?unread=true')
+        ]);
 
-      setOverview(dashboardRes);
-      setProjects(projectList);
-      setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
-      setNotifications(unreadNotifications);
+        setOverview(dashboardRes);
+        setProjects(projectList);
+        setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
+        setNotifications(unreadNotifications);
 
-      const activeProjectId = projectIdOverride ?? selectedProjectId ?? projectList[0]?.id ?? null;
-      setSelectedProjectId(activeProjectId);
+        const activeProjectId = projectIdOverride ?? selectedProjectId ?? projectList[0]?.id ?? null;
+        setSelectedProjectId(activeProjectId);
 
-      if (!activeProjectId) {
-        setRequirements([]);
-        setCostSummary(null);
-        setCostEntries([]);
-        setWorklogs([]);
-        setSchedule(null);
-        setRisk(null);
-        return;
-      }
+        if (!activeProjectId) {
+          setRequirements([]);
+          setCostSummary(null);
+          setCostEntries([]);
+          setWorklogs([]);
+          return;
+        }
 
-      const [reqRes, costRes, costListRes, worklogRes, scheduleRes, riskRes, projectNotifications] = await Promise.all([
-        apiGet<Requirement[]>(`/requirements?projectId=${activeProjectId}`),
-        apiGet<CostSummary>(`/cost-entries/summary?projectId=${activeProjectId}`),
-        apiGet<CostEntryItem[]>(`/cost-entries?projectId=${activeProjectId}`),
-        apiGet<Worklog[]>(`/worklogs?projectId=${activeProjectId}`),
-        apiGet<ScheduleData>(`/projects/${activeProjectId}/schedule`),
-        apiGet<RiskData>(`/projects/${activeProjectId}/risks`),
-        apiGet<NotificationItem[]>(`/notifications?projectId=${activeProjectId}`)
-      ]);
-      setRequirements(reqRes);
-      setCostSummary(costRes);
-      setCostEntries(costListRes);
-      setWorklogs(worklogRes);
-      setSchedule(scheduleRes);
-      setRisk(riskRes);
-      setNotifications(projectNotifications);
+        const [reqRes, costRes, costListRes, worklogRes, projectNotifications] = await Promise.all([
+          apiGet<Requirement[]>(`/requirements?projectId=${activeProjectId}`),
+          apiGet<CostSummary>(`/cost-entries/summary?projectId=${activeProjectId}`),
+          apiGet<CostEntryItem[]>(`/cost-entries?projectId=${activeProjectId}`),
+          apiGet<Worklog[]>(`/worklogs?projectId=${activeProjectId}`),
+          apiGet<NotificationItem[]>(`/notifications?projectId=${activeProjectId}`)
+        ]);
+        setRequirements(reqRes);
+        setCostSummary(costRes);
+        setCostEntries(costListRes);
+        setWorklogs(worklogRes);
+        setNotifications(projectNotifications);
+      });
     } catch (err) {
       if (err instanceof Error && err.message === 'UNAUTHORIZED') {
         logout();
@@ -208,8 +203,6 @@ function App() {
     setCostSummary(null);
     setCostEntries([]);
     setWorklogs([]);
-    setSchedule(null);
-    setRisk(null);
     setAiReport('');
     setNotifications([]);
     setAuditLogs([]);
@@ -241,6 +234,7 @@ function App() {
     }
   }, [token]);
 
+
   useEffect(() => {
     localStorage.setItem('pm_view', view);
   }, [view]);
@@ -253,12 +247,14 @@ function App() {
       return;
     }
     const form = new FormData(formEl);
-    await apiPost('/requirements', {
-      projectId: selectedProjectId,
-      title: String(form.get('title')),
-      description: String(form.get('description')),
-      priority: String(form.get('priority')),
-      version: 'v1.0'
+    await runWithRetry('新增需求', async () => {
+      await apiPost('/requirements', {
+        projectId: selectedProjectId,
+        title: String(form.get('title')),
+        description: String(form.get('description')),
+        priority: String(form.get('priority')),
+        version: 'v1.0'
+      });
     });
     formEl?.reset();
     await refreshAll(selectedProjectId);
@@ -279,16 +275,20 @@ function App() {
     }
 
     try {
-      const created = await apiPost<{ id: number }>('/projects', {
-        name,
-        ownerId: 1,
-        budget,
-        startDate: String(form.get('startDate') || ''),
-        endDate: String(form.get('endDate') || '')
+      let createdId = 0;
+      await runWithRetry('新增项目', async () => {
+        const created = await apiPost<{ id: number }>('/projects', {
+          name,
+          ownerId: 1,
+          budget,
+          startDate: String(form.get('startDate') || ''),
+          endDate: String(form.get('endDate') || '')
+        });
+        createdId = created.id;
       });
       formEl?.reset();
       setMessage(`项目「${name}」已创建。`);
-      await refreshAll(created.id);
+      await refreshAll(createdId);
     } catch (err) {
       if (err instanceof Error && err.message === 'UNAUTHORIZED') {
         logout();
@@ -308,7 +308,9 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiDelete(`/projects/${project.id}`);
+      await runWithRetry('删除项目', async () => {
+        await apiDelete(`/projects/${project.id}`);
+      });
       setMessage(`项目「${project.name}」已删除。`);
       const fallback = projects.find((item) => item.id !== project.id)?.id ?? null;
       await refreshAll(fallback);
@@ -324,9 +326,11 @@ function App() {
     setMessage('');
     setError('');
     try {
-      for (const id of selectedProjectIds) {
-        await apiDelete(`/projects/${id}`);
-      }
+      await runWithRetry('批量删除项目', async () => {
+        for (const id of selectedProjectIds) {
+          await apiDelete(`/projects/${id}`);
+        }
+      });
       const remain = projects.filter((item) => !selectedProjectIds.includes(item.id));
       const fallback = remain[0]?.id ?? null;
       setSelectedProjectIds([]);
@@ -348,6 +352,47 @@ function App() {
     });
   }
 
+  function toggleRequirementSelection(id: number, checked: boolean) {
+    setSelectedRequirementIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) return prev;
+        return [...prev, id];
+      }
+      return prev.filter((item) => item !== id);
+    });
+  }
+
+  function toggleCostEntrySelection(id: number, checked: boolean) {
+    setSelectedCostEntryIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) return prev;
+        return [...prev, id];
+      }
+      return prev.filter((item) => item !== id);
+    });
+  }
+
+  function toggleFeishuSelection(id: string, checked: boolean) {
+    setSelectedFeishuIds((prev) => {
+      if (checked) {
+        if (prev.includes(id)) return prev;
+        return [...prev, id];
+      }
+      return prev.filter((item) => item !== id);
+    });
+  }
+
+  function toggleFeishuColumn(key: keyof FeishuFormState, checked: boolean) {
+    setFeishuVisibleColumns((prev) => {
+      if (checked) {
+        if (prev.includes(key)) return prev;
+        return [...prev, key];
+      }
+      const next = prev.filter((item) => item !== key);
+      return next.length > 0 ? next : prev;
+    });
+  }
+
   function handleInlineKeyDown(
     event: KeyboardEvent<HTMLInputElement | HTMLSelectElement>,
     onSave: () => void,
@@ -363,23 +408,49 @@ function App() {
     }
   }
 
+  async function runWithRetry(label: string, action: () => Promise<void>) {
+    try {
+      await action();
+      setLastRetry(null);
+    } catch (err) {
+      setLastRetry({ label, action });
+      throw err;
+    }
+  }
+
+  async function handleRetry() {
+    if (!lastRetry || retrying) return;
+    setRetrying(true);
+    try {
+      await lastRetry.action();
+      setLastRetry(null);
+    } catch {
+      // keep lastRetry for subsequent attempts
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   async function saveInlineProjectEdit(original: ProjectItem) {
-    if (!projectEdit.draft || !projectEdit.hasDirty(original)) return;
+    const draft = projectEdit.draft;
+    if (!draft || !projectEdit.hasDirty(original)) return;
     setMessage('');
     setError('');
-    const budget = Number(projectEdit.draft.budget);
+    const budget = Number(draft.budget);
     if (!Number.isFinite(budget) || budget <= 0) {
       setError('预算必须是大于 0 的数字。');
       return;
     }
     try {
-      await apiPatch(`/projects/${original.id}`, {
-        name: String(projectEdit.draft.name || ''),
-        budget,
-        startDate: projectEdit.draft.startDate || null,
-        endDate: projectEdit.draft.endDate || null
+      await runWithRetry('更新项目', async () => {
+        await apiPatch(`/projects/${original.id}`, {
+          name: String(draft.name || ''),
+          budget,
+          startDate: draft.startDate || null,
+          endDate: draft.endDate || null
+        });
       });
-      setMessage(`项目「${projectEdit.draft.name}」已更新。`);
+      setMessage(`项目「${draft.name}」已更新。`);
       projectEdit.cancel();
       await refreshAll(original.id);
     } catch (err) {
@@ -389,9 +460,10 @@ function App() {
   }
 
   async function saveInlineRequirementEdit(original: Requirement) {
-    if (!requirementEdit.draft || !requirementEdit.hasDirty(original)) return;
-    const priority = String(requirementEdit.draft.priority);
-    const status = String(requirementEdit.draft.status);
+    const draft = requirementEdit.draft;
+    if (!draft || !requirementEdit.hasDirty(original)) return;
+    const priority = String(draft.priority);
+    const status = String(draft.status);
     if (!['low', 'medium', 'high'].includes(priority)) {
       setError('优先级只能是 low/medium/high。');
       return;
@@ -403,11 +475,13 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiPatch(`/requirements/${original.id}`, {
-        title: requirementEdit.draft.title,
-        description: requirementEdit.draft.description,
-        priority,
-        status
+      await runWithRetry('更新需求', async () => {
+        await apiPatch(`/requirements/${original.id}`, {
+          title: draft.title,
+          description: draft.description,
+          priority,
+          status
+        });
       });
       setMessage(`需求 #${original.id} 已更新。`);
       requirementEdit.cancel();
@@ -419,13 +493,14 @@ function App() {
   }
 
   async function saveInlineCostEdit(original: CostEntryItem) {
-    if (!costEdit.draft || !costEdit.hasDirty(original)) return;
-    const amount = Number(costEdit.draft.amount);
+    const draft = costEdit.draft;
+    if (!draft || !costEdit.hasDirty(original)) return;
+    const amount = Number(draft.amount);
     if (!Number.isFinite(amount) || amount < 0) {
       setError('金额必须是非负数字。');
       return;
     }
-    const type = String(costEdit.draft.type);
+    const type = String(draft.type);
     if (!['labor', 'outsource', 'cloud'].includes(type)) {
       setError('成本类型只能是 labor/outsource/cloud。');
       return;
@@ -433,11 +508,13 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiPatch(`/cost-entries/${original.id}`, {
-        type,
-        amount,
-        occurredOn: costEdit.draft.occurredOn,
-        note: costEdit.draft.note
+      await runWithRetry('更新成本条目', async () => {
+        await apiPatch(`/cost-entries/${original.id}`, {
+          type,
+          amount,
+          occurredOn: draft.occurredOn,
+          note: draft.note
+        });
       });
       setMessage(`成本条目 #${original.id} 已更新。`);
       costEdit.cancel();
@@ -449,9 +526,10 @@ function App() {
   }
 
   async function saveInlineWorklogEdit(original: Worklog) {
-    if (!worklogEdit.draft || !worklogEdit.hasDirty(original)) return;
-    const hours = Number(worklogEdit.draft.hours);
-    const hourlyRate = Number(worklogEdit.draft.hourlyRate);
+    const draft = worklogEdit.draft;
+    if (!draft || !worklogEdit.hasDirty(original)) return;
+    const hours = Number(draft.hours);
+    const hourlyRate = Number(draft.hourlyRate);
     if (!Number.isFinite(hours) || hours <= 0) {
       setError('工时必须是大于 0 的数字。');
       return;
@@ -463,12 +541,13 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiPatch(`/worklogs/${original.id}`, {
-        taskTitle: worklogEdit.draft.taskTitle,
-        hours,
-        hourlyRate,
-        workedOn: worklogEdit.draft.workedOn,
-        note: worklogEdit.draft.note
+      await runWithRetry('更新工时记录', async () => {
+        await apiPatch(`/worklogs/${original.id}`, {
+          taskTitle: draft.taskTitle,
+          hours,
+          hourlyRate,
+          workedOn: draft.workedOn
+        });
       });
       setMessage(`工时 #${original.id} 已更新。`);
       worklogEdit.cancel();
@@ -479,48 +558,23 @@ function App() {
     }
   }
 
-  async function saveInlineTaskEdit(original: ScheduleData['tasks'][number]) {
-    if (!taskEdit.draft || !taskEdit.hasDirty(original)) return;
-    const status = String(taskEdit.draft.status);
-    if (!['todo', 'in_progress', 'blocked', 'done'].includes(status)) {
-      setError('状态只能是 todo/in_progress/blocked/done。');
-      return;
-    }
+  async function saveInlineScheduleEdit(original: FeishuScheduleRow) {
+    const draft = scheduleEdit.draft;
+    if (!draft || !scheduleEdit.hasDirty(original)) return;
     setMessage('');
     setError('');
     try {
-      await apiPatch(`/projects/tasks/${original.id}`, {
-        title: taskEdit.draft.title,
-        assignee: taskEdit.draft.assignee,
-        status,
-        plannedStart: taskEdit.draft.plannedStart,
-        plannedEnd: taskEdit.draft.plannedEnd
+      const { recordId, ...form } = draft;
+      const payload = buildFeishuFieldsPayload(form);
+      await runWithRetry('更新进度同步记录', async () => {
+        await updateFeishuRecord(original.recordId, payload);
       });
-      setMessage(`任务 #${original.id} 已更新。`);
-      taskEdit.cancel();
-      await refreshAll(selectedProjectId);
+      setMessage('进度同步记录已更新。');
+      scheduleEdit.cancel();
+      await loadScheduleRecords();
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`更新任务失败。（${detail}）`);
-    }
-  }
-
-  async function saveInlineMilestoneEdit(original: ScheduleData['milestones'][number]) {
-    if (!milestoneEdit.draft || !milestoneEdit.hasDirty(original)) return;
-    setMessage('');
-    setError('');
-    try {
-      await apiPatch(`/projects/milestones/${original.id}`, {
-        name: milestoneEdit.draft.name,
-        plannedDate: milestoneEdit.draft.plannedDate,
-        actualDate: milestoneEdit.draft.actualDate || null
-      });
-      setMessage(`里程碑 #${original.id} 已更新。`);
-      milestoneEdit.cancel();
-      await refreshAll(selectedProjectId);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`更新里程碑失败。（${detail}）`);
+      setError(`更新进度同步记录失败。（${detail}）`);
     }
   }
 
@@ -532,12 +586,14 @@ function App() {
       return;
     }
     const form = new FormData(formEl);
-    await apiPost('/cost-entries', {
-      projectId: selectedProjectId,
-      type: String(form.get('type')),
-      amount: Number(form.get('amount')),
-      occurredOn: String(form.get('occurredOn')),
-      note: String(form.get('note'))
+    await runWithRetry('新增成本', async () => {
+      await apiPost('/cost-entries', {
+        projectId: selectedProjectId,
+        type: String(form.get('type')),
+        amount: Number(form.get('amount')),
+        occurredOn: String(form.get('occurredOn')),
+        note: String(form.get('note'))
+      });
     });
     formEl?.reset();
     await refreshAll(selectedProjectId);
@@ -549,12 +605,34 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiDelete(`/cost-entries/${entry.id}`);
+      await runWithRetry('删除成本条目', async () => {
+        await apiDelete(`/cost-entries/${entry.id}`);
+      });
       setMessage(`成本条目 #${entry.id} 已删除。`);
       await refreshAll(selectedProjectId);
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setError(`删除成本失败。（${detail}）`);
+    }
+  }
+
+  async function deleteSelectedCostEntries() {
+    if (!canWrite || selectedCostEntryIds.length === 0) return;
+    if (!window.confirm(`确定批量删除 ${selectedCostEntryIds.length} 条成本条目？`)) return;
+    setMessage('');
+    setError('');
+    try {
+      await runWithRetry('批量删除成本条目', async () => {
+        for (const id of selectedCostEntryIds) {
+          await apiDelete(`/cost-entries/${id}`);
+        }
+      });
+      setSelectedCostEntryIds([]);
+      setMessage(`已批量删除 ${selectedCostEntryIds.length} 条成本条目。`);
+      await refreshAll(selectedProjectId);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setError(`批量删除成本条目失败。（${detail}）`);
     }
   }
 
@@ -566,14 +644,15 @@ function App() {
       return;
     }
     const form = new FormData(formEl);
-    await apiPost('/worklogs', {
-      projectId: selectedProjectId,
-      userId: user?.id,
-      taskTitle: String(form.get('taskTitle') || ''),
-      hours: Number(form.get('hours')),
-      hourlyRate: Number(form.get('hourlyRate')),
-      workedOn: String(form.get('workedOn')),
-      note: String(form.get('note') || '')
+    await runWithRetry('新增工时', async () => {
+      await apiPost('/worklogs', {
+        projectId: selectedProjectId,
+        userId: user?.id,
+        taskTitle: String(form.get('taskTitle') || ''),
+        hours: Number(form.get('hours')),
+        hourlyRate: Number(form.get('hourlyRate')),
+        workedOn: String(form.get('workedOn'))
+      });
     });
     formEl?.reset();
     await refreshAll(selectedProjectId);
@@ -585,44 +664,14 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiDelete(`/worklogs/${worklog.id}`);
+      await runWithRetry('删除工时记录', async () => {
+        await apiDelete(`/worklogs/${worklog.id}`);
+      });
       setMessage(`工时 #${worklog.id} 已删除。`);
       await refreshAll(selectedProjectId);
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setError(`删除工时失败。（${detail}）`);
-    }
-  }
-
-  async function submitMilestone(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const formEl = e.currentTarget;
-    if (!selectedProjectId) {
-      setError('请先选择项目。');
-      return;
-    }
-    const form = new FormData(formEl);
-    await apiPost('/projects/milestones', {
-      projectId: selectedProjectId,
-      name: String(form.get('name')),
-      plannedDate: String(form.get('plannedDate'))
-    });
-    formEl?.reset();
-    await refreshAll(selectedProjectId);
-  }
-
-  async function deleteMilestone(milestone: ScheduleData['milestones'][number]) {
-    if (!canWrite) return;
-    if (!window.confirm(`确定删除里程碑「${milestone.name}」？`)) return;
-    setMessage('');
-    setError('');
-    try {
-      await apiDelete(`/projects/milestones/${milestone.id}`);
-      setMessage(`里程碑 #${milestone.id} 已删除。`);
-      await refreshAll(selectedProjectId);
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`删除里程碑失败。（${detail}）`);
     }
   }
 
@@ -634,30 +683,73 @@ function App() {
       return;
     }
     const form = new FormData(formEl);
-    await apiPost('/projects/tasks', {
-      projectId: selectedProjectId,
-      title: String(form.get('title')),
-      assignee: String(form.get('assignee')),
-      status: String(form.get('status')),
-      plannedStart: String(form.get('plannedStart')),
-      plannedEnd: String(form.get('plannedEnd'))
+    const payloadForm: FeishuFormState = {
+      任务ID: String(form.get('taskId') || '').trim(),
+      任务名称: String(form.get('title') || '').trim(),
+      状态: String(form.get('status') || '待办').trim(),
+      优先级: '中',
+      负责人: String(form.get('assignee') || '').trim(),
+      开始时间: String(form.get('plannedStart') || '').trim(),
+      截止时间: String(form.get('plannedEnd') || '').trim(),
+      进度: String(form.get('progress') || '').trim(),
+      所属项目: selectedProjectName === '未选择' ? '' : selectedProjectName,
+      是否阻塞: '否',
+      阻塞原因: '',
+      风险等级: '中',
+      里程碑: '否'
+    };
+    await runWithRetry('新增任务', async () => {
+      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm));
     });
     formEl?.reset();
-    await refreshAll(selectedProjectId);
+    await loadScheduleRecords();
   }
 
-  async function deleteTask(task: ScheduleData['tasks'][number]) {
+  async function submitMilestone(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    if (!selectedProjectId) {
+      setError('请先选择项目。');
+      return;
+    }
+    const form = new FormData(formEl);
+    const payloadForm: FeishuFormState = {
+      任务ID: String(form.get('milestoneId') || '').trim(),
+      任务名称: String(form.get('name') || '').trim(),
+      状态: String(form.get('status') || '待办').trim(),
+      优先级: '中',
+      负责人: String(form.get('assignee') || '').trim(),
+      开始时间: String(form.get('plannedDate') || '').trim(),
+      截止时间: String(form.get('actualDate') || '').trim(),
+      进度: String(form.get('progress') || '').trim(),
+      所属项目: selectedProjectName === '未选择' ? '' : selectedProjectName,
+      是否阻塞: '否',
+      阻塞原因: '',
+      风险等级: '中',
+      里程碑: '是'
+    };
+    await runWithRetry('新增里程碑', async () => {
+      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm));
+    });
+    formEl?.reset();
+    await loadScheduleRecords();
+  }
+
+  async function deleteScheduleRow(row: FeishuScheduleRow) {
     if (!canWrite) return;
-    if (!window.confirm(`确定删除任务「${task.title}」？`)) return;
+    const label = row.任务名称 || row.任务ID || '记录';
+    if (!window.confirm(`确定删除「${label}」？`)) return;
     setMessage('');
     setError('');
     try {
-      await apiDelete(`/projects/tasks/${task.id}`);
-      setMessage(`任务 #${task.id} 已删除。`);
-      await refreshAll(selectedProjectId);
+      await runWithRetry('删除进度同步记录', async () => {
+        await deleteFeishuRecord(row.recordId);
+      });
+      setMessage('记录已删除。');
+      await loadScheduleRecords();
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`删除任务失败。（${detail}）`);
+      setError(`删除失败。（${detail}）`);
     }
   }
 
@@ -667,7 +759,9 @@ function App() {
     setMessage('');
     setError('');
     try {
-      await apiDelete(`/requirements/${req.id}`);
+      await runWithRetry('删除需求', async () => {
+        await apiDelete(`/requirements/${req.id}`);
+      });
       setMessage(`需求 #${req.id} 已删除。`);
       await refreshAll(selectedProjectId);
     } catch (err) {
@@ -676,20 +770,44 @@ function App() {
     }
   }
 
+  async function deleteSelectedRequirements() {
+    if (!canWrite || selectedRequirementIds.length === 0) return;
+    if (!window.confirm(`确定批量删除 ${selectedRequirementIds.length} 条需求？`)) return;
+    setMessage('');
+    setError('');
+    try {
+      await runWithRetry('批量删除需求', async () => {
+        for (const id of selectedRequirementIds) {
+          await apiDelete(`/requirements/${id}`);
+        }
+      });
+      setSelectedRequirementIds([]);
+      setMessage(`已批量删除 ${selectedRequirementIds.length} 条需求。`);
+      await refreshAll(selectedProjectId);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setError(`批量删除需求失败。（${detail}）`);
+    }
+  }
+
   async function reviewRequirementAction(id: number, decision: 'approved' | 'rejected') {
     if (!canWrite) return;
-    await apiPost(`/requirements/${id}/review`, {
-      reviewer: user?.name ?? 'PM Demo',
-      decision
+    await runWithRetry('需求审核', async () => {
+      await apiPost(`/requirements/${id}/review`, {
+        reviewer: user?.name ?? 'PM Demo',
+        decision
+      });
     });
     await refreshAll(selectedProjectId);
   }
 
   async function markRequirementChanged(req: Requirement) {
     if (!canWrite) return;
-    await apiPost(`/requirements/${req.id}/change`, {
-      description: req.description,
-      version: `v${req.changeCount + 1}.0`
+    await runWithRetry('记录需求变更', async () => {
+      await apiPost(`/requirements/${req.id}/change`, {
+        description: req.description,
+        version: `v${req.changeCount + 1}.0`
+      });
     });
     await refreshAll(selectedProjectId);
   }
@@ -699,38 +817,47 @@ function App() {
       setError('请先选择项目。');
       return;
     }
-    const res = await apiPost<{ report: string }>('/ai/reports/weekly', {
-      projectIds: [selectedProjectId],
-      weekStart: '2026-02-16',
-      weekEnd: '2026-02-22',
-      includeRisks: true,
-      includeBudget: true
-    });
-    setAiReport(res.report);
+    try {
+      await runWithRetry('生成周报', async () => {
+        const res = await apiPost<{ report: string }>('/ai/reports/weekly', {
+          projectIds: [selectedProjectId],
+          weekStart: '2026-02-16',
+          weekEnd: '2026-02-22',
+          includeRisks: true,
+          includeBudget: true
+        });
+        setAiReport(res.report);
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setError(`生成周报失败。（${detail}）`);
+    }
   }
 
   async function loadAuditLogs() {
     if (!selectedProjectId || !canWrite) return;
-    const rows = await apiGet<AuditLogItem[]>(`/audit-logs?projectId=${selectedProjectId}`);
-    setAuditLogs(rows);
+    try {
+      await runWithRetry('加载审计日志', async () => {
+        const rows = await apiGet<AuditLogItem[]>(`/audit-logs?projectId=${selectedProjectId}`);
+        setAuditLogs(rows);
+      });
+    } catch {
+      // error already tracked via retry
+    }
   }
 
   async function markNotificationRead(id: number) {
-    await apiPost(`/notifications/${id}/read`, {});
+    await runWithRetry('标记通知已读', async () => {
+      await apiPost(`/notifications/${id}/read`, {});
+    });
     await refreshAll(selectedProjectId);
   }
-
-  const riskText = useMemo(() => {
-    if (!risk) return 'N/A';
-    return `${risk.riskLevel} (blocked: ${risk.blockedCount})`;
-  }, [risk]);
 
   const selectedProjectName = useMemo(() => {
     if (!selectedProjectId) return '未选择';
     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
   }, [projects, selectedProjectId]);
   const canWrite = user?.role === 'pm' || user?.role === 'lead';
-
 
   const [feishuRecords, setFeishuRecords] = useState<FeishuRecord[]>([]);
   const [feishuLoading, setFeishuLoading] = useState(false);
@@ -740,19 +867,119 @@ function App() {
   const [feishuEditingId, setFeishuEditingId] = useState<string | null>(null);
   const [feishuEditingField, setFeishuEditingField] = useState<keyof FeishuFormState | null>(null);
   const [feishuRecordDraft, setFeishuRecordDraft] = useState<FeishuFormState | null>(null);
-  const [feishuPageSize, setFeishuPageSize] = useState(20);
+  const [scheduleRecords, setScheduleRecords] = useState<FeishuRecord[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
+  const [feishuPageSize, setFeishuPageSize] = useState(() => {
+    const raw = localStorage.getItem('feishu_page_size');
+    const size = raw ? Number(raw) : 20;
+    return Number.isFinite(size) && size > 0 ? size : 20;
+  });
   const [feishuPageToken, setFeishuPageToken] = useState<string | undefined>(undefined);
   const [feishuPageStack, setFeishuPageStack] = useState<string[]>([]);
   const [feishuNextToken, setFeishuNextToken] = useState<string | undefined>(undefined);
   const [feishuHasMore, setFeishuHasMore] = useState(false);
-  const [feishuSearch, setFeishuSearch] = useState('');
-  const [feishuSearchFields, setFeishuSearchFields] = useState('任务ID,任务名称,负责人');
+  const [feishuSearch, setFeishuSearch] = useState(() => localStorage.getItem('feishu_search') || '');
+  const [feishuSearchFields, setFeishuSearchFields] = useState(() => localStorage.getItem('feishu_search_fields') || '任务ID,任务名称,负责人');
   const [feishuFilter, setFeishuFilter] = useState('');
   const [feishuSort, setFeishuSort] = useState('');
-  const [feishuFilterProject, setFeishuFilterProject] = useState('');
-  const [feishuFilterStatus, setFeishuFilterStatus] = useState('');
-  const [feishuFilterAssignee, setFeishuFilterAssignee] = useState('');
-  const [feishuFilterRisk, setFeishuFilterRisk] = useState('');
+  const [feishuFilterProject, setFeishuFilterProject] = useState(() => localStorage.getItem('feishu_filter_project') || '');
+  const [feishuFilterStatus, setFeishuFilterStatus] = useState(() => localStorage.getItem('feishu_filter_status') || '');
+  const [feishuFilterAssignee, setFeishuFilterAssignee] = useState(() => localStorage.getItem('feishu_filter_assignee') || '');
+  const [feishuFilterRisk, setFeishuFilterRisk] = useState(() => localStorage.getItem('feishu_filter_risk') || '');
+  const [feishuVisibleColumns, setFeishuVisibleColumns] = useState<Array<keyof FeishuFormState>>(() => {
+    const raw = localStorage.getItem('feishu_visible_columns');
+    if (!raw) return FEISHU_FIELDS.map((field) => field.key);
+    try {
+      const parsed = JSON.parse(raw) as Array<keyof FeishuFormState>;
+      return parsed.length > 0 ? parsed : FEISHU_FIELDS.map((field) => field.key);
+    } catch {
+      return FEISHU_FIELDS.map((field) => field.key);
+    }
+  });
+  const [selectedRequirementIds, setSelectedRequirementIds] = useState<number[]>([]);
+  const [selectedCostEntryIds, setSelectedCostEntryIds] = useState<number[]>([]);
+  const [selectedFeishuIds, setSelectedFeishuIds] = useState<string[]>([]);
+  const [globalSearch, setGlobalSearch] = useState('');
+  const [notificationSettings, setNotificationSettings] = useState(() => {
+    const raw = localStorage.getItem('pm_notification_settings');
+    if (!raw) return { riskThreshold: 2, budgetVarianceThreshold: 10, enableSystemAlerts: true };
+    try {
+      return JSON.parse(raw) as { riskThreshold: number; budgetVarianceThreshold: number; enableSystemAlerts: boolean };
+    } catch {
+      return { riskThreshold: 2, budgetVarianceThreshold: 10, enableSystemAlerts: true };
+    }
+  });
+  const scheduleRows = useMemo(
+    () => scheduleRecords.map((record) => mapRecordToScheduleRow(record)),
+    [scheduleRecords]
+  );
+  const scheduleTasks = useMemo(
+    () => scheduleRows.filter((row) => String(row.里程碑 ?? '否') !== '是'),
+    [scheduleRows]
+  );
+  const scheduleMilestones = useMemo(
+    () => scheduleRows.filter((row) => String(row.里程碑 ?? '否') === '是'),
+    [scheduleRows]
+  );
+  const scheduleRiskText = useMemo(() => {
+    if (scheduleRows.length === 0) return 'N/A';
+    const blockedCount = scheduleRows.filter((row) => String(row.是否阻塞 ?? '否') === '是').length;
+    const rank: Record<string, number> = { 高: 3, 中: 2, 低: 1 };
+    let maxRank = 0;
+    for (const row of scheduleRows) {
+      const level = String(row.风险等级 ?? '');
+      const score = rank[level] ?? 0;
+      if (score > maxRank) maxRank = score;
+    }
+    const levelText = maxRank === 3 ? '高' : maxRank === 2 ? '中' : maxRank === 1 ? '低' : 'N/A';
+    return `${levelText} (blocked: ${blockedCount})`;
+  }, [scheduleRows]);
+  const globalSearchResults = useMemo(() => {
+    const query = globalSearch.trim().toLowerCase();
+    if (!query) return null;
+    const projectMatches = projects.filter((p) =>
+      matchesSearch(p.name, query) || matchesSearch(p.id, query)
+    );
+    const requirementMatches = requirements.filter((r) =>
+      matchesSearch(r.title, query) || matchesSearch(r.description, query) || matchesSearch(r.status, query)
+    );
+    const costMatches = costEntries.filter((c) =>
+      matchesSearch(c.type, query) || matchesSearch(c.note, query) || matchesSearch(c.amount, query)
+    );
+    const worklogMatches = worklogs.filter((w) =>
+      matchesSearch(w.taskTitle, query) || matchesSearch(w.workedOn, query)
+    );
+    const taskMatches = scheduleTasks.filter((t) =>
+      matchesSearch(t.任务名称, query) || matchesSearch(t.负责人, query) || matchesSearch(t.状态, query)
+    );
+    const milestoneMatches = scheduleMilestones.filter((m) =>
+      matchesSearch(m.任务名称, query) || matchesSearch(m.开始时间, query) || matchesSearch(m.截止时间, query)
+    );
+    const feishuMatches = feishuRecords.filter((record) => {
+      const fields = record.fields || {};
+      return Object.values(fields).some((value) => matchesSearch(value, query));
+    });
+
+    return {
+      projects: projectMatches.slice(0, 5),
+      requirements: requirementMatches.slice(0, 5),
+      costs: costMatches.slice(0, 5),
+      worklogs: worklogMatches.slice(0, 5),
+      tasks: taskMatches.slice(0, 5),
+      milestones: milestoneMatches.slice(0, 5),
+      feishu: feishuMatches.slice(0, 5),
+      counts: {
+        projects: projectMatches.length,
+        requirements: requirementMatches.length,
+        costs: costMatches.length,
+        worklogs: worklogMatches.length,
+        tasks: taskMatches.length,
+        milestones: milestoneMatches.length,
+        feishu: feishuMatches.length
+      }
+    };
+  }, [globalSearch, projects, requirements, costEntries, worklogs, scheduleTasks, scheduleMilestones, feishuRecords]);
   const projectEdit = useInlineEdit<ProjectItem, number>({
     getId: (row) => row.id,
     hasChanges: (original, draft) => (
@@ -790,30 +1017,71 @@ function App() {
       || String(original.hours) !== String(draft.hours)
       || String(original.hourlyRate) !== String(draft.hourlyRate)
       || original.workedOn !== draft.workedOn
-      || String(original.note ?? '') !== String(draft.note ?? '')
     ),
     selector: (id, field) => `[data-worklog-edit="${id}-${String(field)}"]`
   });
-  const taskEdit = useInlineEdit<ScheduleData['tasks'][number], number>({
-    getId: (row) => row.id,
+  const scheduleEdit = useInlineEdit<FeishuScheduleRow, string>({
+    getId: (row) => row.recordId,
     hasChanges: (original, draft) => (
-      original.title !== draft.title
-      || original.assignee !== draft.assignee
-      || original.status !== draft.status
-      || original.plannedStart !== draft.plannedStart
-      || original.plannedEnd !== draft.plannedEnd
+      original.任务ID !== draft.任务ID
+      || original.任务名称 !== draft.任务名称
+      || original.负责人 !== draft.负责人
+      || original.状态 !== draft.状态
+      || original.开始时间 !== draft.开始时间
+      || original.截止时间 !== draft.截止时间
+      || original.进度 !== draft.进度
+      || original.里程碑 !== draft.里程碑
     ),
-    selector: (id, field) => `[data-task-edit="${id}-${String(field)}"]`
+    selector: (id, field) => `[data-schedule-edit="${id}-${String(field)}"]`
   });
-  const milestoneEdit = useInlineEdit<ScheduleData['milestones'][number], number>({
-    getId: (row) => row.id,
-    hasChanges: (original, draft) => (
-      original.name !== draft.name
-      || original.plannedDate !== draft.plannedDate
-      || String(original.actualDate ?? '') !== String(draft.actualDate ?? '')
-    ),
-    selector: (id, field) => `[data-milestone-edit="${id}-${String(field)}"]`
-  });
+
+  useEffect(() => {
+    localStorage.setItem('pm_notification_settings', JSON.stringify(notificationSettings));
+  }, [notificationSettings]);
+
+  useEffect(() => {
+    setSelectedRequirementIds((prev) => prev.filter((id) => requirements.some((item) => item.id === id)));
+  }, [requirements]);
+
+  useEffect(() => {
+    setSelectedCostEntryIds((prev) => prev.filter((id) => costEntries.some((item) => item.id === id)));
+  }, [costEntries]);
+
+  useEffect(() => {
+    setSelectedFeishuIds((prev) => prev.filter((id) => feishuRecords.some((item) => item.record_id === id)));
+  }, [feishuRecords]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_search', feishuSearch);
+  }, [feishuSearch]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_search_fields', feishuSearchFields);
+  }, [feishuSearchFields]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_filter_project', feishuFilterProject);
+  }, [feishuFilterProject]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_filter_status', feishuFilterStatus);
+  }, [feishuFilterStatus]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_filter_assignee', feishuFilterAssignee);
+  }, [feishuFilterAssignee]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_filter_risk', feishuFilterRisk);
+  }, [feishuFilterRisk]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_page_size', String(feishuPageSize));
+  }, [feishuPageSize]);
+
+  useEffect(() => {
+    localStorage.setItem('feishu_visible_columns', JSON.stringify(feishuVisibleColumns));
+  }, [feishuVisibleColumns]);
 
   function normalizeDateInput(value: unknown) {
     if (value === null || value === undefined || value === '') return '';
@@ -869,7 +1137,15 @@ function App() {
       所属项目: String(fields['所属项目'] ?? ''),
       是否阻塞: String(fields['是否阻塞'] ?? '否'),
       阻塞原因: String(fields['阻塞原因'] ?? ''),
-      风险等级: String(fields['风险等级'] ?? '中')
+      风险等级: String(fields['风险等级'] ?? '中'),
+      里程碑: String(fields['里程碑'] ?? '否')
+    };
+  }
+
+  function mapRecordToScheduleRow(record: FeishuRecord): FeishuScheduleRow {
+    return {
+      ...mapRecordToForm(record),
+      recordId: record.record_id
     };
   }
 
@@ -883,7 +1159,8 @@ function App() {
       所属项目: form.所属项目.trim(),
       是否阻塞: form.是否阻塞.trim(),
       阻塞原因: form.阻塞原因.trim(),
-      风险等级: form.风险等级.trim()
+      风险等级: form.风险等级.trim(),
+      里程碑: form.里程碑.trim()
     };
 
     const start = form.开始时间 ? new Date(form.开始时间).getTime() : null;
@@ -901,32 +1178,56 @@ function App() {
     setFeishuLoading(true);
     setFeishuError('');
     try {
-      const pageToken = options?.resetPage ? undefined : feishuPageToken;
-      if (options?.resetPage) {
-        setFeishuPageStack([]);
-      }
-      const res = await listFeishuRecords({
-        pageSize: feishuPageSize,
-        pageToken,
-        filter: feishuFilter || undefined,
-        sort: feishuSort || undefined,
-        fieldNames: FEISHU_FIELD_NAMES,
-        search: feishuSearch || undefined,
-        searchFields: feishuSearchFields || undefined,
-        filterProject: feishuFilterProject || undefined,
-        filterStatus: feishuFilterStatus || undefined,
-        filterAssignee: feishuFilterAssignee || undefined,
-        filterRisk: feishuFilterRisk || undefined
+      await runWithRetry('刷新飞书记录', async () => {
+        const pageToken = options?.resetPage ? undefined : feishuPageToken;
+        if (options?.resetPage) {
+          setFeishuPageStack([]);
+        }
+        const res = await listFeishuRecords({
+          pageSize: feishuPageSize,
+          pageToken,
+          filter: feishuFilter || undefined,
+          sort: feishuSort || undefined,
+          fieldNames: FEISHU_FIELD_NAMES,
+          search: feishuSearch || undefined,
+          searchFields: feishuSearchFields || undefined,
+          filterProject: feishuFilterProject || undefined,
+          filterStatus: feishuFilterStatus || undefined,
+          filterAssignee: feishuFilterAssignee || undefined,
+          filterRisk: feishuFilterRisk || undefined
+        });
+        setFeishuRecords(res.items || []);
+        setFeishuHasMore(Boolean(res.has_more));
+        setFeishuNextToken(res.page_token);
+        setFeishuPageToken(pageToken);
       });
-      setFeishuRecords(res.items || []);
-      setFeishuHasMore(Boolean(res.has_more));
-      setFeishuNextToken(res.page_token);
-      setFeishuPageToken(pageToken);
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setFeishuError(`获取记录失败。（${detail}）`);
     } finally {
       setFeishuLoading(false);
+    }
+  }
+
+  async function loadScheduleRecords() {
+    if (!token) return;
+    setScheduleLoading(true);
+    setScheduleError('');
+    try {
+      await runWithRetry('刷新进度同步记录', async () => {
+        const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
+        const res = await listFeishuRecords({
+          pageSize: 200,
+          fieldNames: FEISHU_FIELD_NAMES,
+          filterProject: projectFilter
+        });
+        setScheduleRecords(res.items || []);
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setScheduleError(`获取进度同步记录失败。（${detail}）`);
+    } finally {
+      setScheduleLoading(false);
     }
   }
 
@@ -973,7 +1274,9 @@ function App() {
     setFeishuMessage('');
     try {
       const payload = buildFeishuFieldsPayload(feishuRecordDraft);
-      await updateFeishuRecord(original.record_id, payload);
+      await runWithRetry('更新飞书记录', async () => {
+        await updateFeishuRecord(original.record_id, payload);
+      });
       setFeishuMessage('飞书记录已更新。');
       cancelInlineFeishuEdit();
       await loadFeishuRecords();
@@ -997,10 +1300,14 @@ function App() {
     try {
       const payload = buildFeishuFieldsPayload(feishuForm);
       if (feishuEditingId) {
-        await updateFeishuRecord(feishuEditingId, payload);
+        await runWithRetry('提交飞书记录', async () => {
+          await updateFeishuRecord(feishuEditingId, payload);
+        });
         setFeishuMessage('飞书记录已更新。');
       } else {
-        await createFeishuRecord(payload);
+        await runWithRetry('提交飞书记录', async () => {
+          await createFeishuRecord(payload);
+        });
         setFeishuMessage('飞书记录已创建。');
       }
       resetFeishuForm();
@@ -1017,12 +1324,34 @@ function App() {
     setFeishuError('');
     setFeishuMessage('');
     try {
-      await deleteFeishuRecord(record.record_id);
+      await runWithRetry('删除飞书记录', async () => {
+        await deleteFeishuRecord(record.record_id);
+      });
       setFeishuMessage('飞书记录已删除。');
       await loadFeishuRecords();
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setFeishuError(`删除失败。（${detail}）`);
+    }
+  }
+
+  async function removeSelectedFeishuRecords() {
+    if (!canWrite || selectedFeishuIds.length === 0) return;
+    if (!window.confirm(`确定批量删除 ${selectedFeishuIds.length} 条飞书记录？`)) return;
+    setFeishuError('');
+    setFeishuMessage('');
+    try {
+      await runWithRetry('批量删除飞书记录', async () => {
+        for (const id of selectedFeishuIds) {
+          await deleteFeishuRecord(id);
+        }
+      });
+      setSelectedFeishuIds([]);
+      setFeishuMessage(`已批量删除 ${selectedFeishuIds.length} 条飞书记录。`);
+      await loadFeishuRecords();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setFeishuError(`批量删除失败。（${detail}）`);
     }
   }
 
@@ -1044,6 +1373,60 @@ function App() {
 
   function updateFeishuField(key: keyof FeishuFormState, value: string) {
     setFeishuForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function exportFeishuCsv() {
+    const header = FEISHU_FIELDS.map((field) => field.key);
+    const rows = [
+      header,
+      ...feishuRecords.map((record) => {
+        const form = mapRecordToForm(record);
+        return FEISHU_FIELDS.map((field) => String(form[field.key] ?? ''));
+      })
+    ];
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`feishu-records-${date}.csv`, rows);
+  }
+
+  async function importFeishuCsv(file: File) {
+    if (!canWrite) return;
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length < 2) {
+      setFeishuError('CSV 没有可导入的数据。');
+      return;
+    }
+    const headers = rows[0].map((h) => h.trim());
+    const fieldMap = headers.map((header) => {
+      const field = FEISHU_FIELDS.find((item) => item.key === header || item.label === header);
+      return field?.key ?? null;
+    });
+    if (!fieldMap.some((item) => item)) {
+      setFeishuError('CSV 表头未匹配到任何字段。');
+      return;
+    }
+
+    setFeishuError('');
+    setFeishuMessage('');
+    try {
+      await runWithRetry('导入飞书CSV', async () => {
+        for (let i = 1; i < rows.length; i += 1) {
+          const row = rows[i];
+          const form = { ...FEISHU_DEFAULT_FORM } as FeishuFormState;
+          fieldMap.forEach((fieldKey, index) => {
+            if (!fieldKey) return;
+            form[fieldKey] = String(row[index] ?? '').trim();
+          });
+          const payload = buildFeishuFieldsPayload(form);
+          await createFeishuRecord(payload);
+        }
+      });
+      setFeishuMessage(`CSV 导入完成（${rows.length - 1} 条）。`);
+      await loadFeishuRecords({ resetPage: true });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setFeishuError(`CSV 导入失败。（${detail}）`);
+    }
   }
 
   function formatFeishuValue(value: unknown): string {
@@ -1103,6 +1486,72 @@ function App() {
     return String(value);
   }
 
+  function matchesSearch(value: unknown, query: string) {
+    if (!value) return false;
+    if (typeof value === 'string') return value.toLowerCase().includes(query);
+    return JSON.stringify(value).toLowerCase().includes(query);
+  }
+
+  function escapeCsvValue(value: string) {
+    if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  function downloadCsv(filename: string, rows: string[][]) {
+    const content = rows.map((row) => row.map((cell) => escapeCsvValue(String(cell ?? ''))).join(',')).join('\n');
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function parseCsv(text: string) {
+    const rows: string[][] = [];
+    let current = '';
+    let inQuotes = false;
+    let row: string[] = [];
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i];
+      const next = text[i + 1];
+      if (char === '"' && inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+        continue;
+      }
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === ',' && !inQuotes) {
+        row.push(current);
+        current = '';
+        continue;
+      }
+      if ((char === '\n' || char === '\r') && !inQuotes) {
+        if (current !== '' || row.length > 0) {
+          row.push(current);
+          rows.push(row);
+          row = [];
+          current = '';
+        }
+        continue;
+      }
+      current += char;
+    }
+    if (current !== '' || row.length > 0) {
+      row.push(current);
+      rows.push(row);
+    }
+    return rows;
+  }
+
   useEffect(() => {
     if (token && view === 'feishu') {
       void loadFeishuRecords({ resetPage: true });
@@ -1114,6 +1563,12 @@ function App() {
       void loadFeishuRecords();
     }
   }, [feishuPageToken]);
+
+  useEffect(() => {
+    if (token && view === 'schedule') {
+      void loadScheduleRecords();
+    }
+  }, [token, view, selectedProjectName]);
 
 
   const filteredFeishuRecords = feishuRecords;
@@ -1159,6 +1614,7 @@ function App() {
         <button className={view === 'requirements' ? 'active' : ''} onClick={() => setView('requirements')}>[ 需求管理 ]</button>
         <button className={view === 'costs' ? 'active' : ''} onClick={() => setView('costs')}>[ 成本监控 ]</button>
         <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>[ 进度同步 ]</button>
+        <button className={view === 'global' ? 'active' : ''} onClick={() => setView('global')}>[ 全局搜索 ]</button>
         <button className={view === 'notifications' ? 'active' : ''} onClick={() => setView('notifications')}>
           [ 系统预警 ]{notifications.filter((n) => !n.readAt).length > 0 ? ` [${notifications.filter((n) => !n.readAt).length}]` : ''}
         </button>
@@ -1178,39 +1634,203 @@ function App() {
           </div>
         </div>
 
-        <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
-          <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
-            <div>
-              <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block', fontFamily: 'Orbitron' }}>目标工作区</label>
-              <select
-                value={selectedProjectId ?? ''}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (!value) {
-                    void refreshAll(null);
-                    return;
-                  }
-                  void refreshAll(Number(value));
-                }}
-              >
-                {projects.length === 0 && <option value="">暂无项目</option>}
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} (#{project.id})
-                  </option>
-                ))}
-              </select>
+        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && (
+          <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
+            <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
+              <div>
+                <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block', fontFamily: 'Orbitron' }}>目标工作区</label>
+                <select
+                  value={selectedProjectId ?? ''}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) {
+                      void refreshAll(null);
+                      return;
+                    }
+                    void refreshAll(Number(value));
+                  }}
+                >
+                  {projects.length === 0 && <option value="">暂无项目</option>}
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} (#{project.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--text-main)', marginTop: 15, borderTop: '1px solid rgba(0, 243, 255, 0.1)', paddingTop: 10 }}>
+              <span style={{ color: 'var(--text-muted)', marginRight: 10 }}>当前项目：</span> <strong style={{ color: 'var(--neon-blue)', letterSpacing: 1 }}>{selectedProjectName}</strong>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--text-main)', marginTop: 15, borderTop: '1px solid rgba(0, 243, 255, 0.1)', paddingTop: 10 }}>
-            <span style={{ color: 'var(--text-muted)', marginRight: 10 }}>当前项目：</span> <strong style={{ color: 'var(--neon-blue)', letterSpacing: 1 }}>{selectedProjectName}</strong>
+        )}
+
+        {view === 'global' && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="form" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
+              <input
+                placeholder="全局搜索（项目/需求/成本/工时/任务/里程碑/飞书）"
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+              />
+              <button className="btn" type="button" onClick={() => setGlobalSearch('')}>清空</button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {view === 'global' && globalSearchResults && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div>
+              {globalSearchResults.counts.projects > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>项目 ({globalSearchResults.counts.projects})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>ID</th><th>名称</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.projects.map((p) => (
+                        <tr key={`g-p-${p.id}`}>
+                          <td>{p.id}</td>
+                          <td>{p.name}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.requirements > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>需求 ({globalSearchResults.counts.requirements})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>ID</th><th>标题</th><th>状态</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.requirements.map((r) => (
+                        <tr key={`g-r-${r.id}`}>
+                          <td>{r.id}</td>
+                          <td>{r.title}</td>
+                          <td>{r.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.costs > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>成本 ({globalSearchResults.counts.costs})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>ID</th><th>类型</th><th>金额</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.costs.map((c) => (
+                        <tr key={`g-c-${c.id}`}>
+                          <td>{c.id}</td>
+                          <td>{c.type === 'labor' ? '人力' : c.type === 'outsource' ? '外包' : c.type === 'cloud' ? '云资源' : c.type}</td>
+                          <td>{c.amount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.worklogs > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>工时 ({globalSearchResults.counts.worklogs})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>ID</th><th>任务</th><th>日期</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.worklogs.map((w) => (
+                        <tr key={`g-w-${w.id}`}>
+                          <td>{w.id}</td>
+                          <td>{w.taskTitle || '-'}</td>
+                          <td>{w.workedOn}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.tasks > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>任务 ({globalSearchResults.counts.tasks})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>任务ID</th><th>任务名称</th><th>状态</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.tasks.map((t) => (
+                        <tr key={`g-t-${t.recordId}`}>
+                          <td>{t.任务ID || '-'}</td>
+                          <td>{t.任务名称 || '-'}</td>
+                          <td>{t.状态 || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.milestones > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <strong>里程碑 ({globalSearchResults.counts.milestones})</strong>
+                  <table className="table" style={{ marginTop: 6 }}>
+                    <thead><tr><th>里程碑ID</th><th>名称</th><th>计划日期</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.milestones.map((m) => (
+                        <tr key={`g-m-${m.recordId}`}>
+                          <td>{m.任务ID || '-'}</td>
+                          <td>{m.任务名称 || '-'}</td>
+                          <td>{m.开始时间 || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {globalSearchResults.counts.feishu > 0 && (
+                <div>
+                  <strong>飞书记录 ({globalSearchResults.counts.feishu})</strong>
+                  <table className="table table-wrap" style={{ marginTop: 6 }}>
+                    <thead><tr><th>任务ID</th><th>任务名称</th><th>负责人</th><th>状态</th><th>所属项目</th><th>风险等级</th></tr></thead>
+                    <tbody>
+                      {globalSearchResults.feishu.map((f) => {
+                        const form = mapRecordToForm(f);
+                        return (
+                          <tr key={`g-f-${f.record_id}`}>
+                            <td>{form.任务ID || '-'}</td>
+                            <td>{form.任务名称 || '-'}</td>
+                            <td>{form.负责人 || '-'}</td>
+                            <td>{form.状态 || '-'}</td>
+                            <td>{form.所属项目 || '-'}</td>
+                            <td>{form.风险等级 || '-'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              {Object.values(globalSearchResults.counts).every((count) => count === 0) && (
+                <div style={{ color: 'var(--text-muted)' }}>没有匹配结果。</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {loading && <p>Loading...</p>}
         {message && <p>{message}</p>}
         {error && <p className="warn">{error}</p>}
-        {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
+        {lastRetry && (
+          <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid var(--neon-alert)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <span className="warn">上次操作失败：{lastRetry.label}</span>
+              <button className="btn" type="button" onClick={() => void handleRetry()} disabled={retrying}>
+                {retrying ? '重试中...' : '重试'}
+              </button>
+            </div>
+          </div>
+        )}
+        {!canWrite && <div className="card warn" style={{ marginBottom: 12 }}>当前角色为只读（viewer），新增与修改操作已禁用。</div>}
+        {canWrite && (
+          <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
+            提示：双击单元格进入编辑，Enter 保存，ESC 取消。
+          </div>
+        )}
 
         {view === 'dashboard' && (
           <DashboardView
@@ -1232,12 +1852,16 @@ function App() {
           <RequirementsView
             canWrite={canWrite}
             requirements={requirements}
+            selectedRequirementIds={selectedRequirementIds}
             onSubmitRequirement={submitRequirement}
             requirementEdit={requirementEdit}
             onSaveRequirement={(req) => void saveInlineRequirementEdit(req)}
             onReviewRequirement={(id, decision) => void reviewRequirementAction(id, decision)}
             onMarkRequirementChanged={(req) => void markRequirementChanged(req)}
             onDeleteRequirement={(req) => void deleteRequirement(req)}
+            onDeleteSelectedRequirements={() => void deleteSelectedRequirements()}
+            onToggleRequirementSelection={toggleRequirementSelection}
+            onSelectAllRequirements={(ids, checked) => setSelectedRequirementIds(checked ? ids : [])}
             onInlineKeyDown={handleInlineKeyDown}
           />
         )}
@@ -1248,6 +1872,7 @@ function App() {
             costSummary={costSummary}
             costEntries={costEntries}
             worklogs={worklogs}
+            selectedCostEntryIds={selectedCostEntryIds}
             onSubmitCost={submitCost}
             onSubmitWorklog={submitWorklog}
             costEdit={costEdit}
@@ -1255,6 +1880,9 @@ function App() {
             onSaveCost={(entry) => void saveInlineCostEdit(entry)}
             onSaveWorklog={(worklog) => void saveInlineWorklogEdit(worklog)}
             onDeleteCost={(entry) => void deleteCostEntry(entry)}
+            onDeleteSelectedCostEntries={() => void deleteSelectedCostEntries()}
+            onToggleCostEntrySelection={toggleCostEntrySelection}
+            onSelectAllCostEntries={(ids, checked) => setSelectedCostEntryIds(checked ? ids : [])}
             onDeleteWorklog={(worklog) => void deleteWorklog(worklog)}
             onInlineKeyDown={handleInlineKeyDown}
           />
@@ -1263,16 +1891,16 @@ function App() {
         {view === 'schedule' && (
           <ScheduleView
             canWrite={canWrite}
-            schedule={schedule}
-            riskText={riskText}
+            tasks={scheduleTasks}
+            milestones={scheduleMilestones}
+            scheduleLoading={scheduleLoading}
+            scheduleError={scheduleError}
+            riskText={scheduleRiskText}
             onSubmitTask={submitTask}
             onSubmitMilestone={submitMilestone}
-            taskEdit={taskEdit}
-            milestoneEdit={milestoneEdit}
-            onSaveTask={(task) => void saveInlineTaskEdit(task)}
-            onSaveMilestone={(milestone) => void saveInlineMilestoneEdit(milestone)}
-            onDeleteTask={(task) => void deleteTask(task)}
-            onDeleteMilestone={(milestone) => void deleteMilestone(milestone)}
+            scheduleEdit={scheduleEdit}
+            onSaveSchedule={(row) => void saveInlineScheduleEdit(row)}
+            onDeleteSchedule={(row) => void deleteScheduleRow(row)}
             onInlineKeyDown={handleInlineKeyDown}
           />
         )}
@@ -1280,7 +1908,6 @@ function App() {
         {view === 'feishu' && (
           <FeishuView
             canWrite={canWrite}
-            projects={projects}
             feishuForm={feishuForm}
             feishuMessage={feishuMessage}
             feishuError={feishuError}
@@ -1288,6 +1915,8 @@ function App() {
             feishuRecords={feishuRecords}
             filteredFeishuRecords={filteredFeishuRecords}
             feishuProjectOptions={feishuProjectOptions}
+            selectedFeishuIds={selectedFeishuIds}
+            visibleColumns={feishuVisibleColumns}
             feishuSearch={feishuSearch}
             feishuSearchFields={feishuSearchFields}
             feishuFilterProject={feishuFilterProject}
@@ -1307,9 +1936,15 @@ function App() {
             onSetFeishuFilterRisk={setFeishuFilterRisk}
             onSetFeishuPageSize={setFeishuPageSize}
             onLoadFeishu={() => void loadFeishuRecords({ resetPage: true })}
+            onExportFeishu={exportFeishuCsv}
+            onImportFeishu={(file) => void importFeishuCsv(file)}
+            onToggleColumn={toggleFeishuColumn}
             onPrevPage={goFeishuPrevPage}
             onNextPage={goFeishuNextPage}
             onRemoveFeishu={(record) => void removeFeishuRecord(record)}
+            onDeleteSelectedFeishu={() => void removeSelectedFeishuRecords()}
+            onToggleFeishuSelection={toggleFeishuSelection}
+            onSelectAllFeishu={(ids, checked) => setSelectedFeishuIds(checked ? ids : [])}
             onStartInlineEdit={startInlineFeishuEdit}
             onUpdateRecordDraft={updateFeishuRecordDraft}
             onFinalizeInlineEdit={finalizeInlineFeishuEdit}
@@ -1333,7 +1968,12 @@ function App() {
         )}
 
         {view === 'notifications' && (
-          <NotificationsView notifications={notifications} onMarkRead={(id) => void markNotificationRead(id)} />
+          <NotificationsView
+            notifications={notifications}
+            onMarkRead={(id) => void markNotificationRead(id)}
+            settings={notificationSettings}
+            onUpdateSettings={setNotificationSettings}
+          />
         )}
 
         {view === 'audit' && canWrite && (

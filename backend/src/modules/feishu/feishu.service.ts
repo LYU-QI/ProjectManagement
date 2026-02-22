@@ -48,6 +48,15 @@ export class FeishuService {
     }
   }
 
+  private get multiSelectFields() {
+    const raw = process.env.FEISHU_MULTI_SELECT_FIELDS;
+    if (!raw) return [];
+    return raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
   private requireEnv(value: string | undefined, name: string) {
     if (!value) {
       throw new Error(`Missing env var: ${name}`);
@@ -152,6 +161,13 @@ export class FeishuService {
     return value;
   }
 
+  private normalizeMultiSelect(value: unknown) {
+    if (value === null || value === undefined || value === '') return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') return [value];
+    return value;
+  }
+
   private extractAssigneeText(value: unknown) {
     if (Array.isArray(value)) {
       const names = value
@@ -171,12 +187,18 @@ export class FeishuService {
   }
 
   private normalizeFields(fields: Record<string, unknown>) {
+    const multiSelect = new Set(this.multiSelectFields);
+    const withMultiSelect = Object.fromEntries(
+      Object.entries(fields).map(([key, value]) => (
+        multiSelect.has(key) ? [key, this.normalizeMultiSelect(value)] : [key, value]
+      ))
+    );
     return {
-      ...fields,
-      负责人: this.normalizeAssignee(fields['负责人']),
-      开始时间: this.normalizeDate(fields['开始时间']),
-      截止时间: this.normalizeDate(fields['截止时间']),
-      进度: this.normalizeProgress(fields['进度'])
+      ...withMultiSelect,
+      负责人: this.normalizeAssignee(withMultiSelect['负责人']),
+      开始时间: this.normalizeDate(withMultiSelect['开始时间']),
+      截止时间: this.normalizeDate(withMultiSelect['截止时间']),
+      进度: this.normalizeProgress(withMultiSelect['进度'])
     };
   }
 

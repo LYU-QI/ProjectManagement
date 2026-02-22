@@ -1,11 +1,12 @@
 import type { FormEvent, KeyboardEvent } from 'react';
 import type { FeishuRecord } from '../api/feishu';
-import type { FeishuFormState, ProjectItem } from '../types';
+import type { FeishuFormState } from '../types';
 import { FEISHU_FIELDS } from '../feishuConfig';
+import TableToolbar from '../components/TableToolbar';
+import PaginationBar from '../components/PaginationBar';
 
 type Props = {
   canWrite: boolean;
-  projects: ProjectItem[];
   feishuForm: FeishuFormState;
   feishuMessage: string;
   feishuError: string;
@@ -13,6 +14,8 @@ type Props = {
   feishuRecords: FeishuRecord[];
   filteredFeishuRecords: FeishuRecord[];
   feishuProjectOptions: string[];
+  selectedFeishuIds: string[];
+  visibleColumns: Array<keyof FeishuFormState>;
   feishuSearch: string;
   feishuSearchFields: string;
   feishuFilterProject: string;
@@ -32,9 +35,15 @@ type Props = {
   onSetFeishuFilterRisk: (value: string) => void;
   onSetFeishuPageSize: (value: number) => void;
   onLoadFeishu: () => void;
+  onExportFeishu: () => void;
+  onImportFeishu: (file: File) => void;
+  onToggleColumn: (key: keyof FeishuFormState, checked: boolean) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
   onRemoveFeishu: (record: FeishuRecord) => void;
+  onDeleteSelectedFeishu: () => void;
+  onToggleFeishuSelection: (id: string, checked: boolean) => void;
+  onSelectAllFeishu: (ids: string[], checked: boolean) => void;
   onStartInlineEdit: (record: FeishuRecord, field?: keyof FeishuFormState) => void;
   onUpdateRecordDraft: (field: keyof FeishuFormState, value: string) => void;
   onFinalizeInlineEdit: (record: FeishuRecord) => void;
@@ -54,7 +63,6 @@ type Props = {
 
 export default function FeishuView({
   canWrite,
-  projects,
   feishuForm,
   feishuMessage,
   feishuError,
@@ -62,6 +70,8 @@ export default function FeishuView({
   feishuRecords,
   filteredFeishuRecords,
   feishuProjectOptions,
+  selectedFeishuIds,
+  visibleColumns,
   feishuSearch,
   feishuSearchFields,
   feishuFilterProject,
@@ -81,9 +91,15 @@ export default function FeishuView({
   onSetFeishuFilterRisk,
   onSetFeishuPageSize,
   onLoadFeishu,
+  onExportFeishu,
+  onImportFeishu,
+  onToggleColumn,
   onPrevPage,
   onNextPage,
   onRemoveFeishu,
+  onDeleteSelectedFeishu,
+  onToggleFeishuSelection,
+  onSelectAllFeishu,
   onStartInlineEdit,
   onUpdateRecordDraft,
   onFinalizeInlineEdit,
@@ -100,10 +116,56 @@ export default function FeishuView({
   formatProgressValue,
   getAssigneeName
 }: Props) {
+  const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
   return (
     <div>
       <div className="card" style={{ marginBottom: 12 }}>
         <h3>飞书多维表格</h3>
+        <div style={{ marginTop: 10 }}>
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>字段配置（只读）</summary>
+            <table className="table" style={{ marginTop: 10 }}>
+              <thead>
+                <tr>
+                  <th>字段</th>
+                  <th>类型</th>
+                  <th>选项</th>
+                </tr>
+              </thead>
+              <tbody>
+                {FEISHU_FIELDS.map((field) => {
+                  const options = field.key === '所属项目'
+                    ? feishuProjectOptions
+                    : field.options ?? [];
+                  return (
+                    <tr key={String(field.key)}>
+                      <td>{field.label}</td>
+                      <td>{field.type}</td>
+                      <td>{options.length > 0 ? options.join('、') : '-'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </details>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>列显示配置</summary>
+            <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginTop: 8 }}>
+              {FEISHU_FIELDS.map((field) => (
+                <label key={String(field.key)} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.includes(field.key)}
+                    onChange={(e) => onToggleColumn(field.key, e.target.checked)}
+                  />
+                  <span>{field.label}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+        </div>
         {canWrite && (
           <form className="form" onSubmit={onSubmitFeishu} style={{ marginTop: 8 }}>
             {FEISHU_FIELDS.map((field) => {
@@ -146,7 +208,7 @@ export default function FeishuView({
       </div>
 
       <div className="card">
-        <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 8 }}>
+        <TableToolbar>
           <input
             placeholder="搜索关键词"
             value={feishuSearch}
@@ -186,13 +248,41 @@ export default function FeishuView({
             ))}
           </select>
           <button className="btn" type="button" onClick={onLoadFeishu}>查询/刷新</button>
-        </div>
+          <button className="btn" type="button" onClick={onExportFeishu}>导出CSV</button>
+          <label className="btn" style={{ display: 'inline-flex', alignItems: 'center' }}>
+            导入CSV
+            <input
+              type="file"
+              accept=".csv"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImportFeishu(file);
+                e.currentTarget.value = '';
+              }}
+            />
+          </label>
+          {canWrite && (
+            <button className="btn" type="button" disabled={selectedFeishuIds.length === 0} onClick={onDeleteSelectedFeishu}>
+              批量删除 ({selectedFeishuIds.length})
+            </button>
+          )}
+        </TableToolbar>
 
         {feishuLoading && <p>Loading...</p>}
         <table className="table table-wrap">
           <thead>
             <tr>
-              {FEISHU_FIELDS.map((field) => (
+              {canWrite && (
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={filteredFeishuRecords.length > 0 && selectedFeishuIds.length === filteredFeishuRecords.length}
+                    onChange={(e) => onSelectAllFeishu(filteredFeishuRecords.map((r) => r.record_id), e.target.checked)}
+                  />
+                </th>
+              )}
+              {visibleFields.map((field) => (
                 <th key={String(field.key)}>{field.label}</th>
               ))}
               {canWrite && <th>操作</th>}
@@ -208,7 +298,16 @@ export default function FeishuView({
 
               return (
                 <tr key={record.record_id} className={isEditing ? 'editing-row' : ''}>
-                  {FEISHU_FIELDS.map((field) => {
+                  {canWrite && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedFeishuIds.includes(record.record_id)}
+                        onChange={(e) => onToggleFeishuSelection(record.record_id, e.target.checked)}
+                      />
+                    </td>
+                  )}
+                  {visibleFields.map((field) => {
                     const cellValue = rowDraft[field.key];
                     const isCellEditing = isEditing && feishuEditingField === field.key;
                     const displayValue = (() => {
@@ -288,13 +387,13 @@ export default function FeishuView({
           </tbody>
         </table>
 
-        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-          <button className="btn" type="button" onClick={onPrevPage} disabled={feishuPageStack.length === 0}>上一页</button>
-          <button className="btn" type="button" onClick={onNextPage} disabled={!feishuHasMore}>下一页</button>
-          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>
-            记录数: {filteredFeishuRecords.length} / {feishuRecords.length}
-          </span>
-        </div>
+        <PaginationBar
+          onPrev={onPrevPage}
+          onNext={onNextPage}
+          hasPrev={feishuPageStack.length > 0}
+          hasNext={feishuHasMore}
+          summary={`记录数: ${filteredFeishuRecords.length} / ${feishuRecords.length}`}
+        />
       </div>
     </div>
   );

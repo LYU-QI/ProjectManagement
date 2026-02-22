@@ -22,9 +22,6 @@ class CreateWorklogDto {
 
   @IsNotEmpty()
   workedOn!: string;
-
-  @IsOptional()
-  note?: string;
 }
 
 class UpdateWorklogDto {
@@ -43,9 +40,6 @@ class UpdateWorklogDto {
   @IsOptional()
   @IsNotEmpty()
   workedOn?: string;
-
-  @IsOptional()
-  note?: string;
 }
 
 @Controller('api/v1/worklogs')

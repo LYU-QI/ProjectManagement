@@ -133,8 +133,7 @@ async function main() {
         taskTitle: 'API Contract Finalization',
         hours: 6,
         hourlyRate: 300,
-        workedOn: '2026-02-21',
-        note: 'Kickoff worklog seed'
+        workedOn: '2026-02-21'
       }
     });
   }

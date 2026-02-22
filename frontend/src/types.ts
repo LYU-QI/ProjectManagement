@@ -11,6 +11,7 @@ export type FeishuFormState = {
   是否阻塞: string;
   阻塞原因: string;
   风险等级: string;
+  里程碑: string;
 };
 
 export interface DashboardOverview {
@@ -80,7 +81,6 @@ export interface Worklog {
   hours: number;
   hourlyRate: number;
   workedOn: string;
-  note?: string;
 }
 
 export interface NotificationItem {

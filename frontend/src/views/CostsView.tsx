@@ -17,6 +17,7 @@ type Props = {
   costSummary: CostSummary | null;
   costEntries: CostEntryItem[];
   worklogs: Worklog[];
+  selectedCostEntryIds: number[];
   onSubmitCost: (e: FormEvent<HTMLFormElement>) => void;
   onSubmitWorklog: (e: FormEvent<HTMLFormElement>) => void;
   costEdit: InlineEditState<CostEntryItem, number>;
@@ -24,6 +25,9 @@ type Props = {
   onSaveCost: (entry: CostEntryItem) => void;
   onSaveWorklog: (worklog: Worklog) => void;
   onDeleteCost: (entry: CostEntryItem) => void;
+  onDeleteSelectedCostEntries: () => void;
+  onToggleCostEntrySelection: (id: number, checked: boolean) => void;
+  onSelectAllCostEntries: (ids: number[], checked: boolean) => void;
   onDeleteWorklog: (worklog: Worklog) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
 };
@@ -33,6 +37,7 @@ export default function CostsView({
   costSummary,
   costEntries,
   worklogs,
+  selectedCostEntryIds,
   onSubmitCost,
   onSubmitWorklog,
   costEdit,
@@ -40,15 +45,29 @@ export default function CostsView({
   onSaveCost,
   onSaveWorklog,
   onDeleteCost,
+  onDeleteSelectedCostEntries,
+  onToggleCostEntrySelection,
+  onSelectAllCostEntries,
   onDeleteWorklog,
   onInlineKeyDown
 }: Props) {
+  const formatCostType = (value: string) => {
+    if (value === 'labor') return '人力';
+    if (value === 'outsource') return '外包';
+    if (value === 'cloud') return '云资源';
+    return value;
+  };
+
   return (
     <div>
       {canWrite && (
         <>
           <form className="form" onSubmit={onSubmitCost}>
-            <select name="type" defaultValue="labor"><option value="labor">labor</option><option value="outsource">outsource</option><option value="cloud">cloud</option></select>
+            <select name="type" defaultValue="labor">
+              <option value="labor">人力</option>
+              <option value="outsource">外包</option>
+              <option value="cloud">云资源</option>
+            </select>
             <input name="amount" type="number" step="0.01" placeholder="金额" required />
             <input name="occurredOn" type="date" required />
             <input name="note" placeholder="备注" />
@@ -59,7 +78,6 @@ export default function CostsView({
             <input name="hours" type="number" step="0.5" placeholder="工时(小时)" required />
             <input name="hourlyRate" type="number" step="0.01" placeholder="时薪" required />
             <input name="workedOn" type="date" required />
-            <input name="note" placeholder="备注" />
             <button className="btn" type="submit">新增工时</button>
           </form>
         </>
@@ -71,8 +89,28 @@ export default function CostsView({
       </div>
       <div className="card" style={{ marginTop: 12 }}>
         <h3>成本条目</h3>
+        {canWrite && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button className="btn" type="button" disabled={selectedCostEntryIds.length === 0} onClick={onDeleteSelectedCostEntries}>
+              批量删除 ({selectedCostEntryIds.length})
+            </button>
+          </div>
+        )}
         <table className="table">
-          <thead><tr><th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
+          <thead>
+            <tr>
+              {canWrite && (
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={costEntries.length > 0 && selectedCostEntryIds.length === costEntries.length}
+                    onChange={(e) => onSelectAllCostEntries(costEntries.map((c) => c.id), e.target.checked)}
+                  />
+                </th>
+              )}
+              <th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}
+            </tr>
+          </thead>
           <tbody>
             {costEntries.map((entry) => {
               const isEditing = costEdit.editingId === entry.id;
@@ -80,6 +118,15 @@ export default function CostsView({
               const isDirty = isEditing && costEdit.hasDirty(entry);
               return (
                 <tr key={entry.id} className={isEditing ? 'editing-row' : ''}>
+                  {canWrite && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedCostEntryIds.includes(entry.id)}
+                        onChange={(e) => onToggleCostEntrySelection(entry.id, e.target.checked)}
+                      />
+                    </td>
+                  )}
                   <td>{entry.id}</td>
                   <td
                     className={isEditing && costEdit.editingField === 'type' ? 'editing' : ''}
@@ -98,7 +145,7 @@ export default function CostsView({
                         ))}
                       </select>
                     ) : (
-                      rowDraft.type
+                      formatCostType(String(rowDraft.type))
                     )}
                   </td>
                   <td
@@ -173,7 +220,7 @@ export default function CostsView({
       <div className="card" style={{ marginTop: 12 }}>
         <h3>工时明细</h3>
         <table className="table">
-          <thead><tr><th>日期</th><th>任务</th><th>工时</th><th>时薪</th><th>成本</th><th>备注</th>{canWrite && <th>操作</th>}</tr></thead>
+          <thead><tr><th>日期</th><th>任务</th><th>工时</th><th>时薪</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
           <tbody>
             {worklogs.map((w) => {
               const isEditing = worklogEdit.editingId === w.id;
@@ -254,22 +301,6 @@ export default function CostsView({
                     )}
                   </td>
                   <td>{cost}</td>
-                  <td
-                    className={isEditing && worklogEdit.editingField === 'note' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'note')}
-                  >
-                    {isEditing && worklogEdit.editingField === 'note' ? (
-                      <input
-                        data-worklog-edit={`${w.id}-note`}
-                        value={rowDraft.note ?? ''}
-                        onChange={(e) => worklogEdit.updateDraft('note', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
-                        onBlur={() => worklogEdit.finalize(w)}
-                      />
-                    ) : (
-                      rowDraft.note || '-'
-                    )}
-                  </td>
                   {canWrite && (
                     <td style={{ display: 'flex', gap: 6 }}>
                       {isEditing && isDirty ? (

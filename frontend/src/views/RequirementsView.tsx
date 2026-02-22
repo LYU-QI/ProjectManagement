@@ -15,24 +15,32 @@ type InlineEditState<T, Id> = {
 type Props = {
   canWrite: boolean;
   requirements: Requirement[];
+  selectedRequirementIds: number[];
   onSubmitRequirement: (e: FormEvent<HTMLFormElement>) => void;
   requirementEdit: InlineEditState<Requirement, number>;
   onSaveRequirement: (req: Requirement) => void;
   onReviewRequirement: (id: number, decision: 'approved' | 'rejected') => void;
   onMarkRequirementChanged: (req: Requirement) => void;
   onDeleteRequirement: (req: Requirement) => void;
+  onDeleteSelectedRequirements: () => void;
+  onToggleRequirementSelection: (id: number, checked: boolean) => void;
+  onSelectAllRequirements: (ids: number[], checked: boolean) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
 };
 
 export default function RequirementsView({
   canWrite,
   requirements,
+  selectedRequirementIds,
   onSubmitRequirement,
   requirementEdit,
   onSaveRequirement,
   onReviewRequirement,
   onMarkRequirementChanged,
   onDeleteRequirement,
+  onDeleteSelectedRequirements,
+  onToggleRequirementSelection,
+  onSelectAllRequirements,
   onInlineKeyDown
 }: Props) {
   return (
@@ -46,8 +54,29 @@ export default function RequirementsView({
         </form>
       )}
       <div className="card" style={{ marginTop: 12 }}>
+        {canWrite && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h3 style={{ margin: 0 }}>需求列表</h3>
+            <button className="btn" type="button" disabled={selectedRequirementIds.length === 0} onClick={onDeleteSelectedRequirements}>
+              批量删除 ({selectedRequirementIds.length})
+            </button>
+          </div>
+        )}
         <table className="table">
-          <thead><tr><th>ID</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}</tr></thead>
+          <thead>
+            <tr>
+              {canWrite && (
+                <th>
+                  <input
+                    type="checkbox"
+                    checked={requirements.length > 0 && selectedRequirementIds.length === requirements.length}
+                    onChange={(e) => onSelectAllRequirements(requirements.map((r) => r.id), e.target.checked)}
+                  />
+                </th>
+              )}
+              <th>ID</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}
+            </tr>
+          </thead>
           <tbody>
             {requirements.map((r) => {
               const isEditing = requirementEdit.editingId === r.id;
@@ -55,6 +84,15 @@ export default function RequirementsView({
               const isDirty = isEditing && requirementEdit.hasDirty(r);
               return (
                 <tr key={r.id} className={isEditing ? 'editing-row' : ''}>
+                  {canWrite && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={selectedRequirementIds.includes(r.id)}
+                        onChange={(e) => onToggleRequirementSelection(r.id, e.target.checked)}
+                      />
+                    </td>
+                  )}
                   <td>{r.id}</td>
                   <td
                     className={isEditing && requirementEdit.editingField === 'title' ? 'editing' : ''}

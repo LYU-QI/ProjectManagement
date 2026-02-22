@@ -1,5 +1,8 @@
+import { useMemo, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import type { ScheduleData } from '../types';
+import type { FeishuFormState } from '../types';
+
+type ScheduleRow = FeishuFormState & { recordId: string };
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -14,246 +17,253 @@ type InlineEditState<T, Id> = {
 
 type Props = {
   canWrite: boolean;
-  schedule: ScheduleData | null;
+  tasks: ScheduleRow[];
+  milestones: ScheduleRow[];
+  scheduleLoading: boolean;
+  scheduleError: string;
   riskText: string;
   onSubmitTask: (e: FormEvent<HTMLFormElement>) => void;
   onSubmitMilestone: (e: FormEvent<HTMLFormElement>) => void;
-  taskEdit: InlineEditState<ScheduleData['tasks'][number], number>;
-  milestoneEdit: InlineEditState<ScheduleData['milestones'][number], number>;
-  onSaveTask: (task: ScheduleData['tasks'][number]) => void;
-  onSaveMilestone: (milestone: ScheduleData['milestones'][number]) => void;
-  onDeleteTask: (task: ScheduleData['tasks'][number]) => void;
-  onDeleteMilestone: (milestone: ScheduleData['milestones'][number]) => void;
+  scheduleEdit: InlineEditState<ScheduleRow, string>;
+  onSaveSchedule: (row: ScheduleRow) => void;
+  onDeleteSchedule: (row: ScheduleRow) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
 };
 
+function toDate(value: string) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toDateKey(value: string) {
+  return value || '';
+}
+
+function formatProgress(value: string) {
+  if (!value) return '-';
+  const num = Number(value);
+  if (!Number.isFinite(num)) return value;
+  const percent = num <= 1 ? num * 100 : num;
+  const rounded = Number.isInteger(percent) ? percent : Number(percent.toFixed(2));
+  return `${rounded}%`;
+}
+
 export default function ScheduleView({
   canWrite,
-  schedule,
+  tasks,
+  milestones,
+  scheduleLoading,
+  scheduleError,
   riskText,
   onSubmitTask,
   onSubmitMilestone,
-  taskEdit,
-  milestoneEdit,
-  onSaveTask,
-  onSaveMilestone,
-  onDeleteTask,
-  onDeleteMilestone,
+  scheduleEdit,
+  onSaveSchedule,
+  onDeleteSchedule,
   onInlineKeyDown
 }: Props) {
+  const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar'>('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+
+  const ganttData = useMemo(() => {
+    const rows = [
+      ...tasks.map((row) => ({ row, kind: 'task' as const })),
+      ...milestones.map((row) => ({ row, kind: 'milestone' as const }))
+    ];
+
+    const dateRanges = rows
+      .map(({ row }) => {
+        const start = toDate(row.开始时间);
+        const end = toDate(row.截止时间) ?? start;
+        return start && end ? { start, end } : null;
+      })
+      .filter(Boolean) as Array<{ start: Date; end: Date }>;
+
+    if (dateRanges.length === 0) {
+      return { days: [] as string[], rows: [] as typeof rows };
+    }
+
+    const minStart = dateRanges.reduce((min, item) => (item.start < min ? item.start : min), dateRanges[0].start);
+    const maxEnd = dateRanges.reduce((max, item) => (item.end > max ? item.end : max), dateRanges[0].end);
+
+    const days: string[] = [];
+    const cursor = new Date(minStart);
+    while (cursor <= maxEnd) {
+      days.push(cursor.toISOString().slice(0, 10));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    return { days, rows };
+  }, [tasks, milestones]);
+
+  const calendarDays = useMemo(() => {
+    const year = calendarMonth.getFullYear();
+    const month = calendarMonth.getMonth();
+    const first = new Date(year, month, 1);
+    const start = new Date(first);
+    start.setDate(first.getDate() - first.getDay());
+
+    return Array.from({ length: 42 }, (_, idx) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + idx);
+      return date;
+    });
+  }, [calendarMonth]);
+
+  const calendarItems = useMemo(() => {
+    const items = [...tasks, ...milestones].map((row) => ({
+      id: row.recordId,
+      name: row.任务名称 || row.任务ID || '未命名',
+      date: toDateKey(row.开始时间),
+      kind: row.里程碑 === '是' ? '里程碑' : '任务'
+    }));
+
+    const grouped: Record<string, Array<{ id: string; name: string; kind: string }>> = {};
+    for (const item of items) {
+      if (!item.date) continue;
+      if (!grouped[item.date]) grouped[item.date] = [];
+      grouped[item.date].push({ id: item.id, name: item.name, kind: item.kind });
+    }
+    return grouped;
+  }, [tasks, milestones]);
+
   return (
     <div>
-      {canWrite && (
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <h3>进度同步视图</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className={viewMode === 'list' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
+            <button className={viewMode === 'gantt' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
+            <button className={viewMode === 'calendar' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
+          </div>
+        </div>
+        <p style={{ marginTop: 6, color: 'var(--text-muted)' }}>风险等级: {riskText}</p>
+        {scheduleLoading && <p>Loading...</p>}
+        {scheduleError && <p className="warn">{scheduleError}</p>}
+      </div>
+
+      {viewMode === 'list' && (
         <>
-          <form className="form" onSubmit={onSubmitTask}>
-            <input name="title" placeholder="任务标题" required />
-            <input name="assignee" placeholder="负责人" required />
-            <select name="status" defaultValue="todo"><option value="todo">todo</option><option value="in_progress">in_progress</option><option value="blocked">blocked</option><option value="done">done</option></select>
-            <input name="plannedStart" type="date" required />
-            <input name="plannedEnd" type="date" required />
-            <button className="btn" type="submit">新增任务</button>
-          </form>
-          <form className="form" onSubmit={onSubmitMilestone} style={{ marginTop: 10 }}>
-            <input name="name" placeholder="里程碑名称" required />
-            <input name="plannedDate" type="date" required />
-            <button className="btn" type="submit">新增里程碑</button>
-          </form>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>进度同步仅展示飞书数据，请在飞书记录模块新增或编辑。</p>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3>任务列表</h3>
+            <table className="table">
+              <thead><tr><th>任务ID</th><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
+              <tbody>
+                {tasks.map((t) => {
+                  return (
+                    <tr key={t.recordId}>
+                      <td>{t.任务ID}</td>
+                      <td>{t.任务名称}</td>
+                      <td>{t.负责人 || '-'}</td>
+                      <td>{t.状态}</td>
+                      <td>{t.开始时间}</td>
+                      <td>{t.截止时间}</td>
+                      <td>{formatProgress(t.进度)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3>里程碑</h3>
+            <table className="table">
+              <thead><tr><th>里程碑ID</th><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
+              <tbody>
+                {milestones.map((m) => {
+                  return (
+                    <tr key={m.recordId}>
+                      <td>{m.任务ID}</td>
+                      <td>{m.任务名称}</td>
+                      <td>{m.负责人 || '-'}</td>
+                      <td>{m.开始时间}</td>
+                      <td>{m.截止时间 || '-'}</td>
+                      <td>{m.状态}</td>
+                      <td>{formatProgress(m.进度)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3>风险等级: {riskText}</h3>
-        <table className="table">
-          <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th>{canWrite && <th>操作</th>}</tr></thead>
-          <tbody>
-            {schedule?.tasks.map((t) => {
-              const isEditing = taskEdit.editingId === t.id;
-              const rowDraft = isEditing ? (taskEdit.draft ?? t) : t;
-              const isDirty = isEditing && taskEdit.hasDirty(t);
+
+      {viewMode === 'gantt' && (
+        <div className="card">
+          {ganttData.days.length === 0 ? (
+            <p className="warn">暂无可用日期数据，无法生成甘特图。</p>
+          ) : (
+            <div className="gantt-chart">
+              <div className="gantt-header" style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}>
+                <div className="gantt-cell gantt-label">任务</div>
+                {ganttData.days.map((day) => (
+                  <div key={day} className="gantt-cell">{day.slice(5)}</div>
+                ))}
+              </div>
+              {ganttData.rows.map(({ row, kind }) => {
+                const startKey = toDateKey(row.开始时间);
+                const endKey = toDateKey(row.截止时间 || row.开始时间);
+                const startIndex = ganttData.days.indexOf(startKey);
+                const endIndex = ganttData.days.indexOf(endKey);
+                if (startIndex < 0) return null;
+                const safeEnd = endIndex < 0 ? startIndex : endIndex;
+                return (
+                  <div
+                    key={row.recordId}
+                    className="gantt-row"
+                    style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}
+                  >
+                    <div className="gantt-cell gantt-label">{row.任务名称 || row.任务ID}</div>
+                    <div
+                      className={`gantt-bar ${kind === 'milestone' ? 'gantt-milestone' : ''}`}
+                      style={{ gridColumn: `${startIndex + 2} / ${safeEnd + 3}` }}
+                      title={`${row.任务名称 || row.任务ID} (${row.开始时间} → ${row.截止时间 || row.开始时间})`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {viewMode === 'calendar' && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
+            <strong>{calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月</strong>
+            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>下个月</button>
+          </div>
+          <div className="calendar-grid">
+            {['日', '一', '二', '三', '四', '五', '六'].map((label) => (
+              <div key={label} className="calendar-cell calendar-header">{label}</div>
+            ))}
+            {calendarDays.map((date) => {
+              const dayKey = date.toISOString().slice(0, 10);
+              const items = calendarItems[dayKey] || [];
+              const isCurrentMonth = date.getMonth() === calendarMonth.getMonth();
               return (
-                <tr key={t.id} className={isEditing ? 'editing-row' : ''}>
-                  <td
-                    className={isEditing && taskEdit.editingField === 'title' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'title')}
-                  >
-                    {isEditing && taskEdit.editingField === 'title' ? (
-                      <input
-                        data-task-edit={`${t.id}-title`}
-                        value={rowDraft.title ?? ''}
-                        onChange={(e) => taskEdit.updateDraft('title', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveTask(t), taskEdit.cancel)}
-                        onBlur={() => taskEdit.finalize(t)}
-                      />
-                    ) : (
-                      rowDraft.title
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && taskEdit.editingField === 'assignee' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'assignee')}
-                  >
-                    {isEditing && taskEdit.editingField === 'assignee' ? (
-                      <input
-                        data-task-edit={`${t.id}-assignee`}
-                        value={rowDraft.assignee ?? ''}
-                        onChange={(e) => taskEdit.updateDraft('assignee', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveTask(t), taskEdit.cancel)}
-                        onBlur={() => taskEdit.finalize(t)}
-                      />
-                    ) : (
-                      rowDraft.assignee
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && taskEdit.editingField === 'status' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'status')}
-                  >
-                    {isEditing && taskEdit.editingField === 'status' ? (
-                      <select
-                        data-task-edit={`${t.id}-status`}
-                        value={rowDraft.status ?? 'todo'}
-                        onChange={(e) => taskEdit.updateDraft('status', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveTask(t), taskEdit.cancel)}
-                        onBlur={() => taskEdit.finalize(t)}
-                      >
-                        {['todo', 'in_progress', 'blocked', 'done'].map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      rowDraft.status
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && taskEdit.editingField === 'plannedStart' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'plannedStart')}
-                  >
-                    {isEditing && taskEdit.editingField === 'plannedStart' ? (
-                      <input
-                        data-task-edit={`${t.id}-plannedStart`}
-                        type="date"
-                        value={rowDraft.plannedStart ?? ''}
-                        onChange={(e) => taskEdit.updateDraft('plannedStart', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveTask(t), taskEdit.cancel)}
-                        onBlur={() => taskEdit.finalize(t)}
-                      />
-                    ) : (
-                      rowDraft.plannedStart
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && taskEdit.editingField === 'plannedEnd' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && taskEdit.startEdit(t, 'plannedEnd')}
-                  >
-                    {isEditing && taskEdit.editingField === 'plannedEnd' ? (
-                      <input
-                        data-task-edit={`${t.id}-plannedEnd`}
-                        type="date"
-                        value={rowDraft.plannedEnd ?? ''}
-                        onChange={(e) => taskEdit.updateDraft('plannedEnd', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveTask(t), taskEdit.cancel)}
-                        onBlur={() => taskEdit.finalize(t)}
-                      />
-                    ) : (
-                      rowDraft.plannedEnd
-                    )}
-                  </td>
-                  {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
-                      {isEditing && isDirty ? (
-                        <>
-                          <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveTask(t)}>保存</button>
-                          <button className="btn" type="button" onClick={taskEdit.cancel}>取消</button>
-                        </>
-                      ) : (
-                        <button className="btn" type="button" onClick={() => onDeleteTask(t)}>删除</button>
-                      )}
-                    </td>
-                  )}
-                </tr>
+                <div key={dayKey} className={`calendar-cell ${isCurrentMonth ? '' : 'calendar-muted'}`}>
+                  <div className="calendar-date">{date.getDate()}</div>
+                  {items.map((item) => (
+                    <div key={item.id} className="calendar-item" title={item.name}>
+                      <span className="calendar-tag">{item.kind}</span>
+                      <span>{item.name}</span>
+                    </div>
+                  ))}
+                </div>
               );
             })}
-          </tbody>
-        </table>
-      </div>
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3>里程碑</h3>
-        <table className="table">
-          <thead><tr><th>名称</th><th>计划日期</th><th>实际日期</th>{canWrite && <th>操作</th>}</tr></thead>
-          <tbody>
-            {schedule?.milestones.map((m) => {
-              const isEditing = milestoneEdit.editingId === m.id;
-              const rowDraft = isEditing ? (milestoneEdit.draft ?? m) : m;
-              const isDirty = isEditing && milestoneEdit.hasDirty(m);
-              return (
-                <tr key={m.id} className={isEditing ? 'editing-row' : ''}>
-                  <td
-                    className={isEditing && milestoneEdit.editingField === 'name' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'name')}
-                  >
-                    {isEditing && milestoneEdit.editingField === 'name' ? (
-                      <input
-                        data-milestone-edit={`${m.id}-name`}
-                        value={rowDraft.name ?? ''}
-                        onChange={(e) => milestoneEdit.updateDraft('name', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveMilestone(m), milestoneEdit.cancel)}
-                        onBlur={() => milestoneEdit.finalize(m)}
-                      />
-                    ) : (
-                      rowDraft.name
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && milestoneEdit.editingField === 'plannedDate' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'plannedDate')}
-                  >
-                    {isEditing && milestoneEdit.editingField === 'plannedDate' ? (
-                      <input
-                        data-milestone-edit={`${m.id}-plannedDate`}
-                        type="date"
-                        value={rowDraft.plannedDate ?? ''}
-                        onChange={(e) => milestoneEdit.updateDraft('plannedDate', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveMilestone(m), milestoneEdit.cancel)}
-                        onBlur={() => milestoneEdit.finalize(m)}
-                      />
-                    ) : (
-                      rowDraft.plannedDate
-                    )}
-                  </td>
-                  <td
-                    className={isEditing && milestoneEdit.editingField === 'actualDate' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && milestoneEdit.startEdit(m, 'actualDate')}
-                  >
-                    {isEditing && milestoneEdit.editingField === 'actualDate' ? (
-                      <input
-                        data-milestone-edit={`${m.id}-actualDate`}
-                        type="date"
-                        value={rowDraft.actualDate ?? ''}
-                        onChange={(e) => milestoneEdit.updateDraft('actualDate', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveMilestone(m), milestoneEdit.cancel)}
-                        onBlur={() => milestoneEdit.finalize(m)}
-                      />
-                    ) : (
-                      rowDraft.actualDate || '-'
-                    )}
-                  </td>
-                  {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
-                      {isEditing && isDirty ? (
-                        <>
-                          <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveMilestone(m)}>保存</button>
-                          <button className="btn" type="button" onClick={milestoneEdit.cancel}>取消</button>
-                        </>
-                      ) : (
-                        <button className="btn" type="button" onClick={() => onDeleteMilestone(m)}>删除</button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
