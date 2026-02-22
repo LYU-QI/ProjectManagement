@@ -4,7 +4,11 @@ import { PrismaService } from '../../database/prisma.service';
 interface CreateWorklogInput {
   projectId: number;
   userId?: number;
+  assigneeName?: string;
   taskTitle?: string;
+  weekStart?: string;
+  weekEnd?: string;
+  totalDays?: number;
   hours: number;
   hourlyRate: number;
   workedOn: string;
@@ -12,6 +16,10 @@ interface CreateWorklogInput {
 
 interface UpdateWorklogInput {
   taskTitle?: string;
+  assigneeName?: string;
+  weekStart?: string;
+  weekEnd?: string;
+  totalDays?: number;
   hours?: number;
   hourlyRate?: number;
   workedOn?: string;

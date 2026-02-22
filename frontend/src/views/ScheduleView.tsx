@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import type { FeishuFormState } from '../types';
+import type { FeishuFormState, FeishuDependency } from '../types';
 
 type ScheduleRow = FeishuFormState & { recordId: string };
 
@@ -21,12 +21,16 @@ type Props = {
   milestones: ScheduleRow[];
   scheduleLoading: boolean;
   scheduleError: string;
+  scheduleDependencies: FeishuDependency[];
+  scheduleDependenciesError: string;
   riskText: string;
   onSubmitTask: (e: FormEvent<HTMLFormElement>) => void;
   onSubmitMilestone: (e: FormEvent<HTMLFormElement>) => void;
   scheduleEdit: InlineEditState<ScheduleRow, string>;
   onSaveSchedule: (row: ScheduleRow) => void;
   onDeleteSchedule: (row: ScheduleRow) => void;
+  onAddDependency: (input: { taskRecordId: string; dependsOnRecordId: string; type: 'FS' | 'SS' | 'FF' }) => void;
+  onRemoveDependency: (id: number) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
 };
 
@@ -56,16 +60,133 @@ export default function ScheduleView({
   milestones,
   scheduleLoading,
   scheduleError,
+  scheduleDependencies,
+  scheduleDependenciesError,
   riskText,
   onSubmitTask,
   onSubmitMilestone,
   scheduleEdit,
   onSaveSchedule,
   onDeleteSchedule,
+  onAddDependency,
+  onRemoveDependency,
   onInlineKeyDown
 }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar'>('list');
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
+  const [dependencyForm, setDependencyForm] = useState({ taskRecordId: '', dependsOnRecordId: '', type: 'FS' as 'FS' | 'SS' | 'FF' });
+  const ganttWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [depPaths, setDepPaths] = useState<Array<{ id: number; d: string; critical?: boolean }>>([]);
+  const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
+
+  const dependencyMap = useMemo(() => {
+    const map = new Map<string, FeishuDependency[]>();
+    for (const dep of scheduleDependencies) {
+      const list = map.get(dep.taskRecordId) ?? [];
+      list.push(dep);
+      map.set(dep.taskRecordId, list);
+    }
+    return map;
+  }, [scheduleDependencies]);
+
+  const taskNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const task of tasks) {
+      map.set(task.recordId, task.任务名称 || task.任务ID || task.recordId);
+    }
+    return map;
+  }, [tasks]);
+
+  const criticalPath = useMemo(() => {
+    if (tasks.length === 0 || scheduleDependencies.length === 0) {
+      return { ids: new Set<string>(), chain: [] as string[], duration: 0 };
+    }
+    const taskIds = new Set(tasks.map((task) => task.recordId));
+    const deps = scheduleDependencies.filter(
+      (dep) => dep.type === 'FS' && taskIds.has(dep.taskRecordId) && taskIds.has(dep.dependsOnRecordId)
+    );
+
+    const incoming = new Map<string, number>();
+    const edges = new Map<string, string[]>();
+    for (const task of tasks) {
+      incoming.set(task.recordId, 0);
+      edges.set(task.recordId, []);
+    }
+    for (const dep of deps) {
+      const from = dep.dependsOnRecordId;
+      const to = dep.taskRecordId;
+      edges.get(from)?.push(to);
+      incoming.set(to, (incoming.get(to) ?? 0) + 1);
+    }
+
+    const duration = new Map<string, number>();
+    for (const task of tasks) {
+      const start = toDate(task.开始时间);
+      const end = toDate(task.截止时间 || task.开始时间);
+      if (start && end) {
+        const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+        duration.set(task.recordId, days);
+      } else {
+        duration.set(task.recordId, 1);
+      }
+    }
+
+    const queue: string[] = [];
+    incoming.forEach((count, id) => {
+      if (count === 0) queue.push(id);
+    });
+
+    const order: string[] = [];
+    while (queue.length) {
+      const node = queue.shift()!;
+      order.push(node);
+      for (const next of edges.get(node) ?? []) {
+        incoming.set(next, (incoming.get(next) ?? 1) - 1);
+        if ((incoming.get(next) ?? 0) === 0) queue.push(next);
+      }
+    }
+
+    if (order.length !== tasks.length) {
+      return { ids: new Set<string>(), chain: [] as string[], duration: 0 };
+    }
+
+    const dist = new Map<string, number>();
+    const prev = new Map<string, string | null>();
+    for (const id of order) {
+      dist.set(id, duration.get(id) ?? 1);
+      prev.set(id, null);
+    }
+    for (const id of order) {
+      const base = dist.get(id) ?? 1;
+      for (const next of edges.get(id) ?? []) {
+        const cand = base + (duration.get(next) ?? 1);
+        if (cand > (dist.get(next) ?? 0)) {
+          dist.set(next, cand);
+          prev.set(next, id);
+        }
+      }
+    }
+
+    let endId: string | null = null;
+    let max = 0;
+    dist.forEach((value, key) => {
+      if (value > max) {
+        max = value;
+        endId = key;
+      }
+    });
+    const critical = new Set<string>();
+    const chain: string[] = [];
+    let cursor: string | null = endId;
+    while (cursor !== null) {
+      critical.add(cursor);
+      chain.push(cursor);
+      const nextId: string | null = prev.get(cursor) ?? null;
+      cursor = nextId;
+    }
+    chain.reverse();
+    return { ids: critical, chain, duration: max };
+  }, [tasks, scheduleDependencies]);
 
   const ganttData = useMemo(() => {
     const rows = [
@@ -97,6 +218,66 @@ export default function ScheduleView({
 
     return { days, rows };
   }, [tasks, milestones]);
+
+  useEffect(() => {
+    if (viewMode !== 'gantt') return;
+    const wrapper = ganttWrapperRef.current;
+    if (!wrapper) return;
+
+    let frame = 0;
+    const update = () => {
+      if (!wrapper) return;
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const width = wrapper.scrollWidth || wrapperRect.width;
+      const height = wrapper.scrollHeight || wrapperRect.height;
+      setSvgSize({ width, height });
+
+      const paths: Array<{ id: number; d: string; critical?: boolean }> = [];
+      for (const dep of scheduleDependencies) {
+        const fromEl = wrapper.querySelector<HTMLElement>(`[data-bar-id="${dep.dependsOnRecordId}"]`);
+        const toEl = wrapper.querySelector<HTMLElement>(`[data-bar-id="${dep.taskRecordId}"]`);
+        if (!fromEl || !toEl) continue;
+        const isCritical = dep.type === 'FS' && criticalPath.ids.has(dep.dependsOnRecordId) && criticalPath.ids.has(dep.taskRecordId);
+
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+        const fromStart = fromRect.left - wrapperRect.left;
+        const fromEnd = fromRect.right - wrapperRect.left;
+        const toStart = toRect.left - wrapperRect.left;
+        const toEnd = toRect.right - wrapperRect.left;
+        const fromY = (fromRect.top + fromRect.bottom) / 2 - wrapperRect.top;
+        const toY = (toRect.top + toRect.bottom) / 2 - wrapperRect.top;
+
+        const fromX = dep.type === 'SS' ? fromStart : fromEnd;
+        const toX = dep.type === 'FF' ? toEnd : toStart;
+        const dx = toX - fromX;
+        const offset = Math.sign(dx || 1) * Math.min(12, Math.abs(dx) / 2);
+        const midX = fromX + offset;
+        const path = `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`;
+        paths.push({ id: dep.id, d: path, critical: isCritical });
+      }
+      setDepPaths(paths);
+    };
+
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+
+    scheduleUpdate();
+    const observer = new ResizeObserver(scheduleUpdate);
+    observer.observe(wrapper);
+    const onScroll = () => scheduleUpdate();
+    wrapper.addEventListener('scroll', onScroll);
+    window.addEventListener('resize', scheduleUpdate);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      wrapper.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', scheduleUpdate);
+    };
+  }, [viewMode, scheduleDependencies, ganttData, criticalPath]);
 
   const calendarDays = useMemo(() => {
     const year = calendarMonth.getFullYear();
@@ -192,6 +373,91 @@ export default function ScheduleView({
               </tbody>
             </table>
           </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <h3>任务依赖（WBS）</h3>
+            {scheduleDependenciesError && <p className="warn">{scheduleDependenciesError}</p>}
+            <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', alignItems: 'end' }}>
+              <div>
+                <label>任务</label>
+                <select
+                  value={dependencyForm.taskRecordId}
+                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, taskRecordId: e.target.value }))}
+                >
+                  <option value="">选择任务</option>
+                  {tasks.map((task) => (
+                    <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>依赖关系</label>
+                <select
+                  value={dependencyForm.type}
+                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, type: e.target.value as 'FS' | 'SS' | 'FF' }))}
+                >
+                  <option value="FS">FS 完成→开始</option>
+                  <option value="SS">SS 开始→开始</option>
+                  <option value="FF">FF 完成→完成</option>
+                </select>
+              </div>
+              <div>
+                <label>前置任务</label>
+                <select
+                  value={dependencyForm.dependsOnRecordId}
+                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, dependsOnRecordId: e.target.value }))}
+                >
+                  <option value="">选择前置任务</option>
+                  {tasks.map((task) => (
+                    <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={!canWrite || !dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId}
+                  onClick={() => {
+                    if (!dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId) return;
+                    onAddDependency({
+                      taskRecordId: dependencyForm.taskRecordId,
+                      dependsOnRecordId: dependencyForm.dependsOnRecordId,
+                      type: dependencyForm.type
+                    });
+                    setDependencyForm((prev) => ({ ...prev, dependsOnRecordId: '' }));
+                  }}
+                >
+                  新增依赖
+                </button>
+              </div>
+            </div>
+
+            <table className="table" style={{ marginTop: 10 }}>
+              <thead><tr><th>任务</th><th>关系</th><th>前置任务</th><th>操作</th></tr></thead>
+              <tbody>
+                {scheduleDependencies.map((dep) => {
+                  const task = tasks.find((item) => item.recordId === dep.taskRecordId);
+                  const dependsOn = tasks.find((item) => item.recordId === dep.dependsOnRecordId);
+                  return (
+                    <tr key={dep.id}>
+                      <td>{task?.任务名称 || dep.taskId || dep.taskRecordId}</td>
+                      <td>{dep.type}</td>
+                      <td>{dependsOn?.任务名称 || dep.dependsOnTaskId || dep.dependsOnRecordId}</td>
+                      <td>
+                        {canWrite ? (
+                          <button className="btn" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
+                        ) : '-'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {scheduleDependencies.length === 0 && (
+                  <tr><td colSpan={4} style={{ color: 'var(--text-muted)' }}>暂无任务依赖</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
@@ -200,35 +466,77 @@ export default function ScheduleView({
           {ganttData.days.length === 0 ? (
             <p className="warn">暂无可用日期数据，无法生成甘特图。</p>
           ) : (
-            <div className="gantt-chart">
-              <div className="gantt-header" style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}>
-                <div className="gantt-cell gantt-label">任务</div>
-                {ganttData.days.map((day) => (
-                  <div key={day} className="gantt-cell">{day.slice(5)}</div>
+            <div className="gantt-wrapper" ref={ganttWrapperRef}>
+              <svg className="gantt-deps" width={svgSize.width} height={svgSize.height}>
+                <defs>
+                  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+                    <path d="M0,0 L8,4 L0,8 Z" fill="rgba(255,255,255,0.7)" />
+                  </marker>
+                </defs>
+                {depPaths.map((path) => (
+                  <path
+                    key={path.id}
+                    d={path.d}
+                    stroke={path.critical ? 'rgba(255,120,40,0.9)' : 'rgba(255,255,255,0.55)'}
+                    strokeWidth={1}
+                    fill="none"
+                    markerEnd="url(#arrow)"
+                  />
                 ))}
-              </div>
-              {ganttData.rows.map(({ row, kind }) => {
-                const startKey = toDateKey(row.开始时间);
-                const endKey = toDateKey(row.截止时间 || row.开始时间);
-                const startIndex = ganttData.days.indexOf(startKey);
-                const endIndex = ganttData.days.indexOf(endKey);
-                if (startIndex < 0) return null;
-                const safeEnd = endIndex < 0 ? startIndex : endIndex;
-                return (
-                  <div
-                    key={row.recordId}
-                    className="gantt-row"
-                    style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}
-                  >
-                    <div className="gantt-cell gantt-label">{row.任务名称 || row.任务ID}</div>
-                    <div
-                      className={`gantt-bar ${kind === 'milestone' ? 'gantt-milestone' : ''}`}
-                      style={{ gridColumn: `${startIndex + 2} / ${safeEnd + 3}` }}
-                      title={`${row.任务名称 || row.任务ID} (${row.开始时间} → ${row.截止时间 || row.开始时间})`}
-                    />
+              </svg>
+
+              <div className="gantt-chart">
+                {criticalPath.chain.length > 0 && (
+                  <div className="gantt-summary">
+                    关键路径：{criticalPath.chain.map((id) => taskNameMap.get(id) || id).join(' → ')} ｜ 总工期：{criticalPath.duration} 天
                   </div>
-                );
-              })}
+                )}
+                <div
+                  className="gantt-header"
+                  style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}
+                >
+                  <div className="gantt-cell gantt-label">任务</div>
+                  {ganttData.days.map((day) => (
+                    <div key={day} className="gantt-cell">{day.slice(5)}</div>
+                  ))}
+                </div>
+                {ganttData.rows.map(({ row, kind }) => {
+                  const startKey = toDateKey(row.开始时间);
+                  const endKey = toDateKey(row.截止时间 || row.开始时间);
+                  const startIndex = ganttData.days.indexOf(startKey);
+                  const endIndex = ganttData.days.indexOf(endKey);
+                  if (startIndex < 0) return null;
+                  const safeEnd = endIndex < 0 ? startIndex : endIndex;
+                  const deps = dependencyMap.get(row.recordId) ?? [];
+                  const depLabel = deps.length
+                    ? `依赖: ${deps.map((dep) => `${taskNameMap.get(dep.dependsOnRecordId) || dep.dependsOnTaskId || dep.dependsOnRecordId}(${dep.type})`).join(', ')}`
+                    : '';
+                  const isCritical = criticalPath.ids.has(row.recordId);
+                  const endDate = toDate(row.截止时间 || row.开始时间);
+                  const today = new Date();
+                  today.setHours(0, 0, 0, 0);
+                  const overdue = isCritical && endDate ? endDate.getTime() < today.getTime() : false;
+                  return (
+                    <div
+                      key={row.recordId}
+                      className="gantt-row"
+                      style={{ gridTemplateColumns: `220px repeat(${ganttData.days.length}, minmax(24px, 1fr))` }}
+                    >
+                      <div className="gantt-cell gantt-label">
+                        <div>{row.任务名称 || row.任务ID}</div>
+                        {depLabel && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{depLabel}</div>}
+                        {overdue && <div className="gantt-overdue">关键任务已延期</div>}
+                      </div>
+                      <div
+                        className={`gantt-bar ${kind === 'milestone' ? 'gantt-milestone' : ''} ${isCritical ? 'gantt-critical' : ''} ${overdue ? 'gantt-overdue-bar' : ''}`}
+                        data-bar-id={row.recordId}
+                        style={{ gridColumn: `${startIndex + 2} / ${safeEnd + 3}` }}
+                        title={`${row.任务名称 || row.任务ID} (${row.开始时间} → ${row.截止时间 || row.开始时间})`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

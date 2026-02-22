@@ -12,7 +12,20 @@ class CreateWorklogDto {
   userId?: number;
 
   @IsOptional()
+  assigneeName?: string;
+
+  @IsOptional()
   taskTitle?: string;
+
+  @IsOptional()
+  weekStart?: string;
+
+  @IsOptional()
+  weekEnd?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalDays?: number;
 
   @IsNumber()
   hours!: number;
@@ -28,6 +41,19 @@ class UpdateWorklogDto {
   @IsOptional()
   @IsNotEmpty()
   taskTitle?: string;
+
+  @IsOptional()
+  assigneeName?: string;
+
+  @IsOptional()
+  weekStart?: string;
+
+  @IsOptional()
+  weekEnd?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalDays?: number;
 
   @IsOptional()
   @IsNumber()

@@ -4,6 +4,7 @@ import { FeishuService } from './feishu.service';
 
 @Module({
   controllers: [FeishuController],
-  providers: [FeishuService]
+  providers: [FeishuService],
+  exports: [FeishuService]
 })
 export class FeishuModule {}

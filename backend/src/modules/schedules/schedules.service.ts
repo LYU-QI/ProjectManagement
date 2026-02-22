@@ -26,6 +26,15 @@ interface UpdateMilestoneInput {
   actualDate?: string;
 }
 
+interface CreateDependencyInput {
+  projectName: string;
+  taskRecordId: string;
+  taskId?: string;
+  dependsOnRecordId: string;
+  dependsOnTaskId?: string;
+  type: 'FS' | 'SS' | 'FF';
+}
+
 @Injectable()
 export class SchedulesService {
   constructor(
@@ -104,6 +113,31 @@ export class SchedulesService {
     const inProgressCount = tasks.filter((item) => item.status === TaskStatus.in_progress).length;
     const riskLevel = blockedCount >= 2 ? 'high' : blockedCount === 1 ? 'medium' : 'low';
     return { projectId, blockedCount, inProgressCount, riskLevel };
+  }
+
+  async listDependencies(projectName?: string) {
+    return this.prisma.feishuDependency.findMany({
+      where: projectName ? { projectName } : undefined,
+      orderBy: { id: 'asc' }
+    });
+  }
+
+  async createDependency(input: CreateDependencyInput) {
+    return this.prisma.feishuDependency.create({
+      data: {
+        projectName: input.projectName,
+        taskRecordId: input.taskRecordId,
+        taskId: input.taskId ?? null,
+        dependsOnRecordId: input.dependsOnRecordId,
+        dependsOnTaskId: input.dependsOnTaskId ?? null,
+        type: input.type
+      }
+    });
+  }
+
+  async removeDependency(id: number) {
+    await this.prisma.feishuDependency.delete({ where: { id } });
+    return { id };
   }
 
   async updateTask(id: number, input: UpdateTaskInput) {

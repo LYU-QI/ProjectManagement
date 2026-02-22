@@ -8,6 +8,8 @@ import {
   updateFeishuRecord,
   FeishuRecord
 } from './api/feishu';
+import { getRiskRules, listAllRiskAlerts, listRiskRuleLogs, updateRiskRule } from './api/risks';
+import { createDependency, deleteDependency, listDependencies } from './api/dependencies';
 import { FEISHU_DEFAULT_FORM, FEISHU_FIELD_NAMES, FEISHU_FIELDS } from './feishuConfig';
 import type {
   AuthUser,
@@ -16,21 +18,28 @@ import type {
   CostSummary,
   DashboardOverview,
   FeishuFormState,
+  FeishuDependency,
+  RequirementChange,
+  RiskAlertsResponse,
   NotificationItem,
   ProjectItem,
   Requirement,
+  UserItem,
   Worklog
 } from './types';
 import DashboardView from './views/DashboardView';
 import RequirementsView from './views/RequirementsView';
 import CostsView from './views/CostsView';
 import ScheduleView from './views/ScheduleView';
+import ResourcesView from './views/ResourcesView';
+import RiskAlertsView from './views/RiskAlertsView';
+import RiskCenterView from './views/RiskCenterView';
 import FeishuView from './views/FeishuView';
 import NotificationsView from './views/NotificationsView';
 import AuditView from './views/AuditView';
 import AiView from './views/AiView';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 
 function focusInlineEditor(selector: string) {
@@ -117,14 +126,17 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'ai', 'notifications', 'audit', 'feishu', 'global'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'global'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [requirementChanges, setRequirementChanges] = useState<RequirementChange[]>([]);
+  const [selectedRequirementForChanges, setSelectedRequirementForChanges] = useState<Requirement | null>(null);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
   const [costEntries, setCostEntries] = useState<CostEntryItem[]>([]);
   const [worklogs, setWorklogs] = useState<Worklog[]>([]);
@@ -143,14 +155,16 @@ function App() {
     setError('');
     try {
       await runWithRetry('刷新数据', async () => {
-        const [dashboardRes, projectList, unreadNotifications] = await Promise.all([
+        const [dashboardRes, projectList, userList, unreadNotifications] = await Promise.all([
           apiGet<DashboardOverview>('/dashboard/overview'),
           apiGet<ProjectItem[]>('/projects'),
+          apiGet<UserItem[]>('/users'),
           apiGet<NotificationItem[]>('/notifications?unread=true')
         ]);
 
         setOverview(dashboardRes);
         setProjects(projectList);
+        setUsers(userList);
         setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
         setNotifications(unreadNotifications);
 
@@ -159,6 +173,8 @@ function App() {
 
         if (!activeProjectId) {
           setRequirements([]);
+          setRequirementChanges([]);
+          setSelectedRequirementForChanges(null);
           setCostSummary(null);
           setCostEntries([]);
           setWorklogs([]);
@@ -197,6 +213,7 @@ function App() {
     setUser(null);
     setOverview(null);
     setProjects([]);
+    setUsers([]);
     setSelectedProjectIds([]);
     setSelectedProjectId(null);
     setRequirements([]);
@@ -528,7 +545,12 @@ function App() {
   async function saveInlineWorklogEdit(original: Worklog) {
     const draft = worklogEdit.draft;
     if (!draft || !worklogEdit.hasDirty(original)) return;
-    const hours = Number(draft.hours);
+    const totalDays = draft.totalDays !== undefined && draft.totalDays !== null && String(draft.totalDays) !== ''
+      ? Number(draft.totalDays)
+      : null;
+    const hours = totalDays !== null && Number.isFinite(totalDays)
+      ? totalDays * 8
+      : Number(draft.hours);
     const hourlyRate = Number(draft.hourlyRate);
     if (!Number.isFinite(hours) || hours <= 0) {
       setError('工时必须是大于 0 的数字。');
@@ -544,9 +566,13 @@ function App() {
       await runWithRetry('更新工时记录', async () => {
         await apiPatch(`/worklogs/${original.id}`, {
           taskTitle: draft.taskTitle,
+          assigneeName: draft.assigneeName,
+          weekStart: draft.weekStart,
+          weekEnd: draft.weekEnd,
+          totalDays: totalDays ?? undefined,
           hours,
           hourlyRate,
-          workedOn: draft.workedOn
+          workedOn: draft.weekStart || draft.workedOn
         });
       });
       setMessage(`工时 #${original.id} 已更新。`);
@@ -644,14 +670,22 @@ function App() {
       return;
     }
     const form = new FormData(formEl);
+    const totalDays = Number(form.get('totalDays'));
+    const dailyRate = Number(form.get('dailyRate'));
+    const hours = Number.isFinite(totalDays) ? totalDays * 8 : Number(form.get('hours'));
+    const hourlyRate = Number.isFinite(dailyRate) ? dailyRate / 8 : Number(form.get('hourlyRate'));
     await runWithRetry('新增工时', async () => {
       await apiPost('/worklogs', {
         projectId: selectedProjectId,
         userId: user?.id,
         taskTitle: String(form.get('taskTitle') || ''),
-        hours: Number(form.get('hours')),
-        hourlyRate: Number(form.get('hourlyRate')),
-        workedOn: String(form.get('workedOn'))
+        assigneeName: String(form.get('assigneeName') || ''),
+        weekStart: String(form.get('weekStart') || ''),
+        weekEnd: String(form.get('weekEnd') || ''),
+        totalDays: Number.isFinite(totalDays) ? totalDays : undefined,
+        hours,
+        hourlyRate,
+        workedOn: String(form.get('weekStart') || '')
       });
     });
     formEl?.reset();
@@ -801,15 +835,39 @@ function App() {
     await refreshAll(selectedProjectId);
   }
 
-  async function markRequirementChanged(req: Requirement) {
+  async function markRequirementChanged(req: Requirement, input: { reason: string; version: string }) {
     if (!canWrite) return;
     await runWithRetry('记录需求变更', async () => {
       await apiPost(`/requirements/${req.id}/change`, {
         description: req.description,
-        version: `v${req.changeCount + 1}.0`
+        version: input.version,
+        reason: input.reason,
+        changedBy: user?.name ?? 'PM Demo'
       });
     });
     await refreshAll(selectedProjectId);
+    await loadRequirementChanges(req);
+  }
+
+  async function loadRequirementChanges(req: Requirement) {
+    if (!token) return;
+    try {
+      const changes = await apiGet<RequirementChange[]>(`/requirements/${req.id}/changes`);
+      setRequirementChanges(changes);
+      setSelectedRequirementForChanges(req);
+    } catch {
+      setRequirementChanges([]);
+      setSelectedRequirementForChanges(req);
+    }
+  }
+
+  async function toggleRequirementChanges(req: Requirement) {
+    if (selectedRequirementForChanges?.id === req.id) {
+      setSelectedRequirementForChanges(null);
+      setRequirementChanges([]);
+      return;
+    }
+    await loadRequirementChanges(req);
   }
 
   async function generateReport() {
@@ -870,6 +928,44 @@ function App() {
   const [scheduleRecords, setScheduleRecords] = useState<FeishuRecord[]>([]);
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+  const [scheduleDependencies, setScheduleDependencies] = useState<FeishuDependency[]>([]);
+  const [scheduleDependenciesError, setScheduleDependenciesError] = useState('');
+  const [riskAlerts, setRiskAlerts] = useState<RiskAlertsResponse | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState('');
+  const [riskMessage, setRiskMessage] = useState('');
+  const [riskReady, setRiskReady] = useState(false);
+  const [riskRules, setRiskRules] = useState<Array<{
+    id: number;
+    key: string;
+    type: string;
+    name: string;
+    enabled: boolean;
+    thresholdDays: number;
+    progressThreshold: number;
+    includeMilestones: boolean;
+    autoNotify: boolean;
+    blockedValue?: string | null;
+  }>>([]);
+  const [riskRuleLogs, setRiskRuleLogs] = useState<Array<{ id: number; ruleId: number; action: string; note?: string | null; createdAt: string }>>([]);
+  const [riskFilters, setRiskFilters] = useState(() => ({
+    thresholdDays: 7,
+    progressThreshold: 80,
+    filterProject: '',
+    filterStatus: '',
+    filterAssignee: '',
+    filterRisk: '',
+    includeMilestones: false,
+    autoNotify: true,
+    enabled: true
+  }));
+  const updateRiskFilters = (next: Partial<typeof riskFilters>) => {
+    setRiskFilters((prev) => ({ ...prev, ...next }));
+  };
+
+  const updateRiskRuleLocal = (key: string, patch: Partial<{ enabled: boolean; autoNotify: boolean; blockedValue?: string | null }>) => {
+    setRiskRules((prev) => prev.map((rule) => (rule.key === key ? { ...rule, ...patch } : rule)));
+  };
   const [feishuPageSize, setFeishuPageSize] = useState(() => {
     const raw = localStorage.getItem('feishu_page_size');
     const size = raw ? Number(raw) : 20;
@@ -1014,6 +1110,10 @@ function App() {
     getId: (row) => row.id,
     hasChanges: (original, draft) => (
       String(original.taskTitle ?? '') !== String(draft.taskTitle ?? '')
+      || String(original.assigneeName ?? '') !== String(draft.assigneeName ?? '')
+      || String(original.weekStart ?? '') !== String(draft.weekStart ?? '')
+      || String(original.weekEnd ?? '') !== String(draft.weekEnd ?? '')
+      || String(original.totalDays ?? '') !== String(draft.totalDays ?? '')
       || String(original.hours) !== String(draft.hours)
       || String(original.hourlyRate) !== String(draft.hourlyRate)
       || original.workedOn !== draft.workedOn
@@ -1231,6 +1331,117 @@ function App() {
     }
   }
 
+  async function loadScheduleDependencies() {
+    if (!token) return;
+    setScheduleDependenciesError('');
+    try {
+      const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
+      const deps = await listDependencies(projectFilter);
+      setScheduleDependencies(deps);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setScheduleDependenciesError(`获取任务依赖失败。（${detail}）`);
+    }
+  }
+
+  async function loadRiskAlerts() {
+    if (!token) return;
+    setRiskLoading(true);
+    setRiskError('');
+    setRiskMessage('');
+    try {
+      await runWithRetry('加载风险预警', async () => {
+        const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
+        const res = await listAllRiskAlerts({
+          filterProject: riskFilters.filterProject || projectFilter,
+          filterStatus: riskFilters.filterStatus,
+          filterAssignee: riskFilters.filterAssignee,
+          filterRisk: riskFilters.filterRisk
+        });
+        setRiskAlerts(res);
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setRiskError(`获取风险清单失败。（${detail}）`);
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
+  async function loadRiskRule() {
+    if (!token) return;
+    setRiskLoading(true);
+    setRiskError('');
+    setRiskMessage('');
+    try {
+      await runWithRetry('加载风险规则', async () => {
+        const rules = await getRiskRules();
+        setRiskRules(rules);
+        const deadlineRule = rules.find((item) => item.type === 'deadline_progress');
+        if (deadlineRule) {
+          setRiskFilters((prev) => ({
+            ...prev,
+            thresholdDays: deadlineRule.thresholdDays,
+            progressThreshold: deadlineRule.progressThreshold,
+            includeMilestones: deadlineRule.includeMilestones,
+            autoNotify: deadlineRule.autoNotify,
+            enabled: deadlineRule.enabled
+          }));
+        }
+        const logs = await listRiskRuleLogs();
+        setRiskRuleLogs(logs);
+        setRiskReady(true);
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setRiskError(`获取风险规则失败。（${detail}）`);
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
+  async function saveRiskRule() {
+    if (!token || !canWrite) return;
+    setRiskLoading(true);
+    setRiskError('');
+    setRiskMessage('');
+    try {
+      await runWithRetry('保存风险规则', async () => {
+        const updates = [
+          updateRiskRule({
+            key: 'deadline_progress',
+            thresholdDays: riskFilters.thresholdDays,
+            progressThreshold: riskFilters.progressThreshold,
+            includeMilestones: riskFilters.includeMilestones,
+            autoNotify: riskFilters.autoNotify,
+            enabled: riskFilters.enabled
+          }),
+          ...riskRules
+            .filter((rule) => rule.key !== 'deadline_progress')
+            .map((rule) =>
+              updateRiskRule({
+                key: rule.key,
+                enabled: rule.enabled,
+                autoNotify: rule.autoNotify,
+                blockedValue: rule.blockedValue ?? undefined
+              })
+            )
+        ];
+        await Promise.all(updates);
+        const rules = await getRiskRules();
+        setRiskRules(rules);
+        const logs = await listRiskRuleLogs();
+        setRiskRuleLogs(logs);
+      });
+      setRiskMessage('风险规则已保存。');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setRiskError(`保存风险规则失败。（${detail}）`);
+    } finally {
+      setRiskLoading(false);
+    }
+  }
+
   function startInlineFeishuEdit(record: FeishuRecord, field?: keyof FeishuFormState) {
     setFeishuEditingId(record.record_id);
     setFeishuRecordDraft((prev) => (feishuEditingId === record.record_id && prev ? prev : mapRecordToForm(record)));
@@ -1290,6 +1501,37 @@ function App() {
     setFeishuEditingId(null);
     setFeishuEditingField(null);
     setFeishuRecordDraft(null);
+  }
+
+  async function addScheduleDependency(input: {
+    taskRecordId: string;
+    dependsOnRecordId: string;
+    type: 'FS' | 'SS' | 'FF';
+  }) {
+    if (!token || !canWrite) return;
+    const projectName = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : '';
+    if (!projectName) return;
+    const task = scheduleTasks.find((item) => item.recordId === input.taskRecordId);
+    const dependsOn = scheduleTasks.find((item) => item.recordId === input.dependsOnRecordId);
+    await runWithRetry('新增任务依赖', async () => {
+      await createDependency({
+        projectName,
+        taskRecordId: input.taskRecordId,
+        taskId: task?.任务ID,
+        dependsOnRecordId: input.dependsOnRecordId,
+        dependsOnTaskId: dependsOn?.任务ID,
+        type: input.type
+      });
+      await loadScheduleDependencies();
+    });
+  }
+
+  async function removeScheduleDependency(id: number) {
+    if (!token || !canWrite) return;
+    await runWithRetry('删除任务依赖', async () => {
+      await deleteDependency(id);
+      await loadScheduleDependencies();
+    });
   }
 
   async function submitFeishuRecord(e: import('react').FormEvent<HTMLFormElement>) {
@@ -1567,8 +1809,27 @@ function App() {
   useEffect(() => {
     if (token && view === 'schedule') {
       void loadScheduleRecords();
+      void loadScheduleDependencies();
     }
   }, [token, view, selectedProjectName]);
+
+  useEffect(() => {
+    if (token && view === 'resources') {
+      void loadScheduleRecords();
+    }
+  }, [token, view, selectedProjectName]);
+
+  useEffect(() => {
+    if (token && view === 'risks') {
+      void loadRiskRule();
+    }
+  }, [token, view]);
+
+  useEffect(() => {
+    if (token && view === 'risks' && riskReady) {
+      void loadRiskAlerts();
+    }
+  }, [token, view, selectedProjectName, riskFilters, riskReady]);
 
 
   const filteredFeishuRecords = feishuRecords;
@@ -1577,6 +1838,14 @@ function App() {
       [
         ...projects.map((project) => project.name),
         ...feishuRecords.map((record) => String((record.fields || {})['所属项目'] ?? ''))
+      ].filter((value) => value)
+    )
+  );
+  const riskProjectOptions = Array.from(
+    new Set(
+      [
+        ...projects.map((project) => project.name),
+        ...scheduleRecords.map((record) => String((record.fields || {})['所属项目'] ?? ''))
       ].filter((value) => value)
     )
   );
@@ -1614,7 +1883,9 @@ function App() {
         <button className={view === 'requirements' ? 'active' : ''} onClick={() => setView('requirements')}>[ 需求管理 ]</button>
         <button className={view === 'costs' ? 'active' : ''} onClick={() => setView('costs')}>[ 成本监控 ]</button>
         <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>[ 进度同步 ]</button>
+        <button className={view === 'resources' ? 'active' : ''} onClick={() => setView('resources')}>[ 资源负载 ]</button>
         <button className={view === 'global' ? 'active' : ''} onClick={() => setView('global')}>[ 全局搜索 ]</button>
+        <button className={view === 'risks' ? 'active' : ''} onClick={() => setView('risks')}>[ 风险中心 ]</button>
         <button className={view === 'notifications' ? 'active' : ''} onClick={() => setView('notifications')}>
           [ 系统预警 ]{notifications.filter((n) => !n.readAt).length > 0 ? ` [${notifications.filter((n) => !n.readAt).length}]` : ''}
         </button>
@@ -1857,12 +2128,15 @@ function App() {
             requirementEdit={requirementEdit}
             onSaveRequirement={(req) => void saveInlineRequirementEdit(req)}
             onReviewRequirement={(id, decision) => void reviewRequirementAction(id, decision)}
-            onMarkRequirementChanged={(req) => void markRequirementChanged(req)}
+            onMarkRequirementChanged={(req, input) => void markRequirementChanged(req, input)}
+            onShowRequirementChanges={(req) => void toggleRequirementChanges(req)}
             onDeleteRequirement={(req) => void deleteRequirement(req)}
             onDeleteSelectedRequirements={() => void deleteSelectedRequirements()}
             onToggleRequirementSelection={toggleRequirementSelection}
             onSelectAllRequirements={(ids, checked) => setSelectedRequirementIds(checked ? ids : [])}
             onInlineKeyDown={handleInlineKeyDown}
+            requirementChanges={requirementChanges}
+            selectedRequirementForChanges={selectedRequirementForChanges}
           />
         )}
 
@@ -1895,14 +2169,51 @@ function App() {
             milestones={scheduleMilestones}
             scheduleLoading={scheduleLoading}
             scheduleError={scheduleError}
+            scheduleDependencies={scheduleDependencies}
+            scheduleDependenciesError={scheduleDependenciesError}
             riskText={scheduleRiskText}
             onSubmitTask={submitTask}
             onSubmitMilestone={submitMilestone}
             scheduleEdit={scheduleEdit}
             onSaveSchedule={(row) => void saveInlineScheduleEdit(row)}
             onDeleteSchedule={(row) => void deleteScheduleRow(row)}
+            onAddDependency={(input) => void addScheduleDependency(input)}
+            onRemoveDependency={(id) => void removeScheduleDependency(id)}
             onInlineKeyDown={handleInlineKeyDown}
           />
+        )}
+
+        {view === 'resources' && (
+          <ResourcesView
+            worklogs={worklogs}
+            scheduleTasks={scheduleTasks}
+            scheduleLoading={scheduleLoading}
+            scheduleError={scheduleError}
+            selectedProjectName={selectedProjectName}
+            users={users}
+          />
+        )}
+
+        {view === 'risks' && (
+          <RiskCenterView
+            data={riskAlerts}
+            loading={riskLoading}
+            error={riskError}
+            message={riskMessage}
+            filters={riskFilters}
+            rules={riskRules}
+            logs={riskRuleLogs}
+            projectOptions={riskProjectOptions}
+            onChange={updateRiskFilters}
+            onUpdateRule={updateRiskRuleLocal}
+            onRefresh={() => void loadRiskAlerts()}
+            onSaveRule={() => void saveRiskRule()}
+            canWrite={canWrite}
+          />
+        )}
+
+        {view === 'dashboard' && scheduleTasks.length > 0 && (
+          <RiskAlertsView rows={scheduleTasks} thresholdDays={7} progressThreshold={80} />
         )}
 
         {view === 'feishu' && (

@@ -84,29 +84,57 @@ export class RequirementsService {
     return result;
   }
 
-  async change(id: number, description: string, version?: string) {
+  async change(id: number, description: string, version?: string, reason?: string, changedBy?: string) {
     const target = await this.prisma.requirement.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Requirement not found');
     }
 
-    const updated = await this.prisma.requirement.update({
-      where: { id },
-      data: {
-        description: description || target.description,
-        version: version || target.version,
-        changeCount: { increment: 1 }
-      }
+    const before = {
+      title: target.title,
+      description: target.description,
+      priority: target.priority,
+      status: target.status,
+      version: target.version
+    };
+    const nextDescription = description || target.description;
+    const nextVersion = version || target.version;
+    const after = {
+      ...before,
+      description: nextDescription,
+      version: nextVersion
+    };
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.requirement.update({
+        where: { id },
+        data: {
+          description: nextDescription,
+          version: nextVersion,
+          changeCount: { increment: 1 }
+        }
+      });
+      await tx.requirementChange.create({
+        data: {
+          requirementId: id,
+          changedBy,
+          reason,
+          before,
+          after,
+          version: nextVersion
+        }
+      });
+      return updated;
     });
 
     await this.notificationsService.createSystemNotification({
-      projectId: updated.projectId,
+      projectId: result.projectId,
       level: NotificationLevel.info,
       title: '需求发生变更',
-      message: `需求「${updated.title}」已更新到版本 ${updated.version ?? 'latest'}。`
+      message: `需求「${result.title}」已更新到版本 ${result.version ?? 'latest'}。`
     });
 
-    return updated;
+    return result;
   }
 
   async update(id: number, input: UpdateRequirementInput) {
@@ -129,9 +157,17 @@ export class RequirementsService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.requirementReview.deleteMany({ where: { requirementId: id } });
+      await tx.requirementChange.deleteMany({ where: { requirementId: id } });
       await tx.requirement.delete({ where: { id } });
     });
 
     return { id };
+  }
+
+  async listChanges(requirementId: number) {
+    return this.prisma.requirementChange.findMany({
+      where: { requirementId },
+      orderBy: { id: 'desc' }
+    });
   }
 }

@@ -56,30 +56,30 @@ export class AiService {
     const riskLines = details
       .map((item) => {
         if (item.blockedTasks > 0 || item.budgetVarianceRate > 10 || item.requirementChanges > 3) {
-          return `- ${item.projectName}: blocked=${item.blockedTasks}, budgetVariance=${item.budgetVarianceRate}%, requirementChanges=${item.requirementChanges}`;
+          return `- ${item.projectName}：阻塞=${item.blockedTasks}，预算偏差=${item.budgetVarianceRate}%，需求变更=${item.requirementChanges}`;
         }
-        return `- ${item.projectName}: overall stable.`;
+        return `- ${item.projectName}：整体稳定。`;
       })
       .join('\n');
 
     const draft = [
-      `Weekly Report (${input.weekStart} to ${input.weekEnd})`,
+      `项目周报（${input.weekStart} 至 ${input.weekEnd}）`,
       '',
-      '1) Overall Status',
-      `${details.length} projects tracked.`,
+      '1）整体概览',
+      `本周共跟踪 ${details.length} 个项目。`,
       '',
-      '2) Key Risks',
-      input.includeRisks ? riskLines : '- Risk section disabled.',
+      '2）关键风险',
+      input.includeRisks ? riskLines : '- 已关闭风险段落。',
       '',
-      '3) Budget Snapshot',
+      '3）预算概览',
       input.includeBudget
-        ? details.map((item) => `- ${item.projectName}: budget variance ${item.budgetVarianceRate}%`).join('\n')
-        : '- Budget section disabled.',
+        ? details.map((item) => `- ${item.projectName}：预算偏差 ${item.budgetVarianceRate}%`).join('\n')
+        : '- 已关闭预算段落。',
       '',
-      '4) Next Week Focus',
-      '- Clear blocked tasks on critical path.',
-      '- Lock high-change requirements through review gate.',
-      '- Track budget drift every 2 days for high-risk projects.'
+      '4）下周重点',
+      '- 清理关键路径上的阻塞任务。',
+      '- 高频变更需求进入评审闸口。',
+      '- 高风险项目每 2 天跟踪预算偏差。'
     ].join('\n');
 
     return {

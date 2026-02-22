@@ -36,6 +36,12 @@ class ChangeRequirementDto {
 
   @IsOptional()
   version?: string;
+
+  @IsOptional()
+  reason?: string;
+
+  @IsOptional()
+  changedBy?: string;
 }
 
 class UpdateRequirementDto {
@@ -83,7 +89,12 @@ export class RequirementsController {
   @Roles('pm', 'lead')
   @Post(':id/change')
   change(@Param('id', ParseIntPipe) id: number, @Body() body: ChangeRequirementDto) {
-    return this.requirementsService.change(id, body.description, body.version);
+    return this.requirementsService.change(id, body.description, body.version, body.reason, body.changedBy);
+  }
+
+  @Get(':id/changes')
+  changes(@Param('id', ParseIntPipe) id: number) {
+    return this.requirementsService.listChanges(id);
   }
 
   @Roles('pm', 'lead')

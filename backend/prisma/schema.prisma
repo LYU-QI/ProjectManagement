@@ -51,6 +51,18 @@ enum NotificationLevel {
   error
 }
 
+enum RiskRuleType {
+  deadline_progress
+  blocked
+  overdue
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+}
+
 model User {
   id       Int      @id @default(autoincrement())
   name     String
@@ -89,6 +101,7 @@ model Requirement {
   createdAt   DateTime            @default(now())
   project     Project             @relation(fields: [projectId], references: [id])
   reviews     RequirementReview[]
+  changes     RequirementChange[]
 }
 
 model RequirementReview {
@@ -99,6 +112,18 @@ model RequirementReview {
   comment       String?
   createdAt     DateTime       @default(now())
   requirement   Requirement    @relation(fields: [requirementId], references: [id])
+}
+
+model RequirementChange {
+  id            Int         @id @default(autoincrement())
+  requirementId Int
+  changedBy     String?
+  reason        String?
+  before        Json?
+  after         Json?
+  version       String?
+  createdAt     DateTime    @default(now())
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
 }
 
 model CostEntry {
@@ -131,11 +156,29 @@ model Task {
   project      Project    @relation(fields: [projectId], references: [id])
 }
 
+model FeishuDependency {
+  id                 Int            @id @default(autoincrement())
+  projectName        String
+  taskRecordId       String
+  taskId             String?
+  dependsOnRecordId  String
+  dependsOnTaskId    String?
+  type               DependencyType @default(FS)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([taskRecordId, dependsOnRecordId, type])
+}
+
 model Worklog {
   id         Int      @id @default(autoincrement())
   projectId  Int
   userId     Int?
+  assigneeName String?
   taskTitle  String?
+  weekStart  String?
+  weekEnd    String?
+  totalDays  Float?
   hours      Float
   hourlyRate Float
   workedOn   String
@@ -153,6 +196,48 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime          @default(now())
   project   Project?          @relation(fields: [projectId], references: [id])
+}
+
+model RiskRule {
+  id                Int        @id @default(autoincrement())
+  key               String     @unique
+  type              RiskRuleType @default(deadline_progress)
+  name              String
+  enabled           Boolean    @default(true)
+  thresholdDays     Int
+  progressThreshold Int
+  blockedValue      String?    @default("是")
+  includeMilestones Boolean    @default(false)
+  autoNotify        Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  alerts            RiskAlert[]
+  logs              RiskRuleLog[]
+}
+
+model RiskRuleLog {
+  id        Int      @id @default(autoincrement())
+  ruleId    Int
+  action    String
+  note      String?
+  createdAt DateTime @default(now())
+  rule      RiskRule @relation(fields: [ruleId], references: [id])
+}
+
+model RiskAlert {
+  id         Int      @id @default(autoincrement())
+  ruleId     Int
+  recordId   String
+  taskId     String?
+  taskName   String?
+  project    String?
+  endDate    String?
+  progress   Float?
+  daysLeft   Int?
+  notifiedAt DateTime @default(now())
+  rule       RiskRule @relation(fields: [ruleId], references: [id])
+
+  @@unique([ruleId, recordId])
 }
 
 model AuditLog {

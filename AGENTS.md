@@ -1,38 +1,40 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `backend/`: NestJS API (default `localhost:3000`). Core code in `backend/src/`, feature modules under `backend/src/modules/`, Prisma schema and migrations in `backend/prisma/`.
-- `frontend/`: React + Vite admin UI (default `localhost:5173`). Entry points in `frontend/src/main.tsx` and `frontend/src/App.tsx`, API client in `frontend/src/api/`, styles in `frontend/src/styles.css`.
+- `backend/`: NestJS API. Main entry in `backend/src/main.ts` with modules under `backend/src/modules/` (e.g., auth, projects, costs, schedule, audit). Prisma schema and migrations live in `backend/prisma/`.
+- `frontend/`: React + Vite admin UI. App shell in `frontend/src/App.tsx`, views in `frontend/src/views/`, shared UI in `frontend/src/components/`, API clients in `frontend/src/api/`, and shared types in `frontend/src/types.ts`.
 - `docs/`: Reference docs such as `docs/api.md`.
-- Root specs and plans: `spec.md`, `development-plan.md`, `development-plan-estimate.md`.
+- Root plans/specs: `spec.md`, `development-plan.md`, `development-plan-estimate.md`.
 
 ## Build, Test, and Development Commands
-- `npm install`: installs workspace deps.
-- `npm run dev`: runs backend and frontend together (backgrounds backend).
-- `npm run dev:backend`: starts NestJS in watch mode.
-- `npm run dev:frontend`: starts Vite dev server.
-- `npm run build`: builds backend and frontend.
-- Backend DB tasks:
-  - `npm run -w backend prisma:generate`
-  - `npm run -w backend prisma:migrate`
-  - `npm run -w backend prisma:seed`
-- Infra (optional): `docker compose up -d` for Postgres + Redis.
+- `npm install` then `npm install --workspace backend` and `npm install --workspace frontend` to install dependencies.
+- `npm run dev:backend`: Start NestJS API (default `http://localhost:3000`).
+- `npm run dev:frontend`: Start Vite UI (default `http://localhost:5173`).
+- `npm run dev`: Run both (backend + frontend).
+- `npm run build`: Build backend and frontend.
+- `npm run -w backend prisma:generate`: Generate Prisma client.
+- `npm run -w backend prisma:migrate`: Apply local migrations.
+- `npm run -w backend prisma:seed`: Seed default users.
+- `docker compose up -d`: Optional PostgreSQL/Redis.
 
 ## Coding Style & Naming Conventions
-- TypeScript strict mode is enabled in both `backend/tsconfig.json` and `frontend/tsconfig.json`.
-- Use standard NestJS module/service/controller patterns under `backend/src/modules/`.
-- React components use `.tsx` with `PascalCase` names (e.g., `App.tsx`).
-- Linting is not configured (`backend` has a placeholder `lint` script). Keep changes minimal and consistent with existing formatting.
+- Indentation is 2 spaces; keep existing formatting style.
+- TypeScript/React with semicolons and single quotes is the prevailing style.
+- Modules: NestJS feature folders under `backend/src/modules/<feature>/`.
+- Components/Views: PascalCase filenames (e.g., `ResourcesView.tsx`).
+- No lint/format tooling is configured; keep diffs tight and consistent with surrounding code.
 
 ## Testing Guidelines
-- No test runner is configured yet. If you add tests, document the framework and add an npm script.
-- Suggested convention: place backend tests near modules (e.g., `backend/src/modules/foo/foo.service.spec.ts`).
+- There is no automated test framework configured yet.
+- Validate changes with `npm run build` and manual UI/API checks.
+- If you add risky changes, include a short manual test note in your PR.
 
 ## Commit & Pull Request Guidelines
-- Git history shows a single initial commit, so no commit message convention is established.
-- Recommended format going forward: short imperative summary (e.g., `Add cost aggregation endpoint`).
-- PRs should include a concise description, linked issues (if any), and screenshots for UI changes.
+- Commit messages follow a short, imperative, sentence-case style (e.g., “Integrate Feishu schedule view”).
+- Prefer small, focused commits.
+- PRs should include: summary, key screenshots for UI changes, and any manual verification steps.
+- If you introduce Prisma schema changes, include the migration under `backend/prisma/migrations/`.
 
 ## Configuration Tips
-- Copy env template before running backend: `cp backend/.env.example backend/.env`.
-- Default seed users are defined in README and created via `prisma:seed`.
+- Backend config is via `backend/.env` (copy from `backend/.env.example`).
+- Do not commit secrets. Keep Feishu and DB credentials in `.env` only.

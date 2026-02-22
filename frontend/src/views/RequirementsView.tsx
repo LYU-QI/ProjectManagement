@@ -1,5 +1,6 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import type { Requirement } from '../types';
+import { useState } from 'react';
+import type { Requirement, RequirementChange } from '../types';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -20,12 +21,15 @@ type Props = {
   requirementEdit: InlineEditState<Requirement, number>;
   onSaveRequirement: (req: Requirement) => void;
   onReviewRequirement: (id: number, decision: 'approved' | 'rejected') => void;
-  onMarkRequirementChanged: (req: Requirement) => void;
+  onMarkRequirementChanged: (req: Requirement, input: { reason: string; version: string }) => void;
+  onShowRequirementChanges: (req: Requirement) => void;
   onDeleteRequirement: (req: Requirement) => void;
   onDeleteSelectedRequirements: () => void;
   onToggleRequirementSelection: (id: number, checked: boolean) => void;
   onSelectAllRequirements: (ids: number[], checked: boolean) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
+  requirementChanges: RequirementChange[];
+  selectedRequirementForChanges: Requirement | null;
 };
 
 export default function RequirementsView({
@@ -37,12 +41,29 @@ export default function RequirementsView({
   onSaveRequirement,
   onReviewRequirement,
   onMarkRequirementChanged,
+  onShowRequirementChanges,
   onDeleteRequirement,
   onDeleteSelectedRequirements,
   onToggleRequirementSelection,
   onSelectAllRequirements,
-  onInlineKeyDown
+  onInlineKeyDown,
+  requirementChanges,
+  selectedRequirementForChanges
 }: Props) {
+  const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
+  const [changeForm, setChangeForm] = useState({ reason: '', version: '' });
+  const [changeFilters, setChangeFilters] = useState({ keyword: '', author: '', version: '' });
+
+  const filteredChanges = requirementChanges.filter((change) => {
+    if (changeFilters.author && !(change.changedBy || '').includes(changeFilters.author)) return false;
+    if (changeFilters.version && !(change.version || '').includes(changeFilters.version)) return false;
+    if (changeFilters.keyword) {
+      const text = `${change.reason || ''} ${(change.after as any)?.description || ''}`.toLowerCase();
+      if (!text.includes(changeFilters.keyword.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   return (
     <div>
       {canWrite && (
@@ -178,7 +199,19 @@ export default function RequirementsView({
                         <>
                           <button className="btn" type="button" onClick={() => onReviewRequirement(r.id, 'approved')}>通过</button>
                           <button className="btn" type="button" onClick={() => onReviewRequirement(r.id, 'rejected')}>驳回</button>
-                          <button className="btn" type="button" onClick={() => onMarkRequirementChanged(r)}>记变更</button>
+                          <button
+                            className="btn"
+                            type="button"
+                            onClick={() => {
+                              setChangeDrawer({ open: true, req: r });
+                              setChangeForm({ reason: '', version: `v${r.changeCount + 1}.0` });
+                            }}
+                          >
+                            记变更
+                          </button>
+                          <button className="btn" type="button" onClick={() => onShowRequirementChanges(r)}>
+                            {selectedRequirementForChanges?.id === r.id ? '收起变更' : '变更记录'}
+                          </button>
                           <button className="btn" type="button" onClick={() => onDeleteRequirement(r)}>删除</button>
                         </>
                       )}
@@ -190,6 +223,111 @@ export default function RequirementsView({
           </tbody>
         </table>
       </div>
+
+      {selectedRequirementForChanges && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <h3>变更时间线 - {selectedRequirementForChanges.title}</h3>
+          <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 10 }}>
+            <input
+              placeholder="关键词（原因/说明）"
+              value={changeFilters.keyword}
+              onChange={(e) => setChangeFilters((prev) => ({ ...prev, keyword: e.target.value }))}
+            />
+            <input
+              placeholder="变更人"
+              value={changeFilters.author}
+              onChange={(e) => setChangeFilters((prev) => ({ ...prev, author: e.target.value }))}
+            />
+            <input
+              placeholder="版本号"
+              value={changeFilters.version}
+              onChange={(e) => setChangeFilters((prev) => ({ ...prev, version: e.target.value }))}
+            />
+          </div>
+          <table className="table">
+            <thead><tr><th>时间</th><th>版本</th><th>变更人</th><th>原因</th><th>变更字段</th><th>说明</th></tr></thead>
+            <tbody>
+              {filteredChanges.map((change) => (
+                <tr key={change.id}>
+                  <td>{new Date(change.createdAt).toLocaleString()}</td>
+                  <td>{change.version || '-'}</td>
+                  <td>{change.changedBy || '-'}</td>
+                  <td style={{ whiteSpace: 'pre-wrap' }}>{change.reason || '-'}</td>
+                  <td style={{ whiteSpace: 'pre-wrap' }}>
+                    {['title', 'description', 'priority', 'status', 'version'].map((key) => {
+                      const before = (change.before as any)?.[key];
+                      const after = (change.after as any)?.[key];
+                      if (before === after) return null;
+                      return (
+                        <div key={key} className="change-field">
+                          <span className="change-key">{key}</span>
+                          <span className="change-before">{String(before ?? '-')}</span>
+                          <span className="change-arrow">→</span>
+                          <span className="change-after">{String(after ?? '-')}</span>
+                        </div>
+                      );
+                    })}
+                  </td>
+                  <td style={{ whiteSpace: 'pre-wrap' }}>{(change.after as any)?.description ?? (change.before as any)?.description ?? '-'}</td>
+                </tr>
+              ))}
+              {filteredChanges.length === 0 && (
+                <tr><td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无变更记录</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {changeDrawer.open && changeDrawer.req && (
+        <>
+          <div
+            className="drawer-backdrop"
+            onClick={() => setChangeDrawer({ open: false, req: null })}
+          />
+          <div className="drawer">
+            <div className="drawer-header">
+              <h3>需求变更</h3>
+              <button className="btn" type="button" onClick={() => setChangeDrawer({ open: false, req: null })}>关闭</button>
+            </div>
+            <div className="drawer-body">
+              <div className="form" style={{ gridTemplateColumns: '1fr' }}>
+                <div>
+                  <label>需求</label>
+                  <input value={changeDrawer.req.title} readOnly />
+                </div>
+                <div>
+                  <label>版本号</label>
+                  <input
+                    value={changeForm.version}
+                    onChange={(e) => setChangeForm((prev) => ({ ...prev, version: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label>变更原因</label>
+                  <textarea
+                    rows={4}
+                    value={changeForm.reason}
+                    onChange={(e) => setChangeForm((prev) => ({ ...prev, reason: e.target.value }))}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="drawer-footer">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => {
+                  onMarkRequirementChanged(changeDrawer.req!, { reason: changeForm.reason, version: changeForm.version });
+                  setChangeDrawer({ open: false, req: null });
+                }}
+              >
+                提交变更
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -36,6 +36,17 @@ export interface Requirement {
   changeCount: number;
 }
 
+export interface RequirementChange {
+  id: number;
+  requirementId: number;
+  changedBy?: string | null;
+  reason?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  version?: string | null;
+  createdAt: string;
+}
+
 export interface CostSummary {
   projectId: number;
   budget: number;
@@ -54,6 +65,50 @@ export interface RiskData {
   blockedCount: number;
   inProgressCount: number;
   riskLevel: string;
+}
+
+export interface RiskAlertItem {
+  recordId: string;
+  taskId: string;
+  taskName: string;
+  status: string;
+  priority: string;
+  assignee: string;
+  project: string;
+  startDate: string | null;
+  endDate: string | null;
+  progress: number;
+  daysLeft: number | null;
+  blocked: string;
+  blockedReason: string;
+  riskLevel: string;
+  milestone: string;
+  overdue: boolean;
+}
+
+export interface RiskAlertsResponse {
+  generatedAt: string;
+  thresholdDays: number;
+  progressThreshold: number;
+  rules: Array<{
+    id: string;
+    name: string;
+    description: string;
+    thresholdDays: number;
+    progressThreshold: number;
+  }>;
+  count: number;
+  items: RiskAlertItem[];
+}
+
+export interface FeishuDependency {
+  id: number;
+  projectName: string;
+  taskRecordId: string;
+  taskId?: string | null;
+  dependsOnRecordId: string;
+  dependsOnTaskId?: string | null;
+  type: 'FS' | 'SS' | 'FF';
 }
 
 export interface ProjectItem {
@@ -77,7 +132,11 @@ export interface Worklog {
   id: number;
   projectId: number;
   userId?: number;
+  assigneeName?: string;
   taskTitle?: string;
+  weekStart?: string;
+  weekEnd?: string;
+  totalDays?: number;
   hours: number;
   hourlyRate: number;
   workedOn: string;
@@ -91,6 +150,13 @@ export interface NotificationItem {
   message: string;
   readAt?: string | null;
   createdAt: string;
+}
+
+export interface UserItem {
+  id: number;
+  name: string;
+  role: 'pm' | 'lead' | 'viewer';
+  username: string;
 }
 
 export interface AuditLogItem {

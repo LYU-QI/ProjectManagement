@@ -2,10 +2,14 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/
 import { FeishuService } from './feishu.service';
 import { ListRecordsQueryDto } from './feishu.dto';
 import { Roles } from '../auth/roles.decorator';
+import { RisksService } from '../risks/risks.service';
 
 @Controller('api/v1/feishu')
 export class FeishuController {
-  constructor(private readonly feishuService: FeishuService) {}
+  constructor(
+    private readonly feishuService: FeishuService,
+    private readonly risksService: RisksService
+  ) {}
 
   @Get('records')
   async listRecords(@Query() query: ListRecordsQueryDto) {
@@ -32,13 +36,19 @@ export class FeishuController {
   @Post('records')
   @Roles('pm', 'lead')
   async createRecord(@Body('fields') fields: Record<string, unknown>) {
-    return this.feishuService.createRecord(fields || {});
+    const result = await this.feishuService.createRecord(fields || {});
+    const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
+    await this.risksService.triggerAutoNotify(project);
+    return result;
   }
 
   @Put('records/:recordId')
   @Roles('pm', 'lead')
   async updateRecord(@Param('recordId') recordId: string, @Body('fields') fields: Record<string, unknown>) {
-    return this.feishuService.updateRecord(recordId, fields || {});
+    const result = await this.feishuService.updateRecord(recordId, fields || {});
+    const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
+    await this.risksService.triggerAutoNotify(project);
+    return result;
   }
 
   @Delete('records/:recordId')

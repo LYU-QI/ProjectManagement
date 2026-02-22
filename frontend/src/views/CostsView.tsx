@@ -75,9 +75,11 @@ export default function CostsView({
           </form>
           <form className="form" onSubmit={onSubmitWorklog} style={{ marginTop: 10 }}>
             <input name="taskTitle" placeholder="工时任务" required />
-            <input name="hours" type="number" step="0.5" placeholder="工时(小时)" required />
-            <input name="hourlyRate" type="number" step="0.01" placeholder="时薪" required />
-            <input name="workedOn" type="date" required />
+            <input name="assigneeName" placeholder="负责人(姓名)" required />
+            <input name="weekStart" type="date" required />
+            <input name="weekEnd" type="date" required />
+            <input name="totalDays" type="number" min="0" step="0.5" placeholder="总人天" required />
+            <input name="dailyRate" type="number" step="0.01" placeholder="人天单价" required />
             <button className="btn" type="submit">新增工时</button>
           </form>
         </>
@@ -220,32 +222,46 @@ export default function CostsView({
       <div className="card" style={{ marginTop: 12 }}>
         <h3>工时明细</h3>
         <table className="table">
-          <thead><tr><th>日期</th><th>任务</th><th>工时</th><th>时薪</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
+          <thead><tr><th>周期</th><th>任务</th><th>负责人</th><th>人天</th><th>人天单价</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
           <tbody>
             {worklogs.map((w) => {
               const isEditing = worklogEdit.editingId === w.id;
               const rowDraft = isEditing ? (worklogEdit.draft ?? w) : w;
               const isDirty = isEditing && worklogEdit.hasDirty(w);
-              const hours = Number(rowDraft.hours);
+              const totalDays = Number(rowDraft.totalDays ?? (Number(rowDraft.hours) ? Number(rowDraft.hours) / 8 : 0));
+              const hours = Number.isFinite(totalDays) && totalDays > 0 ? totalDays * 8 : Number(rowDraft.hours);
               const hourlyRate = Number(rowDraft.hourlyRate);
+              const dailyRate = Number.isFinite(hourlyRate) ? hourlyRate * 8 : Number.NaN;
               const cost = Number.isFinite(hours) && Number.isFinite(hourlyRate) ? (hours * hourlyRate).toFixed(2) : '-';
               return (
                 <tr key={w.id} className={isEditing ? 'editing-row' : ''}>
                   <td
-                    className={isEditing && worklogEdit.editingField === 'workedOn' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'workedOn')}
+                    className={isEditing && (worklogEdit.editingField === 'weekStart' || worklogEdit.editingField === 'weekEnd') ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'weekStart')}
                   >
-                    {isEditing && worklogEdit.editingField === 'workedOn' ? (
-                      <input
-                        data-worklog-edit={`${w.id}-workedOn`}
-                        type="date"
-                        value={rowDraft.workedOn ?? ''}
-                        onChange={(e) => worklogEdit.updateDraft('workedOn', e.target.value)}
-                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
-                        onBlur={() => worklogEdit.finalize(w)}
-                      />
+                    {isEditing && (worklogEdit.editingField === 'weekStart' || worklogEdit.editingField === 'weekEnd') ? (
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <input
+                          data-worklog-edit={`${w.id}-weekStart`}
+                          type="date"
+                          value={rowDraft.weekStart ?? rowDraft.workedOn ?? ''}
+                          onChange={(e) => worklogEdit.updateDraft('weekStart', e.target.value)}
+                          onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
+                          onBlur={() => worklogEdit.finalize(w)}
+                        />
+                        <input
+                          data-worklog-edit={`${w.id}-weekEnd`}
+                          type="date"
+                          value={rowDraft.weekEnd ?? ''}
+                          onChange={(e) => worklogEdit.updateDraft('weekEnd', e.target.value)}
+                          onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
+                          onBlur={() => worklogEdit.finalize(w)}
+                        />
+                      </div>
                     ) : (
-                      rowDraft.workedOn
+                      rowDraft.weekStart && rowDraft.weekEnd
+                        ? `${rowDraft.weekStart} ~ ${rowDraft.weekEnd}`
+                        : rowDraft.workedOn
                     )}
                   </td>
                   <td
@@ -265,21 +281,37 @@ export default function CostsView({
                     )}
                   </td>
                   <td
-                    className={isEditing && worklogEdit.editingField === 'hours' ? 'editing' : ''}
-                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'hours')}
+                    className={isEditing && worklogEdit.editingField === 'assigneeName' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'assigneeName')}
                   >
-                    {isEditing && worklogEdit.editingField === 'hours' ? (
+                    {isEditing && worklogEdit.editingField === 'assigneeName' ? (
                       <input
-                        data-worklog-edit={`${w.id}-hours`}
-                        type="number"
-                        step="0.5"
-                        value={rowDraft.hours ?? ''}
-                        onChange={(e) => worklogEdit.updateDraft('hours', e.target.value)}
+                        data-worklog-edit={`${w.id}-assigneeName`}
+                        value={rowDraft.assigneeName ?? ''}
+                        onChange={(e) => worklogEdit.updateDraft('assigneeName', e.target.value)}
                         onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
                         onBlur={() => worklogEdit.finalize(w)}
                       />
                     ) : (
-                      rowDraft.hours
+                      rowDraft.assigneeName || '-'
+                    )}
+                  </td>
+                  <td
+                    className={isEditing && worklogEdit.editingField === 'totalDays' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'totalDays')}
+                  >
+                    {isEditing && worklogEdit.editingField === 'totalDays' ? (
+                      <input
+                        data-worklog-edit={`${w.id}-totalDays`}
+                        type="number"
+                        step="0.5"
+                        value={rowDraft.totalDays ?? ''}
+                        onChange={(e) => worklogEdit.updateDraft('totalDays', e.target.value)}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
+                        onBlur={() => worklogEdit.finalize(w)}
+                      />
+                    ) : (
+                      totalDays ? totalDays.toFixed(1) : '-'
                     )}
                   </td>
                   <td
@@ -291,13 +323,17 @@ export default function CostsView({
                         data-worklog-edit={`${w.id}-hourlyRate`}
                         type="number"
                         step="0.01"
-                        value={rowDraft.hourlyRate ?? ''}
-                        onChange={(e) => worklogEdit.updateDraft('hourlyRate', e.target.value)}
+                        value={Number.isFinite(dailyRate) ? dailyRate : ''}
+                        onChange={(e) => {
+                          const value = Number(e.target.value);
+                          const nextHourly = Number.isFinite(value) ? value / 8 : 0;
+                          worklogEdit.updateDraft('hourlyRate', String(nextHourly));
+                        }}
                         onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
                         onBlur={() => worklogEdit.finalize(w)}
                       />
                     ) : (
-                      rowDraft.hourlyRate
+                      Number.isFinite(dailyRate) ? dailyRate.toFixed(2) : '-'
                     )}
                   </td>
                   <td>{cost}</td>
