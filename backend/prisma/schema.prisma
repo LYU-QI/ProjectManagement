@@ -251,3 +251,11 @@ model AuditLog {
   requestBody Json?
   createdAt  DateTime @default(now())
 }
+
+model FeishuUser {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  openId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

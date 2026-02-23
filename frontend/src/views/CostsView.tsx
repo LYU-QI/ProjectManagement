@@ -30,6 +30,7 @@ type Props = {
   onSelectAllCostEntries: (ids: number[], checked: boolean) => void;
   onDeleteWorklog: (worklog: Worklog) => void;
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
+  feishuUserOptions: string[];
 };
 
 export default function CostsView({
@@ -49,7 +50,8 @@ export default function CostsView({
   onToggleCostEntrySelection,
   onSelectAllCostEntries,
   onDeleteWorklog,
-  onInlineKeyDown
+  onInlineKeyDown,
+  feishuUserOptions
 }: Props) {
   const formatCostType = (value: string) => {
     if (value === 'labor') return '人力';
@@ -75,7 +77,12 @@ export default function CostsView({
           </form>
           <form className="form" onSubmit={onSubmitWorklog} style={{ marginTop: 10 }}>
             <input name="taskTitle" placeholder="工时任务" required />
-            <input name="assigneeName" placeholder="负责人(姓名)" required />
+            <select name="assigneeName" required defaultValue="">
+              <option value="" disabled>选择负责人</option>
+              {feishuUserOptions.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
             <input name="weekStart" type="date" required />
             <input name="weekEnd" type="date" required />
             <input name="totalDays" type="number" min="0" step="0.5" placeholder="总人天" required />
@@ -285,13 +292,18 @@ export default function CostsView({
                     onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'assigneeName')}
                   >
                     {isEditing && worklogEdit.editingField === 'assigneeName' ? (
-                      <input
+                      <select
                         data-worklog-edit={`${w.id}-assigneeName`}
                         value={rowDraft.assigneeName ?? ''}
                         onChange={(e) => worklogEdit.updateDraft('assigneeName', e.target.value)}
                         onKeyDown={(e) => onInlineKeyDown(e, () => onSaveWorklog(w), worklogEdit.cancel)}
                         onBlur={() => worklogEdit.finalize(w)}
-                      />
+                      >
+                        <option value="" disabled>选择负责人</option>
+                        {feishuUserOptions.map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
                     ) : (
                       rowDraft.assigneeName || '-'
                     )}

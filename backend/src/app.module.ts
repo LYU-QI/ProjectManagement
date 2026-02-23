@@ -18,6 +18,7 @@ import { FeishuModule } from './modules/feishu/feishu.module';
 import { UsersModule } from './modules/users/users.module';
 import { RisksModule } from './modules/risks/risks.module';
 import { ConfigModule } from './modules/config/config.module';
+import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
 
 @Module({
   imports: [
@@ -35,7 +36,8 @@ import { ConfigModule } from './modules/config/config.module';
     UsersModule,
     FeishuModule,
     RisksModule,
-    ConfigModule
+    ConfigModule,
+    FeishuUsersModule
   ],
   controllers: [AppController],
   providers: [

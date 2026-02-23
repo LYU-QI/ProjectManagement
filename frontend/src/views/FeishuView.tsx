@@ -14,6 +14,7 @@ type Props = {
   feishuRecords: FeishuRecord[];
   filteredFeishuRecords: FeishuRecord[];
   feishuProjectOptions: string[];
+  feishuUserOptions: string[];
   selectedFeishuIds: string[];
   visibleColumns: Array<keyof FeishuFormState>;
   feishuSearch: string;
@@ -70,6 +71,7 @@ export default function FeishuView({
   feishuRecords,
   filteredFeishuRecords,
   feishuProjectOptions,
+  feishuUserOptions,
   selectedFeishuIds,
   visibleColumns,
   feishuSearch,
@@ -136,7 +138,9 @@ export default function FeishuView({
                 {FEISHU_FIELDS.map((field) => {
                   const options = field.key === '所属项目'
                     ? feishuProjectOptions
-                    : field.options ?? [];
+                    : field.key === '负责人'
+                      ? feishuUserOptions
+                      : field.options ?? [];
                   return (
                     <tr key={String(field.key)}>
                       <td>{field.label}</td>
@@ -172,7 +176,9 @@ export default function FeishuView({
               const value = feishuForm[field.key] ?? '';
               const options = field.key === '所属项目'
                 ? feishuProjectOptions
-                : field.options ?? [];
+                : field.key === '负责人'
+                  ? feishuUserOptions
+                  : field.options ?? [];
               if (field.type === 'select') {
                 return (
                   <select
@@ -328,7 +334,9 @@ export default function FeishuView({
                     if (isCellEditing) {
                       const options = field.key === '所属项目'
                         ? feishuProjectOptions
-                        : field.options ?? [];
+                        : field.key === '负责人'
+                          ? feishuUserOptions
+                          : field.options ?? [];
                       if (field.type === 'select') {
                         return (
                           <td key={String(field.key)} className="editing">

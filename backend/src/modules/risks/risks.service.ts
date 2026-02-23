@@ -20,7 +20,7 @@ export class RisksService {
     private readonly feishuService: FeishuService,
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService
-  ) {}
+  ) { }
 
   private parseDate(value: unknown): Date | null {
     if (value === null || value === undefined || value === '') return null;
@@ -254,15 +254,15 @@ export class RisksService {
           milestone
         };
       })
-      .filter((item) => includeMilestones || item.milestone !== '是')
-      .filter((item) => item.endDate && item.daysLeft !== null)
-      .map((item) => ({
+      .filter((item: any) => includeMilestones || item.milestone !== '是')
+      .filter((item: any) => item.endDate && item.daysLeft !== null)
+      .map((item: any) => ({
         ...item,
-        overdue: (item.daysLeft ?? 0) < 0,
-        ruleMatched: (item.daysLeft ?? 0) <= thresholdDays && item.progress < progressThreshold
+        isMilestone: item.milestone === '是',
+        ruleMatched: item.daysLeft !== null && item.daysLeft <= thresholdDays && item.progress * 100 < progressThreshold
       }))
-      .filter((item) => item.ruleMatched)
-      .sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
+      .filter((item: any) => item.ruleMatched)
+      .sort((a: any, b: any) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0));
 
     const response = {
       generatedAt: new Date().toISOString(),
@@ -282,7 +282,24 @@ export class RisksService {
     };
 
     if (rule.enabled && rule.autoNotify && items.length > 0) {
-      await this.syncNotifications(rule.id, items);
+      const syncItems = items.map((item: any) => ({
+        recordId: item.recordId,
+        taskId: item.taskId,
+        taskName: item.taskName,
+        project: item.project,
+        endDate: item.endDate,
+        progress: item.progress,
+        daysLeft: item.daysLeft,
+        riskLevel: item.riskLevel,
+        blocked: item.blocked,
+        blockedReason: item.blockedReason,
+        status: item.status,
+        priority: item.priority,
+        assignee: item.assignee,
+        startDate: item.startDate,
+        milestone: item.milestone
+      }));
+      await this.syncNotifications(rule.id, syncItems as any);
     }
 
     return response;

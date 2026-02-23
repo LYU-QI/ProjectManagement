@@ -5,7 +5,7 @@ export const FEISHU_FIELDS: Array<{ key: keyof FeishuFormState; label: string; t
   { key: '任务名称', label: '任务名称', type: 'text', required: true },
   { key: '状态', label: '状态', type: 'select', options: ['待办', '进行中', '已完成'], required: true },
   { key: '优先级', label: '优先级', type: 'select', options: ['低', '中', '高'], required: true },
-  { key: '负责人', label: '负责人(姓名)', type: 'text', required: true },
+  { key: '负责人', label: '负责人(姓名)', type: 'select', required: true },
   { key: '开始时间', label: '开始时间', type: 'date' },
   { key: '截止时间', label: '截止时间', type: 'date' },
   { key: '进度', label: '进度(0-100)', type: 'number' },

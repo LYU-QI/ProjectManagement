@@ -27,6 +27,7 @@ import type {
   UserItem,
   Worklog
 } from './types';
+import type { FeishuUserItem } from './views/FeishuUsersView';
 import DashboardView from './views/DashboardView';
 import RequirementsView from './views/RequirementsView';
 import CostsView from './views/CostsView';
@@ -39,8 +40,9 @@ import NotificationsView from './views/NotificationsView';
 import AuditView from './views/AuditView';
 import AiView from './views/AiView';
 import SettingsView from './views/SettingsView';
+import FeishuUsersView from './views/FeishuUsersView';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'global' | 'settings';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'global' | 'settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 
 function focusInlineEditor(selector: string) {
@@ -127,7 +129,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'global', 'settings'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'global', 'settings'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -136,6 +138,7 @@ function App() {
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
+  const [feishuUsers, setFeishuUsers] = useState<FeishuUserItem[]>([]);
   const [requirementChanges, setRequirementChanges] = useState<RequirementChange[]>([]);
   const [selectedRequirementForChanges, setSelectedRequirementForChanges] = useState<Requirement | null>(null);
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
@@ -156,16 +159,18 @@ function App() {
     setError('');
     try {
       await runWithRetry('刷新数据', async () => {
-        const [dashboardRes, projectList, userList, unreadNotifications] = await Promise.all([
+        const [dashboardRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
           apiGet<DashboardOverview>('/dashboard/overview'),
           apiGet<ProjectItem[]>('/projects'),
           apiGet<UserItem[]>('/users'),
-          apiGet<NotificationItem[]>('/notifications?unread=true')
+          apiGet<NotificationItem[]>('/notifications?unread=true'),
+          apiGet<FeishuUserItem[]>('/feishu-users')
         ]);
 
         setOverview(dashboardRes);
         setProjects(projectList);
         setUsers(userList);
+        setFeishuUsers(feishuUserList);
         setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
         setNotifications(unreadNotifications);
 
@@ -1891,7 +1896,8 @@ function App() {
           [ 系统预警 ]{notifications.filter((n) => !n.readAt).length > 0 ? ` [${notifications.filter((n) => !n.readAt).length}]` : ''}
         </button>
         {canWrite && <button className={view === 'audit' ? 'active' : ''} onClick={() => { setView('audit'); void loadAuditLogs(); }}>[ 审计日志 ]</button>}
-        <button className={view === 'feishu' ? 'active' : ''} onClick={() => setView('feishu')}>[ 飞书记录 ]</button>
+        <button className={view === 'feishu' ? 'active' : ''} onClick={() => setView('feishu')}>[ 飞书同步 ]</button>
+        {canWrite && <button className={view === 'feishu-users' ? 'active' : ''} onClick={() => setView('feishu-users')}>[ 负责人管理 ]</button>}
         <button className={view === 'ai' ? 'active' : ''} onClick={() => setView('ai')}>[ AI 驱动核心 ]</button>
         {canWrite && <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>[ 系统配置 ]</button>}
       </aside>
@@ -2161,6 +2167,7 @@ function App() {
             onSelectAllCostEntries={(ids, checked) => setSelectedCostEntryIds(checked ? ids : [])}
             onDeleteWorklog={(worklog) => void deleteWorklog(worklog)}
             onInlineKeyDown={handleInlineKeyDown}
+            feishuUserOptions={feishuUsers.map((u) => u.name)}
           />
         )}
 
@@ -2228,6 +2235,7 @@ function App() {
             feishuRecords={feishuRecords}
             filteredFeishuRecords={filteredFeishuRecords}
             feishuProjectOptions={feishuProjectOptions}
+            feishuUserOptions={feishuUsers.map((u) => u.name)}
             selectedFeishuIds={selectedFeishuIds}
             visibleColumns={feishuVisibleColumns}
             feishuSearch={feishuSearch}
@@ -2274,6 +2282,10 @@ function App() {
             formatProgressValue={formatProgressValue}
             getAssigneeName={getAssigneeName}
           />
+        )}
+
+        {view === 'feishu-users' && (
+          <FeishuUsersView canWrite={canWrite} />
         )}
 
         {view === 'ai' && (

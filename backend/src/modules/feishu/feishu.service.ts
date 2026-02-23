@@ -1,17 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
+import { FeishuUsersService } from '../feishu-users/feishu-users.service';
 
 type TokenCache = {
+  appId: string;
   token: string;
   expiresAtMs: number;
-  appId: string;
 };
 
 @Injectable()
 export class FeishuService {
-  constructor(private readonly configService: ConfigService) { }
-
+  private readonly logger = new Logger(FeishuService.name);
   private cache: TokenCache | null = null;
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly feishuUsersService: FeishuUsersService
+  ) { }
 
   private get appId() {
     return this.configService.getRawValue('FEISHU_APP_ID');
@@ -30,20 +35,11 @@ export class FeishuService {
   }
 
   private get userIdType() {
-    return this.configService.getRawValue('FEISHU_USER_ID_TYPE') || 'open_id';
+    return this.configService.getRawValue('FEISHU_USER_ID_TYPE');
   }
 
   private get userNameMap() {
-    const raw = this.configService.getRawValue('FEISHU_USER_NAME_MAP');
-    if (!raw) {
-      return {};
-    }
-    try {
-      const parsed = JSON.parse(raw) as Record<string, string>;
-      return parsed ?? {};
-    } catch {
-      throw new Error('Invalid FEISHU_USER_NAME_MAP JSON');
-    }
+    return {};
   }
 
   private get multiSelectFields() {
@@ -144,18 +140,35 @@ export class FeishuService {
     return null;
   }
 
-  private normalizeAssignee(value: unknown) {
+  private async normalizeAssignee(value: unknown) {
     if (value === null || value === undefined || value === '') return null;
-    if (Array.isArray(value)) return value;
-    if (typeof value === 'string') {
-      const name = value.trim();
-      if (!name) return null;
-      const mapped = this.userNameMap[name];
-      if (!mapped) {
-        throw new Error(`Unknown assignee name: ${name}. Add to FEISHU_USER_NAME_MAP.`);
-      }
-      return [{ id: mapped }];
+    const userNameMap = await this.feishuUsersService.getNameToOpenIdMap();
+    if (typeof value === 'object' && !Array.isArray(value)) return value;
+
+    if (Array.isArray(value)) {
+      const ids = value.map((v) => {
+        const name = typeof v === 'object' ? (v as any).name : String(v);
+        const mapped = userNameMap[name];
+        if (!mapped) {
+          throw new Error(`Unknown assignee name: ${name}. Please manage it in the Feishu User module.`);
+        }
+        return { id: mapped };
+      });
+      return ids;
     }
+
+    if (typeof value === 'string') {
+      const names = value.split(',').map((n) => n.trim()).filter(Boolean);
+      const ids = names.map((name) => {
+        const mapped = userNameMap[name];
+        if (!mapped) {
+          throw new Error(`Unknown assignee name: ${name}. Please manage it in the Feishu User module.`);
+        }
+        return { id: mapped };
+      });
+      return ids;
+    }
+
     return value;
   }
 
@@ -166,25 +179,28 @@ export class FeishuService {
     return value;
   }
 
+  private extractUserInfo(value: unknown): { name: string; openId: string }[] {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => {
+        if (item && typeof item === 'object') {
+          const name = (item as any).name || (item as any).en_name;
+          const openId = (item as any).id;
+          if (name && openId) return { name: String(name), openId: String(openId) };
+        }
+        return null;
+      })
+      .filter((u): u is { name: string; openId: string } => !!u);
+  }
+
   private extractAssigneeText(value: unknown) {
-    if (Array.isArray(value)) {
-      const names = value
-        .map((item) => {
-          if (item && typeof item === 'object') {
-            const candidate = (item as any).name || (item as any).en_name || (item as any).id;
-            if (candidate) return String(candidate);
-          }
-          if (typeof item === 'string') return item;
-          return '';
-        })
-        .filter(Boolean);
-      return names.join(', ');
-    }
+    const users = this.extractUserInfo(value);
+    if (users.length > 0) return users.map((u) => u.name).join(', ');
     if (typeof value === 'string') return value;
     return '';
   }
 
-  private normalizeFields(fields: Record<string, unknown>) {
+  private async normalizeFields(fields: Record<string, unknown>) {
     const multiSelect = new Set(this.multiSelectFields);
     const withMultiSelect = Object.fromEntries(
       Object.entries(fields).map(([key, value]) => (
@@ -193,7 +209,7 @@ export class FeishuService {
     );
     return {
       ...withMultiSelect,
-      负责人: this.normalizeAssignee(withMultiSelect['负责人']),
+      负责人: await this.normalizeAssignee(withMultiSelect['负责人']),
       开始时间: this.normalizeDate(withMultiSelect['开始时间']),
       截止时间: this.normalizeDate(withMultiSelect['截止时间']),
       进度: this.normalizeProgress(withMultiSelect['进度'])
@@ -238,6 +254,22 @@ export class FeishuService {
     const data = await this.request<{ items: Array<Record<string, unknown>>; page_token?: string; has_more?: boolean }>(
       `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`
     );
+
+    // 自动收集名册：提取所有记录中的负责人信息并全量同步入库
+    try {
+      const allUsersFound: { name: string; openId: string }[] = [];
+      data.items.forEach((item: any) => {
+        const users = this.extractUserInfo(item?.fields?.['负责人']);
+        allUsersFound.push(...users);
+      });
+      // 去重并静默保存
+      const uniqueUsers = Array.from(new Map(allUsersFound.map(u => [u.name, u])).values());
+      if (uniqueUsers.length > 0) {
+        void this.feishuUsersService.upsertMany(uniqueUsers);
+      }
+    } catch (e: any) {
+      this.logger.warn(`Failed to auto-collect feishu users: ${e.message}`);
+    }
 
     const filterProject = query.filterProject?.trim();
     const filterStatus = query.filterStatus?.trim();
@@ -296,7 +328,7 @@ export class FeishuService {
   async createRecord(fields: Record<string, unknown>) {
     const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
-    const normalized = this.normalizeFields(fields);
+    const normalized = await this.normalizeFields(fields);
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
 
     return this.request(
@@ -311,7 +343,7 @@ export class FeishuService {
   async updateRecord(recordId: string, fields: Record<string, unknown>) {
     const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
-    const normalized = this.normalizeFields(fields);
+    const normalized = await this.normalizeFields(fields);
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
 
     return this.request(
