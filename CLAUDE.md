@@ -1,3 +1,4 @@
+```
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -11,8 +12,24 @@ ProjectLVQI (天枢系统) is a multi-project management system for small-to-med
 - **Frontend**: React + TypeScript + Vite
 - **Infrastructure**: Docker Compose (PostgreSQL + Redis)
 - **AI**: OpenAI-compatible API for weekly reports and risk analysis
+- **Integration**: Feishu (Lark) API integration for project management
 
-**Architecture**: Modular Monolith with clear domain boundaries (Auth, Projects, Requirements, Costs, Schedules, Dashboard, AI, Notifications, AuditLogs).
+**Architecture**: Modular Monolith with clear domain boundaries:
+- Auth: User authentication and JWT token management
+- Projects: Project CRUD and management
+- Requirements: Requirement management + review + change tracking
+- Costs: Cost entry management (labor/outsource/cloud)
+- Worklogs: Time tracking with hourly rates
+- Schedules: Tasks + milestones + dependencies
+- Dashboard: Multi-project overview with health metrics
+- AI: AI report generation (weekly reports, risk analysis)
+- Notifications: User notifications with read status
+- AuditLogs: Operation audit trail (auto-populated via interceptor)
+- Feishu: Feishu API integration for record management
+- FeishuUsers: Feishu user management and synchronization
+- Risks: Risk assessment and alerting system
+- Config: System configuration management
+- Users: User management and profile
 
 ## Development Commands
 
@@ -103,11 +120,17 @@ npm run -w frontend build
 - `Milestone` - Project milestones with planned/actual dates
 - `Notification` - User notifications with read status
 - `AuditLog` - Operation audit trail (auto-populated via interceptor)
+- `FeishuRecord` - Feishu integration records
+- `FeishuUser` - Feishu user synchronization data
+- `RiskAlert` - Risk alert records
+- `RiskRule` - Risk assessment rules
+- `Dependency` - Task dependencies
 
 **Key Relationships:**
 - All domain models (requirements, costs, tasks, etc.) belong to a Project
 - Users can own multiple projects
 - Worklogs track user hours for cost calculation
+- Tasks can have dependencies on other tasks
 
 ## API Structure
 
@@ -125,6 +148,11 @@ npm run -w frontend build
 - `/ai/reports/weekly` - AI weekly report generation
 - `/notifications` - Notification center
 - `/audit-logs` - Audit logs (pm/lead only)
+- `/feishu` - Feishu API integration
+- `/feishu-users` - Feishu user management
+- `/risks` - Risk rules and alerts
+- `/dependencies` - Task dependencies
+- `/config` - System configuration
 
 **Request Format:**
 - JWT token in `Authorization: Bearer <token>` header
@@ -135,7 +163,13 @@ npm run -w frontend build
 
 **Key Files**:
 - `frontend/src/App.tsx` - Single-page application with all views
+- `frontend/src/App_old.tsx` - Previous version of the app (for reference)
 - `frontend/src/api/client.ts` - API client with auth handling
+- `frontend/src/api/feishu.ts` - Feishu API integration
+- `frontend/src/api/risks.ts` - Risk management API
+- `frontend/src/api/dependencies.ts` - Dependency management API
+- `frontend/src/api/settings.ts` - Settings API
+- `frontend/src/feishuConfig.ts` - Feishu configuration
 
 **Views** (managed via `view` state):
 - `dashboard` - Project overview with health metrics
@@ -145,6 +179,11 @@ npm run -w frontend build
 - `notifications` - Notification center
 - `ai` - AI report generation
 - `audit` - Audit logs (pm/lead only)
+- `feishu` - Feishu record management
+- `feishu-users` - Feishu user synchronization
+- `risk-center` - Risk assessment and alerts
+- `resources` - Resource management
+- `settings` - System settings
 
 **State Management**: React useState + useEffect patterns
 **Auth Storage**: `localStorage` for token and user info
@@ -167,11 +206,18 @@ draft → in_review → approved → planned → done
 - Blocked task count triggers risk level
 - Schedule variance from milestones
 - Budget overage percentage
+- Risk rules are configurable via `/risks` endpoint
 
 **AI Reports**:
 - Structured prompts with business data context
 - Fact constraints (no hallucinations)
 - Traceable data sources
+- Currently returns template responses (LLM integration pending)
+
+**Feishu Integration**:
+- Create/Read/Update/Delete records in Feishu forms
+- Synchronize Feishu users with system users
+- Feishu API calls require configuration in `config` module
 
 ## Testing
 
@@ -191,6 +237,9 @@ draft → in_review → approved → planned → done
 5. **Authorization**: Check `user?.role` for pm/lead vs viewer permissions
 6. **Date Format**: Strings in `YYYY-MM-DD` format for dates
 7. **Currency**: CNY for all monetary values
+8. **Feishu Integration**: Use `FeishuService` for all Feishu API calls
+9. **Risk Management**: Use `RiskService` for risk assessment and alerting
+10. **Dependencies**: Tasks can have dependencies on other tasks
 
 ## Development Notes
 
@@ -201,6 +250,8 @@ draft → in_review → approved → planned → done
 - Audit interceptor auto-logs all non-GET requests
 - Notifications auto-created for risk events
 - AI module currently returns template responses (integration pending)
+- Feishu integration requires API credentials in backend config
+- Risk rules are stored in the database and can be configured via API
 
 ## Project Status
 
@@ -214,7 +265,15 @@ draft → in_review → approved → planned → done
 - ✅ Dashboard overview
 - ✅ Notifications center
 - ✅ Audit logs
+- ✅ Feishu integration (basic)
+- ✅ Feishu user synchronization
+- ✅ Risk assessment and alerting
+- ✅ Task dependencies
+- ✅ System configuration
 - ⏳ AI reports (stub implementation)
+- ⏳ Advanced risk rules engine
+- ⏳ Email notifications
+- ⏳ Gantt/WBS visualization
 
 **Next Steps** (Stage 2):
 - Gantt/WBS visualization
@@ -222,3 +281,5 @@ draft → in_review → approved → planned → done
 - AI integration with actual LLM
 - Email notifications
 - Performance optimization (caching, materialized views)
+- Advanced Feishu integration features
+```

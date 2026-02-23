@@ -37,9 +37,29 @@ class ParseTaskDto {
   @IsNotEmpty()
   text!: string;
 
-  @IsString()
   @IsOptional()
   projectName?: string;
+}
+
+/** 会议纪要解析任务 DTO */
+class ParseMeetingDto {
+  @IsString()
+  @IsNotEmpty()
+  text!: string;
+}
+
+/** Dashboard 摘要 DTO */
+class DashboardSummaryDto {
+  @IsNumber()
+  @IsOptional()
+  projectId?: number;
+}
+
+/** 风险预测 DTO */
+class RiskPredictDto {
+  @IsNumber()
+  @IsOptional()
+  projectId?: number;
 }
 
 @Controller('api/v1/ai')
@@ -67,6 +87,24 @@ export class AiController {
   @Post('tasks/parse')
   parseTask(@Body() body: ParseTaskDto) {
     return this.aiService.parseTaskFromText(body);
+  }
+
+  /** 会议纪要智能提取 Action Items */
+  @Post('tasks/parse-meeting')
+  parseMeeting(@Body() body: ParseMeetingDto) {
+    return this.aiService.parseMeetingText(body);
+  }
+
+  /** 获取仪表盘 AI 智能摘要 */
+  @Post('dashboard/summary')
+  getDashboardSummary(@Body() body: DashboardSummaryDto) {
+    return this.aiService.getDashboardSummary(body);
+  }
+
+  /** 获取风险趋势预测 */
+  @Post('risks/predict')
+  getRiskPredict(@Body() body: RiskPredictDto) {
+    return this.aiService.predictRisks(body);
   }
 
   /** 需求文档/Excel导入 */

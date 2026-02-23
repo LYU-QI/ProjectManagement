@@ -4,6 +4,7 @@
 - `frontend/` 为 Vite + React 前端。入口在 `frontend/src/main.tsx` 和 `frontend/src/App.tsx`，页面位于 `frontend/src/views/`，通用组件在 `frontend/src/components/`，API 封装在 `frontend/src/api/`，样式在 `frontend/src/styles.css`。
 - `backend/` 为 NestJS 服务端。业务模块在 `backend/src/modules/`（如 `projects/`、`feishu/`、`risks/`），入口为 `backend/src/main.ts`，模块注册在 `backend/src/app.module.ts`。
 - `backend/prisma/` 存放 Prisma schema 与迁移文件。
+- `desktop/` 为 Electron 桌面端（入口 `desktop/main.js`，预加载 `desktop/preload.js`，打包配置在 `desktop/package.json`）。
 - `docs/` 与 `README.md` 为辅助文档。
 
 ## 构建、测试与开发命令
@@ -12,6 +13,11 @@
 - `npm run dev`：同时启动前后端。
 - `npm run build`：构建前后端产物。
 - `npm run -w backend prisma:migrate`：执行数据库迁移。
+- `npm run -w backend prisma:generate`：生成 Prisma Client。
+- `npm run -w backend prisma:seed`：执行种子数据。
+- `npm run -w frontend preview`：本地预览前端构建产物。
+- `npm run -w desktop start`：启动 Electron 桌面端。
+- `npm run -w desktop dist`：打包 Electron 桌面端。
 
 ## 编码规范与命名约定
 - 统一使用 2 空格缩进。
@@ -31,3 +37,4 @@
 ## 安全与配置提示
 - 环境变量通过 `.env` 与 Config 模块管理，禁止提交密钥。
 - 变更 Prisma schema 后需执行 `npm run -w backend prisma:migrate` 并确认服务可启动。
+- Prisma 数据源为 PostgreSQL，需设置 `DATABASE_URL`。

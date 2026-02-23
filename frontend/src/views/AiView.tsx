@@ -24,7 +24,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   const [copiedWeekly, setCopiedWeekly] = useState(false);
   const [copiedProgress, setCopiedProgress] = useState(false);
   const [generatingProgress, setGeneratingProgress] = useState(false);
-  const [activeTab, setActiveTab] = useState<'weekly' | 'progress' | 'nlp'>('weekly');
+  const [activeTab, setActiveTab] = useState<'weekly' | 'progress' | 'nlp' | 'meeting'>('weekly');
 
   // 自然语言录入状态
   type ParsedTask = {
@@ -36,6 +36,40 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   const [nlpResult, setNlpResult] = useState<ParsedTask | null>(null);
   const [nlpError, setNlpError] = useState('');
   const [creatingFeishu, setCreatingFeishu] = useState(false);
+
+  // 会议纪要转任务状态
+  const [meetingText, setMeetingText] = useState('');
+  const [meetingLoading, setMeetingLoading] = useState(false);
+  const [meetingTasks, setMeetingTasks] = useState<ParsedTask[]>([]);
+  const [selectedTaskIndices, setSelectedTaskIndices] = useState<number[]>([]);
+  const [meetingError, setMeetingError] = useState('');
+  const [batchCreating, setBatchCreating] = useState(false);
+  const [syncToFeishu, setSyncToFeishu] = useState(true);
+
+  function formatDate(date: Date) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  function addDays(base: Date, days: number) {
+    const d = new Date(base);
+    d.setDate(d.getDate() + days);
+    return d;
+  }
+
+  function resolvePlannedDates(task: ParsedTask) {
+    const today = new Date();
+    const rawStart = task.startDate ? new Date(task.startDate) : null;
+    const rawEnd = task.endDate ? new Date(task.endDate) : null;
+    const start = rawStart && !Number.isNaN(rawStart.valueOf())
+      ? rawStart
+      : rawEnd && !Number.isNaN(rawEnd.valueOf())
+        ? (rawEnd < today ? rawEnd : today)
+        : today;
+    const end = rawEnd && !Number.isNaN(rawEnd.valueOf())
+      ? rawEnd
+      : addDays(start, 7);
+    return { plannedStart: formatDate(start), plannedEnd: formatDate(end) };
+  }
 
   async function handleCreateToFeishu() {
     if (!nlpResult) return;
@@ -97,10 +131,90 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
       } else {
         setNlpError(res.error || '解析失败，请手动填写。');
       }
-    } catch (err) {
-      setNlpError(err instanceof Error ? err.message : 'unknown');
     } finally {
       setNlpLoading(false);
+    }
+  }
+
+  async function handleMeetingParse() {
+    if (!meetingText.trim()) return;
+    setMeetingLoading(true);
+    setMeetingTasks([]);
+    setMeetingError('');
+    setSelectedTaskIndices([]);
+
+    try {
+      const res = await apiPost<{ success: boolean; tasks?: ParsedTask[]; error?: string }>('/ai/tasks/parse-meeting', {
+        text: meetingText
+      });
+      if (res.success && res.tasks) {
+        setMeetingTasks(res.tasks);
+        setSelectedTaskIndices(res.tasks.map((_, i) => i));
+      } else {
+        setMeetingError(res.error || '未能提取到行动项');
+      }
+    } catch (err: any) {
+      setMeetingError(err.message || '会议解析失败');
+    } finally {
+      setMeetingLoading(false);
+    }
+  }
+
+  async function handleBatchCreate() {
+    if (selectedTaskIndices.length === 0) return;
+    if (!selectedProjectId) {
+      setMeetingError('请先选择目标工作区，再批量创建任务。');
+      return;
+    }
+    setBatchCreating(true);
+    setMeetingError('');
+
+    const projectItem = projects.find(p => p.id === selectedProjectId);
+    const priorityMap: Record<string, string> = { high: '高', medium: '中', low: '低' };
+    const statusMap: Record<string, string> = { todo: '待办', in_progress: '进行中', done: '已完成' };
+
+    let successCount = 0;
+    try {
+      for (const index of selectedTaskIndices) {
+        const task = meetingTasks[index];
+        const { plannedStart, plannedEnd } = resolvePlannedDates(task);
+        const assignee = task.assignee?.trim() || '待指派';
+        await apiPost('/projects/tasks', {
+          projectId: selectedProjectId,
+          title: task.taskName || '未命名任务',
+          assignee,
+          status: 'todo',
+          plannedStart,
+          plannedEnd
+        });
+        const fields = {
+          任务名称: task.taskName || '未命名任务',
+          负责人: assignee,
+          开始时间: plannedStart || null,
+          截止时间: plannedEnd || null,
+          优先级: priorityMap[task.priority] || '中',
+          状态: statusMap[task.status] || '待办',
+          所属项目: projectItem?.name || '',
+          是否阻塞: '否',
+          风险等级: '中',
+          里程碑: '否'
+        };
+        if (syncToFeishu) {
+          await apiPost('/feishu/records', { fields });
+        }
+        successCount++;
+      }
+      if (syncToFeishu) {
+        alert(`✅ 已创建 ${successCount} 个系统任务，并同步至飞书。`);
+      } else {
+        alert(`✅ 已创建 ${successCount} 个系统任务。`);
+      }
+      setMeetingTasks([]);
+      setMeetingText('');
+    } catch (err: any) {
+      setMeetingError(`在创建第 ${successCount + 1} 个任务时出错: ${err.message}`);
+    } finally {
+      setBatchCreating(false);
     }
   }
 
@@ -226,8 +340,11 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
         <button style={{ ...tabStyle(activeTab === 'progress') }} onClick={() => setActiveTab('progress')}>
           📊 项目进展报告
         </button>
-        <button style={{ ...tabStyle(activeTab === 'nlp'), borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('nlp')}>
+        <button style={{ ...tabStyle(activeTab === 'nlp') }} onClick={() => setActiveTab('nlp')}>
           ✍️ 自然语言录入任务
+        </button>
+        <button style={{ ...tabStyle(activeTab === 'meeting'), borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('meeting')}>
+          🎤 会议纪要转任务
         </button>
       </div>
 
@@ -433,6 +550,132 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           {!nlpResult && !nlpError && !nlpLoading && (
             <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
               输入任务描述后点击「AI 解析」，即可自动提取任务字段
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 会议纪要转任务 Tab */}
+      {activeTab === 'meeting' && (
+        <div className="card" style={{ borderTop: '2px solid #ffaa00', borderRadius: '0 4px 4px 4px' }}>
+          <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
+            粘贴会议记录全文、纪要流水或群聊对话，AI 将自动提取 Action Items 并允许批量同步至系统。
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+            <textarea
+              rows={6}
+              value={meetingText}
+              onChange={(e) => setMeetingText(e.target.value)}
+              placeholder="在这里粘贴会议纪要文本..."
+              style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
+            />
+            <button
+              className="btn"
+              type="button"
+              disabled={!meetingText.trim() || meetingLoading}
+              style={{ borderColor: '#ffaa00', color: '#ffaa00', alignSelf: 'stretch', minWidth: 100 }}
+              onClick={() => void handleMeetingParse()}
+            >
+              {meetingLoading ? '⏳ 解析中...' : '🪄 提取任务'}
+            </button>
+          </div>
+
+          {meetingError && (
+            <div style={{ padding: '10px 14px', background: 'rgba(255,80,80,0.1)', border: '1px solid rgba(255,80,80,0.4)', borderRadius: 4, color: '#ff8080', fontSize: 13, marginBottom: 12 }}>
+              ⚠️ {meetingError}
+            </div>
+          )}
+
+          {meetingTasks.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ color: '#ffaa00', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>
+                  ✅ 识别到 {meetingTasks.length} 个 Action Item
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  已选中 {selectedTaskIndices.length} 项
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={syncToFeishu}
+                    onChange={(e) => setSyncToFeishu(e.target.checked)}
+                  />
+                  同步到飞书进度列表
+                </label>
+                {!selectedProjectId && (
+                  <span style={{ fontSize: 12, color: '#ff8080' }}>未选择工作区，无法创建系统任务</span>
+                )}
+              </div>
+
+              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 4, padding: 2 }}>
+                <table className="table" style={{ fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: 40 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTaskIndices.length === meetingTasks.length && meetingTasks.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedTaskIndices(meetingTasks.map((_, i) => i));
+                            else setSelectedTaskIndices([]);
+                          }}
+                        />
+                      </th>
+                      <th>任务内容</th>
+                      <th>负责人</th>
+                      <th>开始日期</th>
+                      <th>截止日期</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {meetingTasks.map((task, idx) => {
+                      const { plannedStart, plannedEnd } = resolvePlannedDates(task);
+                      return (
+                      <tr key={idx} style={{ background: selectedTaskIndices.includes(idx) ? 'rgba(255,170,0,0.05)' : 'transparent' }}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={selectedTaskIndices.includes(idx)}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedTaskIndices([...selectedTaskIndices, idx]);
+                              else setSelectedTaskIndices(selectedTaskIndices.filter(i => i !== idx));
+                            }}
+                          />
+                        </td>
+                        <td title={task.notes}>{task.taskName}</td>
+                        <td>{task.assignee || '-'}</td>
+                        <td>{plannedStart || '-'}</td>
+                        <td>{plannedEnd || '-'}</td>
+                      </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <button
+                className="btn"
+                style={{ width: '100%', marginTop: 20, background: '#ffaa00', color: '#000', border: 'none', fontWeight: 600 }}
+                disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
+                onClick={() => void handleBatchCreate()}
+              >
+                {batchCreating
+                  ? '🚀 正在批量创建任务...'
+                  : syncToFeishu
+                    ? `⚡ 批量创建 ${selectedTaskIndices.length} 个任务并同步至飞书`
+                    : `⚡ 批量创建 ${selectedTaskIndices.length} 个任务`}
+              </button>
+            </div>
+          )}
+
+          {!meetingTasks.length && !meetingLoading && !meetingError && (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
+              输入会议文本后点击指示按钮提取行动项
             </div>
           )}
         </div>

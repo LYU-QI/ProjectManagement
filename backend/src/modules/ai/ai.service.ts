@@ -617,6 +617,67 @@ ${detailBlocks}`;
     };
   }
 
+  /**
+   * 会议纪要转任务：提取会议发言中的 Action Items，转化为多条任务。
+   */
+  async parseMeetingText(input: { text: string }) {
+    const today = new Date().toISOString().slice(0, 10);
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      throw new BadRequestException('未配置 AI 模型属性，无法进行会议解析。');
+    }
+
+    try {
+      const systemPrompt = `你是一名敏捷教练兼 PMO，擅长阅读长篇杂乱的会议纪要（或群聊整理），并从中精准萃取所有的 Action Items (行动项任务)。
+
+当前日期：${today}（周${new Date().getDay() || 7}）
+
+萃取逻辑与约束：
+1. 请仅关心【明确要做的事情】，识别出 Who(谁做)、What(做什么)、When(什么时候完成)。若没有指明具体任务，或只是信息同步、背景探讨，请不要将其视为任务。
+2. 每个任务的信息都需要映射为以下 JSON 字段：
+   - "taskName": 任务的精确名称 / 要做的核心诉求（简明扼要）。
+   - "assignee": 负责人姓名（若提及多个人或未提及，则可留空字符串）。
+   - "startDate": 起始日期（YYYY-MM-DD）。若仅提到期望几天内完成或只给了 Deadline，按照常理可默认任务从"今天（${today}）"或"明天"开始。无法得知可留空。
+   - "endDate": 截止日期（YYYY-MM-DD）。基于"今天"以及上下文（如本周五、下周等）精准推算合法日期；若无说明留空。
+   - "priority": high / medium / low。若发言中带强调情绪（必须、赶紧、紧急）则为 high，日常为 medium。
+   - "status": 恒定为 "todo"。
+   - "notes": 原文发言相关的补充上下文摘要（以备不时之需）。
+
+返回格式：必须返回一个标准 JSON 数组结构（不要 markdown 代码块包裹），例如：
+[
+  { "taskName": "xxx", "assignee": "xxx", "startDate": "xxx", "endDate": "xxx", "priority": "medium", "status": "todo", "notes": "xxx" },
+  { "taskName": "yyy", ... }
+]
+如果没有提取到任何行动项，返回 []。`;
+
+      const userPrompt = `请从以下会议纪要中提取具体的 Action Items:\n====================\n${input.text}\n====================`;
+      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+
+      try {
+        const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const parsedTasks = JSON.parse(jsonStr) as Array<{
+          taskName: string; assignee: string; startDate: string; endDate: string;
+          priority: string; status: string; notes: string;
+        }>;
+        if (!Array.isArray(parsedTasks)) {
+          throw new Error('AI 返回的数据不是数组');
+        }
+        return { success: true, tasks: parsedTasks };
+      } catch (e) {
+        throw new BadRequestException('AI 返回了无法解析的格式文本。返回结果：' + raw);
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new BadRequestException(`AI 分析失败：${detail}`);
+    }
+  }
+
   /** 需求文档/Excel导入：解析文件提取文本并调用 AI 模型提取需求列表 */
   async importRequirementsFromFile(buffer: Buffer, originalname: string) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
@@ -656,13 +717,13 @@ ${detailBlocks}`;
       throw new BadRequestException('未能从文件中提取到有效文本内容。');
     }
 
-    const systemPrompt = `你是一个专业的需求解析助手。你的任务是从用户上传的文件内容（可能是 Excel 导出的 CSV、Word/PDF 纯文本）中提取所有需求条目。
+    const systemPrompt = `你是一个专业的需求解析助手。你的任务是从用户上传的文件内容（可能是 Excel 导出的 CSV、Word / PDF 纯文本）中提取所有需求条目。
 
-提取规则：
-1. 识别每一条独立的需求。
-2. 为每条需求提取标题（title）和描述（description）。如果原文结构简单，可把整段原文作为描述，自行概括一个能表达核心意思的简短标题。
-3. 从语义或列数据中推断优先级（priority），必须是 'high', 'medium', 或者 'low'，如果不确定统一默认为 'medium'。
-4. 返回的内容必须是一个合法的 JSON 数组，且一定不要用 markdown block 符号（即不要用 \`\`\`json 包裹）！
+        提取规则：
+        1. 识别每一条独立的需求。
+        2. 为每条需求提取标题（title）和描述（description）。如果原文结构简单，可把整段原文作为描述，自行概括一个能表达核心意思的简短标题。
+        3. 从语义或列数据中推断优先级（priority），必须是 'high', 'medium', 或者 'low'，如果不确定统一默认为 'medium'。
+        4. 返回的内容必须是一个合法的 JSON 数组，且一定不要用 markdown block 符号（即不要用 \`\`\`json 包裹）！
 
 期望的 JSON 格式示例：
 [
@@ -690,5 +751,100 @@ ${detailBlocks}`;
       const detail = err instanceof Error ? err.message : String(err);
       throw new BadRequestException(`AI 解析需求失败: ${detail}`);
     }
+  }
+
+  /**
+   * 获取 Dashboard 智能摘要
+   */
+  async getDashboardSummary(input: { projectId?: number }) {
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      return { report: 'AI 配置未就绪，请前往系统配置。' };
+    }
+
+    // 聚合核心数据
+    const projectFilter = input.projectId ? { id: input.projectId } : {};
+    const projects = await this.prisma.project.findMany({
+      where: projectFilter,
+      include: {
+        tasks: true,
+        costs: true,
+        requirements: true,
+      }
+    });
+
+    if (projects.length === 0) return { report: '暂无项目数据可供分析。' };
+
+    const totalTasks = projects.reduce((acc, p) => acc + p.tasks.length, 0);
+    const doneTasks = projects.reduce((acc, p) => acc + p.tasks.filter(t => t.status === 'done').length, 0);
+    const blockedTasks = projects.reduce((acc, p) => acc + p.tasks.filter(t => t.status === 'blocked').length, 0);
+    const totalBudget = projects.reduce((acc, p) => acc + p.budget, 0);
+    const totalCost = projects.reduce((acc, p) => acc + p.costs.reduce((sum, c) => sum + c.amount, 0), 0);
+    const budgetRate = totalBudget > 0 ? (totalCost / totalBudget * 100).toFixed(1) : '0';
+
+    const systemPrompt = `你是一位高效的项目管理专家。请根据提供的汇总数据，生成一段极其精炼的 Dashboard 智能摘要（执行官简报）。
+要求：
+1. 字数控制在 150 字以内。
+2. 语气专业且具有启发性。
+3. 重点突出：进度、风险、资金健康度。
+4. 使用 Markdown 加粗关键指标。`;
+
+    const userPrompt = `数据汇报：
+- 覆盖项目：${projects.length} 个
+- 任务总数：${totalTasks}
+- 已完成率：${totalTasks > 0 ? (doneTasks / totalTasks * 100).toFixed(1) : 0}%
+- 阻塞中任务：${blockedTasks} 个（警惕）
+- 预算消耗：当前已支出 ${totalCost.toLocaleString()} / 总预算 ${totalBudget.toLocaleString()} (消耗率 ${budgetRate}%)
+请基于此数据给出简评。`;
+
+    const report = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+    return { report };
+  }
+
+  /**
+   * 获取风险趋势预测
+   */
+  async predictRisks(input: { projectId?: number }) {
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      return { report: 'AI 配置未就绪。' };
+    }
+
+    const projectFilter = input.projectId ? { projectId: input.projectId } : {};
+
+    // 获取近期的阻塞、逾期信息作为上下文
+    const recentTasks = await this.prisma.task.findMany({
+      where: {
+        ...projectFilter,
+        status: { in: ['blocked', 'todo', 'in_progress'] }
+      },
+      take: 20,
+      orderBy: { id: 'desc' }
+    });
+
+    const recentChanges = await this.prisma.requirementChange.findMany({
+      where: input.projectId ? { requirement: { projectId: input.projectId } } : {},
+      take: 10,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const systemPrompt = `你是一位专门负责量化风险的风控专家。请基于近期的任务阻塞状态和需求变更历史，预测未来的风险走向。
+要求：
+1. 预测接下来 1-2 周的可能隐患。
+2. 给出“风险指数”评估（0-100）。
+3. 重点识别：死线逾期、团队空转、范围蔓延。
+4. Markdown 格式输出（包含风险指数的醒目标注）。`;
+
+    const userPrompt = `风险上下文数据：
+- 当前待办/进行中/阻塞任务：${recentTasks.length} 条。其中阻塞详情：${recentTasks.filter(t => t.status === 'blocked').map(t => t.name).join(', ') || '暂无'}
+- 近期需求变更次数（过去 10 条）：${recentChanges.length} 条。
+请分析风险分析，并给出一个 0-100 的数值评分。`;
+
+    const report = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+    return { report };
   }
 }

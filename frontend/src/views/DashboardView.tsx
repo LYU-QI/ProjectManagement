@@ -1,4 +1,7 @@
-import { FormEvent, KeyboardEvent, useMemo } from 'react';
+import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { apiPost } from '../api/client';
 import type { DashboardOverview, ProjectItem } from '../types';
 
 type InlineEditState<T, Id> = {
@@ -287,6 +290,41 @@ export default function DashboardView({
     return { totalBudget, totalActual, totalBlocked, totalReqs, avgHealth, healthDist };
   }, [overview]);
 
+  /** AI 洞察中心状态 */
+  const [aiSummary, setAiSummary] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [riskPredict, setRiskPredict] = useState('');
+  const [predictLoading, setPredictLoading] = useState(false);
+
+  async function handleGetAiSummary() {
+    setSummaryLoading(true);
+    try {
+      // 这里的 projectId 取第一个，或者是根据业务习惯传入 selectedProjectIds[0]
+      const res = await apiPost<{ report: string }>('/ai/dashboard/summary', {
+        projectId: selectedProjectIds.length === 1 ? selectedProjectIds[0] : undefined
+      });
+      setAiSummary(res.report);
+    } catch (err: any) {
+      setAiSummary(`获取失败: ${err.message}`);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  async function handleGetRiskPredict() {
+    setPredictLoading(true);
+    try {
+      const res = await apiPost<{ report: string }>('/ai/risks/predict', {
+        projectId: selectedProjectIds.length === 1 ? selectedProjectIds[0] : undefined
+      });
+      setRiskPredict(res.report);
+    } catch (err: any) {
+      setRiskPredict(`获取失败: ${err.message}`);
+    } finally {
+      setPredictLoading(false);
+    }
+  }
+
   return (
     <div>
       {/* 新增项目表单 */}
@@ -321,6 +359,57 @@ export default function DashboardView({
         <div className="card" style={{ textAlign: 'center', borderTop: `2px solid ${healthColor(stats?.avgHealth ?? 0)}` }}>
           <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>平均健康度</div>
           <div style={{ fontSize: 28, fontWeight: 700, color: healthColor(stats?.avgHealth ?? 0), fontFamily: 'Orbitron' }}>{stats?.avgHealth ?? 0}</div>
+        </div>
+      </div>
+
+      {/* ===== AI 智能洞察面板 (新特性) ===== */}
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
+        {/* 执行简报卡片 */}
+        <div className="card" style={{ borderLeft: '3px solid #b44dff', position: 'relative', minHeight: 180 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 13, color: '#b44dff', letterSpacing: 1 }}>✨ AI 执行简报</h3>
+            <button
+              className="btn"
+              style={{ fontSize: 10, padding: '3px 8px', borderColor: '#b44dff', color: '#b44dff' }}
+              onClick={handleGetAiSummary}
+              disabled={summaryLoading}
+            >
+              {summaryLoading ? '⌛ 解析中' : '刷新分析'}
+            </button>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
+            {aiSummary ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{aiSummary}</ReactMarkdown>
+            ) : (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                {summaryLoading ? 'AI 正在阅读项目动态，请稍候...' : '点击“刷新分析”获取针对当前数据的洞察总结'}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 风险雷达卡片 */}
+        <div className="card" style={{ borderLeft: '3px solid #ff8800', position: 'relative', minHeight: 180 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 13, color: '#ff8800', letterSpacing: 1 }}>🛡️ 风险走向预测</h3>
+            <button
+              className="btn"
+              style={{ fontSize: 10, padding: '3px 8px', borderColor: '#ff8800', color: '#ff8800' }}
+              onClick={handleGetRiskPredict}
+              disabled={predictLoading}
+            >
+              {predictLoading ? '⌛ 预测中' : '开始预测'}
+            </button>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: '1.6', color: 'rgba(255,255,255,0.85)' }}>
+            {riskPredict ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{riskPredict}</ReactMarkdown>
+            ) : (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>
+                {predictLoading ? '正在基于历史数据进行量化推演...' : 'AI 专家将根据任务与变更历史预测未来风险点'}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
