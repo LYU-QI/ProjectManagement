@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { FeishuUsersService } from '../feishu-users/feishu-users.service';
 
@@ -53,7 +53,7 @@ export class FeishuService {
 
   private requireEnv(value: string | undefined, name: string) {
     if (!value) {
-      throw new Error(`Missing env var: ${name}`);
+      throw new BadRequestException(`Missing env var: ${name}`);
     }
     return value;
   }
@@ -74,12 +74,12 @@ export class FeishuService {
     });
 
     if (!res.ok) {
-      throw new Error(`Feishu auth failed: HTTP ${res.status}`);
+      throw new BadRequestException(`Feishu auth failed: HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as { code: number; msg: string; tenant_access_token: string; expire: number };
     if (data.code !== 0) {
-      throw new Error(`Feishu auth failed: ${data.code} ${data.msg}`);
+      throw new BadRequestException(`Feishu auth failed: ${data.code} ${data.msg}`);
     }
 
     const expiresAtMs = Date.now() + data.expire * 1000;
@@ -99,12 +99,12 @@ export class FeishuService {
     });
 
     if (!res.ok) {
-      throw new Error(`Feishu API failed: HTTP ${res.status}`);
+      throw new BadRequestException(`Feishu API failed: HTTP ${res.status}`);
     }
 
     const data = (await res.json()) as { code: number; msg: string; data?: T };
     if (data.code !== 0) {
-      throw new Error(`Feishu API failed: ${data.code} ${data.msg}`);
+      throw new BadRequestException(`Feishu API failed: ${data.code} ${data.msg}`);
     }
 
     return data.data as T;
@@ -150,7 +150,7 @@ export class FeishuService {
         const name = typeof v === 'object' ? (v as any).name : String(v);
         const mapped = userNameMap[name];
         if (!mapped) {
-          throw new Error(`Unknown assignee name: ${name}. Please manage it in the Feishu User module.`);
+          throw new BadRequestException(`识别到未知的负责人：${name}。请前往人员名册补齐或清空负责人重新创建。`);
         }
         return { id: mapped };
       });
@@ -162,7 +162,7 @@ export class FeishuService {
       const ids = names.map((name) => {
         const mapped = userNameMap[name];
         if (!mapped) {
-          throw new Error(`Unknown assignee name: ${name}. Please manage it in the Feishu User module.`);
+          throw new BadRequestException(`识别到未知的负责人：${name}。请前往人员名册补配或清空负责人重新创建。`);
         }
         return { id: mapped };
       });
