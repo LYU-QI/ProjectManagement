@@ -35,6 +35,52 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   const [nlpLoading, setNlpLoading] = useState(false);
   const [nlpResult, setNlpResult] = useState<ParsedTask | null>(null);
   const [nlpError, setNlpError] = useState('');
+  const [creatingFeishu, setCreatingFeishu] = useState(false);
+
+  async function handleCreateToFeishu() {
+    if (!nlpResult) return;
+
+    const priorityMap: Record<string, string> = {
+      high: '高',
+      medium: '中',
+      low: '低',
+    };
+
+    const statusMap: Record<string, string> = {
+      todo: '待办',
+      in_progress: '进行中',
+      done: '已完成'
+    };
+
+    const projectItem = projects.find(p => p.id === selectedProjectId);
+
+    const fields = {
+      任务名称: nlpResult.taskName,
+      负责人: nlpResult.assignee || '',
+      开始时间: nlpResult.startDate || null,
+      截止时间: nlpResult.endDate || null,
+      优先级: priorityMap[nlpResult.priority] || '中',
+      状态: statusMap[nlpResult.status] || '待办',
+      阻塞原因: nlpResult.notes || '',
+      所属项目: projectItem?.name || '',
+      是否阻塞: '否',
+      风险等级: '中',
+      里程碑: '否'
+    };
+
+    setCreatingFeishu(true);
+    setNlpError('');
+    try {
+      await apiPost('/feishu/records', { fields });
+      setNlpResult(null);
+      setNlpText('');
+      alert('✅ 已成功在飞书同步列表中创建任务！');
+    } catch (error: any) {
+      setNlpError(error.message || '一键创建到飞书失败');
+    } finally {
+      setCreatingFeishu(false);
+    }
+  }
 
   async function handleNlpParse() {
     if (!nlpText.trim()) return;
@@ -360,7 +406,27 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 </tbody>
               </table>
               <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-                💡 请将以上信息复制到「需求管理」或「进度同步」模块中手动创建任务。后续版本将支持一键创建。
+                💡 请将以上信息复制到「需求管理」或「进度同步」模块中手动创建任务。或者您也可以：
+              </div>
+              <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={creatingFeishu}
+                  onClick={() => void handleCreateToFeishu()}
+                  style={{
+                    background: 'linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '8px 16px',
+                    width: '100%',
+                    justifyContent: 'center',
+                    fontWeight: 'bold',
+                    boxShadow: '0 4px 15px rgba(0, 210, 255, 0.3)'
+                  }}
+                >
+                  {creatingFeishu ? '🚀 正在同步创建至飞书...' : '⚡ 一键创建至飞书同步列表'}
+                </button>
               </div>
             </div>
           )}
