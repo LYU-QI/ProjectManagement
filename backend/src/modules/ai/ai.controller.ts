@@ -1,4 +1,5 @@
-﻿import { Body, Controller, Post } from '@nestjs/common';
+﻿import { Body, Controller, Post, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { IsArray, IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { AiService } from './ai.service';
 
@@ -66,5 +67,15 @@ export class AiController {
   @Post('tasks/parse')
   parseTask(@Body() body: ParseTaskDto) {
     return this.aiService.parseTaskFromText(body);
+  }
+
+  /** 需求文档/Excel导入 */
+  @Post('requirements/import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importRequirements(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('请上传文件');
+    }
+    return this.aiService.importRequirementsFromFile(file.buffer, file.originalname);
   }
 }

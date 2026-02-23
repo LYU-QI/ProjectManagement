@@ -2157,6 +2157,8 @@ function App() {
             onInlineKeyDown={handleInlineKeyDown}
             requirementChanges={requirementChanges}
             selectedRequirementForChanges={selectedRequirementForChanges}
+            selectedProjectId={selectedProjectId}
+            onImportSuccess={() => void refreshAll(selectedProjectId)}
           />
         )}
 

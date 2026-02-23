@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { TaskStatus } from '@prisma/client';
+import * as xlsx from 'xlsx';
+import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
+
+const pdfParse = require('pdf-parse');
 
 interface WeeklyReportInput {
   projectIds: number[];
@@ -611,5 +615,79 @@ ${detailBlocks}`;
       success: false,
       error: '未配置 AI 模型，无法使用自然语言录入功能。请在「系统配置」中填写 AI_API_URL、AI_API_KEY 和 AI_MODEL。'
     };
+  }
+
+  /** 需求文档/Excel导入：解析文件提取文本并调用 AI 模型提取需求列表 */
+  async importRequirementsFromFile(buffer: Buffer, originalname: string) {
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      throw new Error('未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL），无法使用智能解析导入功能。');
+    }
+
+    let parsedText = '';
+    const lowerName = originalname.toLowerCase();
+
+    try {
+      if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
+        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        parsedText = xlsx.utils.sheet_to_csv(sheet).substring(0, 10000); // 截取前 10000 字符防超长
+      } else if (lowerName.endsWith('.docx')) {
+        const result = await mammoth.extractRawText({ buffer });
+        parsedText = result.value.substring(0, 10000);
+      } else if (lowerName.endsWith('.pdf')) {
+        const result = await pdfParse(buffer);
+        parsedText = result.text.substring(0, 10000);
+      } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) {
+        parsedText = buffer.toString('utf-8').substring(0, 10000);
+      } else {
+        throw new Error('不支持的文件格式，仅支持 .xlsx, .xls, .docx, .pdf, .txt, .md');
+      }
+    } catch (err) {
+      throw new Error(`文件内容提取失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    if (!parsedText.trim()) {
+      throw new Error('未能从文件中提取到有效文本内容。');
+    }
+
+    const systemPrompt = `你是一个专业的需求解析助手。你的任务是从用户上传的文件内容（可能是 Excel 导出的 CSV、Word/PDF 纯文本）中提取所有需求条目。
+
+提取规则：
+1. 识别每一条独立的需求。
+2. 为每条需求提取标题（title）和描述（description）。如果原文结构简单，可把整段原文作为描述，自行概括一个能表达核心意思的简短标题。
+3. 从语义或列数据中推断优先级（priority），必须是 'high', 'medium', 或者 'low'，如果不确定统一默认为 'medium'。
+4. 返回的内容必须是一个合法的 JSON 数组，且一定不要用 markdown block 符号（即不要用 \`\`\`json 包裹）！
+
+期望的 JSON 格式示例：
+[
+  {
+    "title": "用户登录接口",
+    "description": "提供账号密码登录，并返回 JWT Token。",
+    "priority": "high"
+  }
+]`;
+
+    const userPrompt = `文件名：${originalname}\n\n文件提取内容：\n${parsedText}`;
+
+    try {
+      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+      const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(jsonStr) as Array<{ title: string; description: string; priority: string }>;
+
+      // 进一步清洗数据
+      return parsed.map(p => ({
+        title: p.title || '（未命名需求）',
+        description: p.description || '',
+        priority: ['high', 'medium', 'low'].includes(p.priority) ? p.priority : 'medium',
+      }));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`AI 解析需求失败: ${detail}`);
+    }
   }
 }

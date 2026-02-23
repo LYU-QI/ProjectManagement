@@ -1,8 +1,8 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { apiPost } from '../api/client';
+import { apiPost, TOKEN_KEY } from '../api/client';
 import type { Requirement, RequirementChange } from '../types';
 
 type InlineEditState<T, Id> = {
@@ -33,6 +33,8 @@ type Props = {
   onInlineKeyDown: (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, onSave: () => void, onCancel: () => void) => void;
   requirementChanges: RequirementChange[];
   selectedRequirementForChanges: Requirement | null;
+  selectedProjectId?: number | null;
+  onImportSuccess?: () => void;
 };
 
 export default function RequirementsView({
@@ -51,7 +53,9 @@ export default function RequirementsView({
   onSelectAllRequirements,
   onInlineKeyDown,
   requirementChanges,
-  selectedRequirementForChanges
+  selectedRequirementForChanges,
+  selectedProjectId,
+  onImportSuccess
 }: Props) {
   const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
   const [changeForm, setChangeForm] = useState({ reason: '', version: '' });
@@ -84,15 +88,82 @@ export default function RequirementsView({
     return true;
   });
 
+  // 需求导入状态
+  type ParsedReq = { title: string; description: string; priority: string };
+  const [importModal, setImportModal] = useState<{ open: boolean; file: File | null; loading: boolean; error: string; result: ParsedReq[] | null }>({
+    open: false, file: null, loading: false, error: '', result: null
+  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportUpload = async () => {
+    if (!importModal.file) return;
+    setImportModal(p => ({ ...p, loading: true, error: '', result: null }));
+    try {
+      const formData = new FormData();
+      formData.append('file', importModal.file);
+
+      const res = await fetch('http://localhost:3000/api/v1/ai/requirements/import', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem(TOKEN_KEY)}`
+        },
+        body: formData
+      });
+
+      if (!res.ok) {
+        let msg = res.statusText;
+        try { const errObj = await res.json(); msg = errObj.message || msg; } catch { }
+        throw new Error(msg);
+      }
+
+      const data = await res.json() as ParsedReq[];
+      setImportModal(p => ({ ...p, loading: false, result: data }));
+    } catch (err) {
+      setImportModal(p => ({ ...p, loading: false, error: err instanceof Error ? err.message : String(err) }));
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importModal.result || !selectedProjectId) return;
+    setImportModal(p => ({ ...p, loading: true, error: '' }));
+    try {
+      await Promise.all(importModal.result.map(req =>
+        apiPost('/requirements', {
+          projectId: selectedProjectId,
+          title: req.title,
+          description: req.description,
+          priority: req.priority
+        })
+      ));
+      setImportModal({ open: false, file: null, loading: false, error: '', result: null });
+      if (onImportSuccess) onImportSuccess();
+    } catch (err) {
+      setImportModal(p => ({ ...p, loading: false, error: `批量创建失败：${err instanceof Error ? err.message : String(err)}` }));
+    }
+  };
+
   return (
     <div>
       {canWrite && (
-        <form className="form" onSubmit={onSubmitRequirement}>
-          <input name="title" placeholder="需求标题" required />
-          <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
-          <input name="description" placeholder="需求描述" required />
-          <button className="btn" type="submit">新增需求</button>
-        </form>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <form className="form" onSubmit={onSubmitRequirement} style={{ flex: 1 }}>
+            <input name="title" placeholder="需求标题" required />
+            <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+            <input name="description" placeholder="需求描述" required />
+            <button className="btn" type="submit">新增需求</button>
+          </form>
+          <button
+            className="btn"
+            type="button"
+            style={{ padding: '8px 16px', background: 'var(--color-bg-elevated)', borderColor: 'var(--color-border)' }}
+            onClick={() => {
+              if (!selectedProjectId) return alert('请先在顶部选择项目！');
+              setImportModal({ open: true, file: null, loading: false, error: '', result: null });
+            }}
+          >
+            📄 智能导入
+          </button>
+        </div>
       )}
       <div className="card" style={{ marginTop: 12 }}>
         {canWrite && (
@@ -397,6 +468,155 @@ export default function RequirementsView({
             </div>
           </div>
         </>
+      )}
+
+      {/* 智能导入向导弹窗 */}
+      {importModal.open && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ width: 800, maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+            <h3 style={{ marginTop: 0 }}>📄 AI 智能导入需求</h3>
+
+            <div style={{ padding: '20px 0', borderBottom: '1px solid var(--color-border)' }}>
+              <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+                支持上传 Excel、Word、PDF 或 TXT 格式的文件，AI 将自动分析文件内容并提取为标准需求列表。
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".xlsx,.xls,.doc,.docx,.pdf,.txt,.md"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setImportModal(p => ({ ...p, file, result: null, error: '' }));
+                    e.target.value = '';
+                  }}
+                />
+                <button className="btn" type="button" onClick={() => fileInputRef.current?.click()}>
+                  选择文件
+                </button>
+                <span style={{ fontSize: 13, flex: 1, color: importModal.file ? 'var(--text)' : 'var(--text-muted)' }}>
+                  {importModal.file ? importModal.file.name : '未选择任何文件'}
+                </span>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ borderColor: '#b44dff', color: '#b44dff' }}
+                  disabled={!importModal.file || importModal.loading}
+                  onClick={() => void handleImportUpload()}
+                >
+                  {importModal.loading && !importModal.result ? '⏳ AI 解析中...' : '🪄 立即识别'}
+                </button>
+              </div>
+              {importModal.error && (
+                <div style={{ color: '#ff8080', fontSize: 13, marginTop: 10, padding: 8, background: 'rgba(255,80,80,0.1)', borderRadius: 4 }}>
+                  ⚠️ {importModal.error}
+                </div>
+              )}
+            </div>
+
+            {importModal.result && (
+              <div style={{ flex: 1, overflow: 'auto', padding: '20px 0' }}>
+                <div style={{ marginBottom: 10, fontSize: 13, color: '#00ff88' }}>
+                  ✅ 成功识别到 {importModal.result.length} 条需求，请检查或修改确认：
+                </div>
+                <table className="table" style={{ background: 'var(--color-bg-base)' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ width: '25%' }}>需求标题</th>
+                      <th style={{ width: '50%' }}>需求描述</th>
+                      <th style={{ width: '15%' }}>优先级</th>
+                      <th style={{ width: '10%' }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importModal.result.map((req, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <input
+                            value={req.title}
+                            onChange={(e) => {
+                              const newList = [...importModal.result!];
+                              newList[idx].title = e.target.value;
+                              setImportModal(p => ({ ...p, result: newList }));
+                            }}
+                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit' }}
+                          />
+                        </td>
+                        <td>
+                          <textarea
+                            value={req.description}
+                            rows={2}
+                            onChange={(e) => {
+                              const newList = [...importModal.result!];
+                              newList[idx].description = e.target.value;
+                              setImportModal(p => ({ ...p, result: newList }));
+                            }}
+                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit', resize: 'vertical' }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            value={req.priority}
+                            onChange={(e) => {
+                              const newList = [...importModal.result!];
+                              newList[idx].priority = e.target.value;
+                              setImportModal(p => ({ ...p, result: newList }));
+                            }}
+                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit' }}
+                          >
+                            <option value="low">low</option>
+                            <option value="medium">medium</option>
+                            <option value="high">high</option>
+                          </select>
+                        </td>
+                        <td>
+                          <button
+                            className="btn"
+                            type="button"
+                            onClick={() => {
+                              const newList = [...importModal.result!];
+                              newList.splice(idx, 1);
+                              setImportModal(p => ({ ...p, result: newList }));
+                            }}
+                          >
+                            移除
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {importModal.result.length === 0 && (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>没有需求数据</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 'auto', paddingTop: 20 }}>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setImportModal({ open: false, file: null, loading: false, error: '', result: null })}
+              >
+                取消
+              </button>
+              {importModal.result && importModal.result.length > 0 && (
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ background: '#b44dff', color: '#fff', borderColor: '#b44dff' }}
+                  disabled={importModal.loading}
+                  onClick={() => void handleConfirmImport()}
+                >
+                  {importModal.loading ? '导入中...' : `确认导入 (${importModal.result.length})`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

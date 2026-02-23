@@ -17,15 +17,20 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
     "@prisma/client": "^6.19.2",
+    "@types/pdf-parse": "^1.1.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "mammoth": "^1.11.0",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
     "@nestjs/schematics": "^10.2.3",
     "@nestjs/testing": "^10.4.15",
+    "@types/multer": "^2.0.0",
     "@types/node": "^20.17.19",
     "prisma": "^6.19.2",
     "ts-node": "^10.9.2",
