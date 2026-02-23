@@ -598,7 +598,12 @@ ${detailBlocks}`;
             taskName: string; assignee: string; startDate: string;
             endDate: string; priority: string; status: string; notes: string;
           };
-          return { source: 'ai', success: true, task: parsed };
+          // 添加临时 id 用于前端管理
+          const taskWithId = {
+            ...parsed,
+            id: `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+          };
+          return { source: 'ai', success: true, task: taskWithId };
         } catch {
           // JSON 解析失败，返回原始文本供前端降级处理
           return { source: 'ai', success: false, rawText: raw, error: 'AI 返回格式解析失败，请手动填写。' };
@@ -665,7 +670,12 @@ ${detailBlocks}`;
         if (!Array.isArray(parsedTasks)) {
           throw new Error('AI 返回的数据不是数组');
         }
-        return { success: true, tasks: parsedTasks };
+        // 为每个任务添加临时 id 用于前端管理
+        const tasksWithIds = parsedTasks.map(task => ({
+          ...task,
+          id: `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+        }));
+        return { success: true, tasks: tasksWithIds };
       } catch (e) {
         throw new BadRequestException('AI 返回了无法解析的格式文本。返回结果：' + raw);
       }
@@ -840,7 +850,7 @@ ${detailBlocks}`;
 4. Markdown 格式输出（包含风险指数的醒目标注）。`;
 
     const userPrompt = `风险上下文数据：
-- 当前待办/进行中/阻塞任务：${recentTasks.length} 条。其中阻塞详情：${recentTasks.filter(t => t.status === 'blocked').map(t => t.name).join(', ') || '暂无'}
+- 当前待办/进行中/阻塞任务：${recentTasks.length} 条。其中阻塞详情：${recentTasks.filter(t => t.status === 'blocked').map(t => t.title).join(', ') || '暂无'}
 - 近期需求变更次数（过去 10 条）：${recentChanges.length} 条。
 请分析风险分析，并给出一个 0-100 的数值评分。`;
 

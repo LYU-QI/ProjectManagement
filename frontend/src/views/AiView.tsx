@@ -28,6 +28,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
   // 自然语言录入状态
   type ParsedTask = {
+    id?: string;
     taskName: string; assignee: string; startDate: string;
     endDate: string; priority: string; status: string; notes: string;
   };
@@ -88,7 +89,9 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
     const projectItem = projects.find(p => p.id === selectedProjectId);
 
+    const taskId = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const fields = {
+      任务ID: taskId,
       任务名称: nlpResult.taskName,
       负责人: nlpResult.assignee || '',
       开始时间: nlpResult.startDate || null,
@@ -187,7 +190,9 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           plannedStart,
           plannedEnd
         });
+        const taskId = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         const fields = {
+          任务ID: taskId,
           任务名称: task.taskName || '未命名任务',
           负责人: assignee,
           开始时间: plannedStart || null,
@@ -630,6 +635,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                       <th>负责人</th>
                       <th>开始日期</th>
                       <th>截止日期</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -647,10 +653,76 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                             }}
                           />
                         </td>
-                        <td title={task.notes}>{task.taskName}</td>
-                        <td>{task.assignee || '-'}</td>
-                        <td>{plannedStart || '-'}</td>
-                        <td>{plannedEnd || '-'}</td>
+                        <td>
+                          <input
+                            type="text"
+                            value={task.taskName}
+                            onChange={(e) => {
+                              const newTasks = [...meetingTasks];
+                              newTasks[idx] = { ...task, taskName: e.target.value };
+                              setMeetingTasks(newTasks);
+                            }}
+                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={task.assignee || ''}
+                            onChange={(e) => {
+                              const newTasks = [...meetingTasks];
+                              newTasks[idx] = { ...task, assignee: e.target.value };
+                              setMeetingTasks(newTasks);
+                            }}
+                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            value={plannedStart}
+                            onChange={(e) => {
+                              const newTasks = [...meetingTasks];
+                              newTasks[idx] = { ...task, startDate: e.target.value };
+                              setMeetingTasks(newTasks);
+                            }}
+                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="date"
+                            value={plannedEnd}
+                            onChange={(e) => {
+                              const newTasks = [...meetingTasks];
+                              newTasks[idx] = { ...task, endDate: e.target.value };
+                              setMeetingTasks(newTasks);
+                            }}
+                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
+                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          />
+                        </td>
+                        <td>
+                          <button
+                            className="btn"
+                            type="button"
+                            style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px solid rgba(255,80,80,0.4)', color: '#ff8080' }}
+                            onClick={() => {
+                              const newTasks = meetingTasks.filter((_, i) => i !== idx);
+                              setMeetingTasks(newTasks);
+                              setSelectedTaskIndices(selectedTaskIndices.filter(i => i !== idx));
+                            }}
+                          >
+                            删除
+                          </button>
+                        </td>
                       </tr>
                       );
                     })}
@@ -658,26 +730,44 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 </table>
               </div>
 
-              <button
-                className="btn"
-                style={{ width: '100%', marginTop: 20, background: '#ffaa00', color: '#000', border: 'none', fontWeight: 600 }}
-                disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
-                onClick={() => void handleBatchCreate()}
-              >
-                {batchCreating
-                  ? '🚀 正在批量创建任务...'
-                  : syncToFeishu
-                    ? `⚡ 批量创建 ${selectedTaskIndices.length} 个任务并同步至飞书`
-                    : `⚡ 批量创建 ${selectedTaskIndices.length} 个任务`}
-              </button>
+              {meetingTasks.length > 0 && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                  <button
+                    className="btn"
+                    style={{ flex: 1, background: '#ffaa00', color: '#000', border: 'none', fontWeight: 600 }}
+                    disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
+                    onClick={() => void handleBatchCreate()}
+                  >
+                    {batchCreating
+                      ? '🚀 正在批量创建任务...'
+                      : syncToFeishu
+                        ? `⚡ 批量创建 ${selectedTaskIndices.length} 个任务并同步至飞书`
+                        : `⚡ 批量创建 ${selectedTaskIndices.length} 个任务`}
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)' }}
+                    onClick={() => {
+                      setMeetingTasks([]);
+                      setSelectedTaskIndices([]);
+                      setMeetingText('');
+                      setMeetingError('');
+                    }}
+                  >
+                    重置
+                  </button>
+                </div>
+              )}
+
+              {!meetingTasks.length && !meetingLoading && !meetingError && (
+                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
+                  输入会议文本后点击指示按钮提取行动项
+                </div>
+              )}
             </div>
           )}
 
-          {!meetingTasks.length && !meetingLoading && !meetingError && (
-            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
-              输入会议文本后点击指示按钮提取行动项
-            </div>
-          )}
         </div>
       )}
     </div>
