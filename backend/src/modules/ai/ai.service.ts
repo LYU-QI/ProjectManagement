@@ -1,10 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { TaskStatus } from '@prisma/client';
 import * as xlsx from 'xlsx';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
-
 const pdfParse = require('pdf-parse');
 
 interface WeeklyReportInput {
@@ -624,7 +623,7 @@ ${detailBlocks}`;
     const aiModel = this.configService.getRawValue('AI_MODEL');
 
     if (!aiApiUrl || !aiApiKey || !aiModel) {
-      throw new Error('未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL），无法使用智能解析导入功能。');
+      throw new BadRequestException('未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL），无法使用智能解析导入功能。');
     }
 
     let parsedText = '';
@@ -645,14 +644,15 @@ ${detailBlocks}`;
       } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) {
         parsedText = buffer.toString('utf-8').substring(0, 10000);
       } else {
-        throw new Error('不支持的文件格式，仅支持 .xlsx, .xls, .docx, .pdf, .txt, .md');
+        throw new BadRequestException('不支持的文件格式，仅支持 .xlsx, .xls, .docx, .pdf, .txt, .md');
       }
     } catch (err) {
-      throw new Error(`文件内容提取失败: ${err instanceof Error ? err.message : String(err)}`);
+      if (err instanceof BadRequestException) throw err;
+      throw new BadRequestException(`文件内容提取失败: ${err instanceof Error ? err.message : String(err)}`);
     }
 
     if (!parsedText.trim()) {
-      throw new Error('未能从文件中提取到有效文本内容。');
+      throw new BadRequestException('未能从文件中提取到有效文本内容。');
     }
 
     const systemPrompt = `你是一个专业的需求解析助手。你的任务是从用户上传的文件内容（可能是 Excel 导出的 CSV、Word/PDF 纯文本）中提取所有需求条目。
@@ -687,7 +687,7 @@ ${detailBlocks}`;
       }));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(`AI 解析需求失败: ${detail}`);
+      throw new BadRequestException(`AI 解析需求失败: ${detail}`);
     }
   }
 }
