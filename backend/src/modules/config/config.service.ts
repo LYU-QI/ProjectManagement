@@ -29,7 +29,6 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     FEISHU_APP_TOKEN: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书多维表格 App Token' },
     FEISHU_TABLE_ID: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书多维表格 Table ID' },
     FEISHU_USER_ID_TYPE: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书用户 ID 类型' },
-    FEISHU_USER_NAME_MAP: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '用户名到飞书 ID 的映射（JSON 格式）' },
     AI_API_URL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型 API 端点（兼容 OpenAI 格式，如 https://api.deepseek.com/v1）' },
     AI_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'AI 模型 API 密钥' },
     AI_MODEL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型名称（如 deepseek-chat、gpt-4o、qwen-plus）' },

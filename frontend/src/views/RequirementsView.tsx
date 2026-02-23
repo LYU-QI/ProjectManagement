@@ -1,5 +1,8 @@
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { apiPost } from '../api/client';
 import type { Requirement, RequirementChange } from '../types';
 
 type InlineEditState<T, Id> = {
@@ -53,6 +56,23 @@ export default function RequirementsView({
   const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
   const [changeForm, setChangeForm] = useState({ reason: '', version: '' });
   const [changeFilters, setChangeFilters] = useState({ keyword: '', author: '', version: '' });
+
+  // AI 评审状态
+  const [aiReviewDrawer, setAiReviewDrawer] = useState<{ open: boolean; req: Requirement | null; loading: boolean; result: string }>({
+    open: false, req: null, loading: false, result: ''
+  });
+
+  // 调用 AI 评审
+  async function triggerAiReview(req: Requirement) {
+    setAiReviewDrawer({ open: true, req, loading: true, result: '' });
+    try {
+      const res = await apiPost<{ review: string; source?: string; error?: string }>('/ai/requirements/review', { id: req.id });
+      setAiReviewDrawer((prev) => ({ ...prev, loading: false, result: res.review }));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setAiReviewDrawer((prev) => ({ ...prev, loading: false, result: `评审失败：${detail}` }));
+    }
+  }
 
   const filteredChanges = requirementChanges.filter((change) => {
     if (changeFilters.author && !(change.changedBy || '').includes(changeFilters.author)) return false;
@@ -202,6 +222,14 @@ export default function RequirementsView({
                           <button
                             className="btn"
                             type="button"
+                            style={{ borderColor: '#00ff88', color: '#00ff88' }}
+                            onClick={() => void triggerAiReview(r)}
+                          >
+                            🤖 AI 评审
+                          </button>
+                          <button
+                            className="btn"
+                            type="button"
                             onClick={() => {
                               setChangeDrawer({ open: true, req: r });
                               setChangeForm({ reason: '', version: `v${r.changeCount + 1}.0` });
@@ -324,6 +352,48 @@ export default function RequirementsView({
               >
                 提交变更
               </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* AI 评审结果抽屉 */}
+      {aiReviewDrawer.open && (
+        <>
+          <div className="drawer-backdrop" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })} />
+          <div className="drawer">
+            <div className="drawer-header">
+              <div>
+                <h3 style={{ margin: 0 }}>🤖 AI 需求评审</h3>
+                {aiReviewDrawer.req && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                    {aiReviewDrawer.req.title}
+                  </div>
+                )}
+              </div>
+              <button className="btn" type="button" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}>关闭</button>
+            </div>
+            <div className="drawer-body">
+              {aiReviewDrawer.loading ? (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: 32, marginBottom: 12 }}>🤖</div>
+                  <div>AI 正在评审需求质量，请稍候...</div>
+                </div>
+              ) : (
+                <div style={{
+                  padding: '12px',
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 4,
+                  color: '#e0e0e0',
+                  lineHeight: '1.6',
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                }} className="markdown-body">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {aiReviewDrawer.result || '暂无评审结果'}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           </div>
         </>

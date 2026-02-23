@@ -145,6 +145,7 @@ function App() {
   const [costEntries, setCostEntries] = useState<CostEntryItem[]>([]);
   const [worklogs, setWorklogs] = useState<Worklog[]>([]);
   const [aiReport, setAiReport] = useState<string>('');
+  const [aiReportSource, setAiReportSource] = useState<string>('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -881,16 +882,27 @@ function App() {
       setError('请先选择项目。');
       return;
     }
+    // 动态计算本周一和本周日的日期
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=周日, 1=周一, ...
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
     try {
       await runWithRetry('生成周报', async () => {
-        const res = await apiPost<{ report: string }>('/ai/reports/weekly', {
+        const res = await apiPost<{ report: string; source?: string }>('/ai/reports/weekly', {
           projectIds: [selectedProjectId],
-          weekStart: '2026-02-16',
-          weekEnd: '2026-02-22',
+          weekStart: fmt(monday),
+          weekEnd: fmt(sunday),
           includeRisks: true,
           includeBudget: true
         });
         setAiReport(res.report);
+        setAiReportSource(res.source ?? 'template');
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
@@ -2291,6 +2303,7 @@ function App() {
         {view === 'ai' && (
           <AiView
             aiReport={aiReport}
+            aiReportSource={aiReportSource}
             onGenerate={generateReport}
             projects={projects}
             selectedProjectId={selectedProjectId}

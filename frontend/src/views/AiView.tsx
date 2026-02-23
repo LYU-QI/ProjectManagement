@@ -11,19 +11,53 @@ type ProjectItem = {
 
 type Props = {
   aiReport: string;
+  aiReportSource: string;
   onGenerate: () => void;
   projects: ProjectItem[];
   selectedProjectId: number | null;
   onSelectProject: (id: number | null) => void;
 };
 
-export default function AiView({ aiReport, onGenerate, projects, selectedProjectId, onSelectProject }: Props) {
+export default function AiView({ aiReport, aiReportSource, onGenerate, projects, selectedProjectId, onSelectProject }: Props) {
   const [weeklyDraft, setWeeklyDraft] = useState(aiReport);
   const [progressDraft, setProgressDraft] = useState('');
   const [copiedWeekly, setCopiedWeekly] = useState(false);
   const [copiedProgress, setCopiedProgress] = useState(false);
   const [generatingProgress, setGeneratingProgress] = useState(false);
-  const [activeTab, setActiveTab] = useState<'weekly' | 'progress'>('weekly');
+  const [activeTab, setActiveTab] = useState<'weekly' | 'progress' | 'nlp'>('weekly');
+
+  // 自然语言录入状态
+  type ParsedTask = {
+    taskName: string; assignee: string; startDate: string;
+    endDate: string; priority: string; status: string; notes: string;
+  };
+  const [nlpText, setNlpText] = useState('');
+  const [nlpLoading, setNlpLoading] = useState(false);
+  const [nlpResult, setNlpResult] = useState<ParsedTask | null>(null);
+  const [nlpError, setNlpError] = useState('');
+
+  async function handleNlpParse() {
+    if (!nlpText.trim()) return;
+    setNlpLoading(true);
+    setNlpResult(null);
+    setNlpError('');
+    try {
+      const selectedProject = projects.find((p) => p.id === selectedProjectId);
+      const res = await apiPost<{ success: boolean; task?: ParsedTask; error?: string; source?: string }>('/ai/tasks/parse', {
+        text: nlpText,
+        projectName: selectedProject?.name
+      });
+      if (res.success && res.task) {
+        setNlpResult(res.task);
+      } else {
+        setNlpError(res.error || '解析失败，请手动填写。');
+      }
+    } catch (err) {
+      setNlpError(err instanceof Error ? err.message : 'unknown');
+    } finally {
+      setNlpLoading(false);
+    }
+  }
 
   useEffect(() => {
     setWeeklyDraft(aiReport);
@@ -144,8 +178,11 @@ export default function AiView({ aiReport, onGenerate, projects, selectedProject
         <button style={{ ...tabStyle(activeTab === 'weekly'), borderRadius: '4px 0 0 0' }} onClick={() => setActiveTab('weekly')}>
           📋 周报草稿
         </button>
-        <button style={{ ...tabStyle(activeTab === 'progress'), borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('progress')}>
+        <button style={{ ...tabStyle(activeTab === 'progress') }} onClick={() => setActiveTab('progress')}>
           📊 项目进展报告
+        </button>
+        <button style={{ ...tabStyle(activeTab === 'nlp'), borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('nlp')}>
+          ✍️ 自然语言录入任务
         </button>
       </div>
 
@@ -163,6 +200,30 @@ export default function AiView({ aiReport, onGenerate, projects, selectedProject
               <button style={modeBtnStyle(weeklyViewMode === 'preview')} onClick={() => setWeeklyViewMode('preview')}>👁 渲染预览</button>
             </div>
           </div>
+
+          {/* 模板模式提示：引导用户配置 AI */}
+          {aiReportSource === 'template' && weeklyDraft && (
+            <div style={{
+              marginBottom: 16,
+              padding: '12px 16px',
+              background: 'rgba(255, 165, 0, 0.12)',
+              border: '1px solid rgba(255, 165, 0, 0.5)',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}>
+              <span style={{ fontSize: 20 }}>⚠️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#ffaa00', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
+                  当前为模板模式 — AI 智能分析未启用
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
+                  前往左侧菜单「⚙ 系统配置」填写 <strong style={{ color: '#fff' }}>AI_API_URL</strong>、<strong style={{ color: '#fff' }}>AI_API_KEY</strong> 和 <strong style={{ color: '#fff' }}>AI_MODEL</strong>，即可启用 AI 深度分析周报。
+                </div>
+              </div>
+            </div>
+          )}
 
           {weeklyViewMode === 'edit' ? (
             <textarea
@@ -228,6 +289,85 @@ export default function AiView({ aiReport, onGenerate, projects, selectedProject
               ) : (
                 <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 100 }}>暂无报告内容，选择项目并点击 AI 生成以预览分析。</div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 自然语言录入任务 Tab */}
+      {activeTab === 'nlp' && (
+        <div className="card" style={{ borderTop: '2px solid #b44dff', borderRadius: '0 4px 4px 4px' }}>
+          <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
+            用自然语言描述任务，AI 自动解析为结构化字段。例如：「下周四前张三完成支付接口联调，大概 3 天，优先级很高」
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+            <textarea
+              rows={3}
+              value={nlpText}
+              onChange={(e) => setNlpText(e.target.value)}
+              placeholder="在此输入任务描述，支持口语化表达..."
+              style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
+            />
+            <button
+              className="btn"
+              type="button"
+              disabled={!nlpText.trim() || nlpLoading}
+              style={{ borderColor: '#b44dff', color: '#b44dff', alignSelf: 'stretch', minWidth: 100 }}
+              onClick={() => void handleNlpParse()}
+            >
+              {nlpLoading ? '⏳ 解析中...' : '🪄 AI 解析'}
+            </button>
+          </div>
+
+          {/* 错误提示 */}
+          {nlpError && (
+            <div style={{
+              padding: '10px 14px',
+              background: 'rgba(255,80,80,0.1)',
+              border: '1px solid rgba(255,80,80,0.4)',
+              borderRadius: 4,
+              color: '#ff8080',
+              fontSize: 13,
+              marginBottom: 12
+            }}>
+              ⚠️ {nlpError}
+            </div>
+          )}
+
+          {/* 解析结果预览 */}
+          {nlpResult && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: '#b44dff', fontFamily: 'Orbitron, monospace', fontSize: 12, marginBottom: 10 }}>
+                ✅ 解析成功 — 请核对以下信息后手动创建任务
+              </div>
+              <table className="table">
+                <tbody>
+                  {[
+                    { label: '任务名称', value: nlpResult.taskName },
+                    { label: '负责人', value: nlpResult.assignee || '（未识别）' },
+                    { label: '开始日期', value: nlpResult.startDate || '（未识别）' },
+                    { label: '截止日期', value: nlpResult.endDate || '（未识别）' },
+                    { label: '优先级', value: nlpResult.priority },
+                    { label: '状态', value: nlpResult.status },
+                    { label: '补充说明', value: nlpResult.notes || '（无）' },
+                  ].map(({ label, value }) => (
+                    <tr key={label}>
+                      <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
+                      <td style={{ fontWeight: 500 }}>{value}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
+                💡 请将以上信息复制到「需求管理」或「进度同步」模块中手动创建任务。后续版本将支持一键创建。
+              </div>
+            </div>
+          )}
+
+          {!nlpResult && !nlpError && !nlpLoading && (
+            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
+              输入任务描述后点击「AI 解析」，即可自动提取任务字段
             </div>
           )}
         </div>

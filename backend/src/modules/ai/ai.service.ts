@@ -47,16 +47,49 @@ export class AiService {
       const projectCosts = costs.filter((item) => item.projectId === project.id);
       const projectTasks = tasks.filter((item) => item.projectId === project.id);
       const projectWorklogs = worklogs.filter((item) => item.projectId === project.id);
-      const blocked = projectTasks.filter((item) => item.status === TaskStatus.blocked).length;
+
+      // 基础指标
+      const totalTasks = projectTasks.length;
+      const doneTasks = projectTasks.filter((t) => t.status === TaskStatus.done).length;
+      const blockedTasksList = projectTasks.filter((t) => t.status === TaskStatus.blocked);
+      const blocked = blockedTasksList.length;
+      const taskCompletionRate = totalTasks > 0 ? Number(((doneTasks / totalTasks) * 100).toFixed(1)) : 0;
       const worklogLaborCost = projectWorklogs.reduce((sum, item) => sum + item.hours * item.hourlyRate, 0);
       const actualCost = projectCosts.reduce((sum, item) => sum + item.amount, 0) + worklogLaborCost;
       const budgetRate = project.budget === 0 ? 0 : Number((((actualCost - project.budget) / project.budget) * 100).toFixed(2));
 
+      // 文本明细：阻塞任务标题列表
+      const blockedTaskTitles = blockedTasksList.map((t) => t.title);
+
+      // 文本明细：高优先级需求名称
+      const highPriorityReqNames = projectRequirements
+        .filter((r) => r.priority === 'high')
+        .map((r) => r.title);
+
+      // 文本明细：本周工时备注（从 worklog 中提取非空备注）
+      const worklogNotes = projectWorklogs
+        .map((w) => {
+          // 备注来源：taskTitle 字段中组员填写的工作说明
+          const parts: string[] = [];
+          if (w.taskTitle) parts.push(w.taskTitle);
+          if (w.assigneeName) parts.push(`(${w.assigneeName})`);
+          return parts.join(' ');
+        })
+        .filter((note) => note.length > 0);
+
       return {
         projectId: project.id,
         projectName: project.name,
+        totalTasks,
+        doneTasks,
+        taskCompletionRate,
         requirementChanges: projectRequirements.reduce((sum, item) => sum + item.changeCount, 0),
         blockedTasks: blocked,
+        blockedTaskTitles,
+        highPriorityReqNames,
+        worklogNotes,
+        budget: project.budget,
+        actualCost,
         budgetVarianceRate: budgetRate
       };
     });
@@ -98,20 +131,50 @@ export class AiService {
 
     if (aiApiUrl && aiApiKey && aiModel) {
       try {
-        // 构建 AI 提示词上下文
-        const systemPrompt = `你是一位企业级的 PMO 和高管助理。你需要基于提供的多项目或单项目周度数据汇总，生成一份供管理层阅读的《${projectNames} 周报草稿》。
-要求：
-1. 语言精炼专业，适合向上汇报。
-2. 包含“整体概览”、“风险预警（阻塞任务/预算超支/频繁变更）”、“管理层建议与下周重点”。
-3. 突出关键数据的异常点，忽略正常指标。`;
+        // 构建增强版 AI 提示词：角色升级为资深 PMO 总监
+        const systemPrompt = `你是一位拥有 15 年经验的资深 PMO 总监。你需要基于多项目周度数据（含任务明细、需求明细、工时备注等一手信息），为管理层生成一份深度分析的《${projectNames} 周报》。
+
+核心要求：
+1. **语言精炼专业**，适合向 CXO 级别汇报，避免流水账。
+2. **深度分析**：不仅复述数据，还要识别"数据背后的异常"。例如：
+   - 任务完成率高但预算超支 → 可能存在人效比问题或加班隐患。
+   - 阻塞任务集中在某一方向 → 可能存在外部依赖或技术瓶颈。
+   - 工时备注中出现"联调失败""接口变更"等关键词 → 暗示跨团队协作风险。
+3. **输出格式（Markdown）**：
+   ## 📊 本周总览
+   ## ⚠️ 风险预警与根因分析
+   ## 💰 预算健康度
+   ## 🎯 管理层行动建议
+   ## 📋 下周重点事项
+4. 每个章节需结合具体的任务标题、需求名称或工时备注来佐证分析结论。
+5. 行动建议务必具体、可执行，标注建议责任方和时间节点。`;
+
+        // 构建富上下文的用户提示词
+        const detailBlocks = details.map((d) => {
+          const lines = [
+            `### ${d.projectName}`,
+            `- 任务：总计 ${d.totalTasks}，已完成 ${d.doneTasks}（完成率 ${d.taskCompletionRate}%），阻塞 ${d.blockedTasks}`,
+            `- 需求变更次数：${d.requirementChanges}`,
+            `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}，偏差 ${d.budgetVarianceRate}%`,
+          ];
+          if (d.blockedTaskTitles.length > 0) {
+            lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.join('、')}`);
+          }
+          if (d.highPriorityReqNames.length > 0) {
+            lines.push(`- **高优先级需求**：${d.highPriorityReqNames.join('、')}`);
+          }
+          if (d.worklogNotes.length > 0) {
+            lines.push(`- **本周工时备注**：${d.worklogNotes.slice(0, 15).join('；')}`);
+          }
+          return lines.join('\n');
+        }).join('\n\n');
 
         const userPrompt = `报告周期：${input.weekStart} 至 ${input.weekEnd}
 涉及项目数：${details.length} 个
 包含风险分析：${input.includeRisks ? '是' : '否'}
 包含预算分析：${input.includeBudget ? '是' : '否'}
 
-各项目关键指标数据：
-${JSON.stringify(details, null, 2)}`;
+${detailBlocks}`;
 
         const aiReport = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
 
@@ -386,5 +449,167 @@ ${JSON.stringify(details, null, 2)}`;
       `  天枢管控矩阵 · 模板报告引擎`,
       `═══════════════════════════════════════════`,
     ].join('\n');
+  }
+
+  /** 需求智能评审：分析需求质量并给出结构化建议 */
+  async reviewRequirement(input: { id: number }) {
+    // 查询需求完整信息
+    const requirement = await this.prisma.requirement.findUnique({
+      where: { id: input.id },
+      include: { project: true, changes: { orderBy: { createdAt: 'desc' }, take: 5 } }
+    });
+    if (!requirement) {
+      return { source: 'error', review: '未找到该需求。' };
+    }
+
+    // 构建需求上下文给 AI 分析
+    const context = [
+      `需求标题：${requirement.title}`,
+      `需求描述：${requirement.description || '（无描述）'}`,
+      `优先级：${requirement.priority}`,
+      `当前状态：${requirement.status}`,
+      `累计变更次数：${requirement.changeCount}`,
+      `所属项目：${requirement.project.name}`,
+      requirement.changes.length > 0
+        ? `最近变更原因：${requirement.changes.map((c) => c.reason || '（无说明）').join('；')}`
+        : '无变更记录',
+    ].join('\n');
+
+    // 尝试调用 AI 模型
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (aiApiUrl && aiApiKey && aiModel) {
+      try {
+        const systemPrompt = `你是一名拥有 10 年经验的资深需求分析师（BA）。你的职责是对产品需求进行严格的质量评审，识别潜在缺陷并给出改进建议。
+
+评审维度（必须逐一覆盖）：
+1. **完整性**：描述是否清晰、是否包含业务背景和用户价值？
+2. **可验证性**：是否有明确的验收标准？能否量化"做到什么程度算完成"？
+3. **优先级合理性**：给定的优先级（高/中/低）与描述的业务影响是否匹配？
+4. **变更风险**：当前变更次数是否异常？是否存在反复摇摆的迹象？
+5. **可拆分性**：该需求是否过于宏观，建议拆分为多个子需求？
+
+输出格式（Markdown）：
+## 🔍 需求质量评审报告
+
+### 总体评级
+（🟢 高质量 / 🟡 待改进 / 🔴 需重写，一句话综合评价）
+
+### 逐维度分析
+（每个维度：[维度名] - 发现的问题 + 具体改进建议）
+
+### 📝 改进建议稿
+（如果描述需要改写，直接给出改写建议）`;
+
+        const userPrompt = `请对以下需求进行全面质量评审：\n\n${context}`;
+        const review = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+        return { source: 'ai', requirementId: input.id, requirementTitle: requirement.title, review };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          source: 'template',
+          requirementId: input.id,
+          requirementTitle: requirement.title,
+          error: `AI 调用失败（${detail}）`,
+          review: this.buildTemplateRequirementReview(requirement)
+        };
+      }
+    }
+
+    // 未配置 AI，返回模板评审
+    return {
+      source: 'template',
+      requirementId: input.id,
+      requirementTitle: requirement.title,
+      hint: '未配置 AI 模型，当前为模板评审。',
+      review: this.buildTemplateRequirementReview(requirement)
+    };
+  }
+
+  /** 模板需求评审（AI 未配置时的回退方案） */
+  private buildTemplateRequirementReview(req: {
+    title: string; description: string; priority: string; status: string; changeCount: number;
+  }): string {
+    const issues: string[] = [];
+    if (!req.description || req.description.length < 20) issues.push('⚠️ 需求描述过短，缺乏足够的业务背景和用户价值说明。');
+    if (req.changeCount >= 3) issues.push(`⚠️ 该需求已变更 ${req.changeCount} 次，存在反复摇摆风险，建议与业务方确认最终方向后再开发。`);
+    if (!req.description?.includes('验收') && !req.description?.includes('标准')) issues.push('⚠️ 未发现验收标准，建议补充"做到什么程度算完成"的量化指标。');
+    if (req.priority === 'high' && req.status === 'draft') issues.push('⚠️ 高优先级需求仍处于草稿状态，建议加快评审进入 in_review 阶段。');
+
+    return [
+      `## 🔍 需求质量评审报告（模板模式）`,
+      ``,
+      `> 💡 配置 AI 密钥可获得更深度的语义分析评审。`,
+      ``,
+      `**需求**：${req.title}`,
+      `**优先级**：${req.priority} ｜ **状态**：${req.status} ｜ **变更次数**：${req.changeCount}`,
+      ``,
+      `### 发现的问题`,
+      issues.length > 0 ? issues.join('\n') : '✅ 基础检查通过，未发现明显问题。',
+    ].join('\n');
+  }
+
+  /** 自然语言录入任务：将口语化描述解析为结构化任务字段 */
+  async parseTaskFromText(input: { text: string; projectName?: string }) {
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 尝试调用 AI 解析
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (aiApiUrl && aiApiKey && aiModel) {
+      try {
+        const systemPrompt = `你是一名项目管理助手，专门从自然语言描述中提取结构化任务信息。
+
+当前日期：${today}
+任务规则：
+- 将口语化描述转换为精确的任务字段
+- 日期格式统一为 YYYY-MM-DD
+- 如果提到"下周"，基于当前日期计算
+- 如果提到"几天"，基于当前日期加该天数计算
+- 如果某字段无法从描述中确定，留空字符串
+
+必须返回合法的 JSON 格式（不要 markdown 代码块包裹），结构如下：
+{
+  "taskName": "任务名称",
+  "assignee": "负责人姓名，无则空字符串",
+  "startDate": "YYYY-MM-DD 格式开始日期，无则空字符串",
+  "endDate": "YYYY-MM-DD 格式截止日期，无则空字符串",
+  "priority": "high / medium / low，根据语气判断",
+  "status": "待办",
+  "notes": "其他补充信息"
+}`;
+
+        const userPrompt = `请从以下描述中提取任务信息：\n"${input.text}"${input.projectName ? `\n所属项目：${input.projectName}` : ''}`;
+        const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+
+        // 解析 AI 返回的 JSON
+        try {
+          // 兼容模型可能带 markdown 代码块的情况
+          const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+          const parsed = JSON.parse(jsonStr) as {
+            taskName: string; assignee: string; startDate: string;
+            endDate: string; priority: string; status: string; notes: string;
+          };
+          return { source: 'ai', success: true, task: parsed };
+        } catch {
+          // JSON 解析失败，返回原始文本供前端降级处理
+          return { source: 'ai', success: false, rawText: raw, error: 'AI 返回格式解析失败，请手动填写。' };
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return { source: 'error', success: false, error: `AI 调用失败（${detail}）` };
+      }
+    }
+
+    // 未配置 AI，返回提示
+    return {
+      source: 'template',
+      success: false,
+      error: '未配置 AI 模型，无法使用自然语言录入功能。请在「系统配置」中填写 AI_API_URL、AI_API_KEY 和 AI_MODEL。'
+    };
   }
 }
