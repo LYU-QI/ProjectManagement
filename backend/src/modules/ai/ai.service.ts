@@ -584,7 +584,7 @@ ${detailBlocks}`;
   "endDate": "YYYY-MM-DD 格式截止日期，无则空字符串",
   "priority": "high / medium / low，根据语气判断",
   "status": "待办",
-  "notes": "其他补充信息"
+  "notes": "其他补充信息（注意：请不要在此字段中重复复述所属项目名称）"
 }`;
 
         const userPrompt = `请从以下描述中提取任务信息：\n"${input.text}"${input.projectName ? `\n所属项目：${input.projectName}` : ''}`;
