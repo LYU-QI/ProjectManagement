@@ -1,0 +1,258 @@
+// Prisma schema for desktop packaging (SQLite)
+// 此文件仅用于桌面打包，不影响开发环境下的 PostgreSQL schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---- 枚举在 SQLite 中不原生支持，但 Prisma 会通过字符串映射处理 ----
+
+enum UserRole {
+  pm
+  lead
+  viewer
+}
+
+enum RequirementStatus {
+  draft
+  in_review
+  approved
+  planned
+  done
+}
+
+enum RequirementPriority {
+  low
+  medium
+  high
+}
+
+enum ReviewDecision {
+  approved
+  rejected
+}
+
+enum CostType {
+  labor
+  outsource
+  cloud
+}
+
+enum TaskStatus {
+  todo
+  in_progress
+  blocked
+  done
+}
+
+enum NotificationLevel {
+  info
+  warning
+  error
+}
+
+enum RiskRuleType {
+  deadline_progress
+  blocked
+  overdue
+}
+
+enum DependencyType {
+  FS
+  SS
+  FF
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  name     String
+  username String?  @unique
+  password String?
+  role     UserRole
+  projects Project[] @relation("ProjectOwner")
+  worklogs Worklog[]
+}
+
+model Project {
+  id           Int           @id @default(autoincrement())
+  name         String
+  ownerId      Int
+  budget       Float
+  startDate    String?
+  endDate      String?
+  owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+  requirements Requirement[]
+  costs        CostEntry[]
+  milestones   Milestone[]
+  tasks        Task[]
+  worklogs     Worklog[]
+  notifications Notification[]
+}
+
+model Requirement {
+  id          Int                 @id @default(autoincrement())
+  projectId   Int
+  title       String
+  description String
+  priority    RequirementPriority
+  status      RequirementStatus   @default(draft)
+  version     String?
+  changeCount Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  project     Project             @relation(fields: [projectId], references: [id])
+  reviews     RequirementReview[]
+  changes     RequirementChange[]
+}
+
+model RequirementReview {
+  id            Int            @id @default(autoincrement())
+  requirementId Int
+  reviewer      String
+  decision      ReviewDecision
+  comment       String?
+  createdAt     DateTime       @default(now())
+  requirement   Requirement    @relation(fields: [requirementId], references: [id])
+}
+
+model RequirementChange {
+  id            Int         @id @default(autoincrement())
+  requirementId Int
+  changedBy     String?
+  reason        String?
+  before        String?
+  after         String?
+  version       String?
+  createdAt     DateTime    @default(now())
+  requirement   Requirement @relation(fields: [requirementId], references: [id])
+}
+
+model CostEntry {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  type       CostType
+  amount     Float
+  occurredOn String
+  note       String?
+  project    Project  @relation(fields: [projectId], references: [id])
+}
+
+model Milestone {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  name       String
+  plannedDate String
+  actualDate String?
+  project    Project  @relation(fields: [projectId], references: [id])
+}
+
+model Task {
+  id           Int        @id @default(autoincrement())
+  projectId    Int
+  title        String
+  assignee     String
+  status       TaskStatus
+  plannedStart String
+  plannedEnd   String
+  project      Project    @relation(fields: [projectId], references: [id])
+}
+
+model FeishuDependency {
+  id                 Int            @id @default(autoincrement())
+  projectName        String
+  taskRecordId       String
+  taskId             String?
+  dependsOnRecordId  String
+  dependsOnTaskId    String?
+  type               DependencyType @default(FS)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@unique([taskRecordId, dependsOnRecordId, type])
+}
+
+model Worklog {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  userId     Int?
+  assigneeName String?
+  taskTitle  String?
+  weekStart  String?
+  weekEnd    String?
+  totalDays  Float?
+  hours      Float
+  hourlyRate Float
+  workedOn   String
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        Int               @id @default(autoincrement())
+  projectId Int?
+  level     NotificationLevel @default(info)
+  title     String
+  message   String
+  readAt    DateTime?
+  createdAt DateTime          @default(now())
+  project   Project?          @relation(fields: [projectId], references: [id])
+}
+
+model RiskRule {
+  id                Int        @id @default(autoincrement())
+  key               String     @unique
+  type              RiskRuleType @default(deadline_progress)
+  name              String
+  enabled           Boolean    @default(true)
+  thresholdDays     Int
+  progressThreshold Int
+  blockedValue      String?    @default("是")
+  includeMilestones Boolean    @default(false)
+  autoNotify        Boolean    @default(true)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  alerts            RiskAlert[]
+  logs              RiskRuleLog[]
+}
+
+model RiskRuleLog {
+  id        Int      @id @default(autoincrement())
+  ruleId    Int
+  action    String
+  note      String?
+  createdAt DateTime @default(now())
+  rule      RiskRule @relation(fields: [ruleId], references: [id])
+}
+
+model RiskAlert {
+  id         Int      @id @default(autoincrement())
+  ruleId     Int
+  recordId   String
+  taskId     String?
+  taskName   String?
+  project    String?
+  endDate    String?
+  progress   Float?
+  daysLeft   Int?
+  notifiedAt DateTime @default(now())
+  rule       RiskRule @relation(fields: [ruleId], references: [id])
+
+  @@unique([ruleId, recordId])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  userName   String?
+  userRole   String?
+  method     String
+  path       String
+  projectId  Int?
+  requestBody String?
+  createdAt  DateTime @default(now())
+}

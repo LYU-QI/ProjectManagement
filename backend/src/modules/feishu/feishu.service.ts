@@ -1,55 +1,53 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '../config/config.service';
 
 type TokenCache = {
   token: string;
   expiresAtMs: number;
+  appId: string;
 };
 
 @Injectable()
 export class FeishuService {
+  constructor(private readonly configService: ConfigService) { }
+
   private cache: TokenCache | null = null;
-  private userNameMapCache: Record<string, string> | null = null;
 
   private get appId() {
-    return process.env.FEISHU_APP_ID;
+    return this.configService.getRawValue('FEISHU_APP_ID');
   }
 
   private get appSecret() {
-    return process.env.FEISHU_APP_SECRET;
+    return this.configService.getRawValue('FEISHU_APP_SECRET');
   }
 
   private get appToken() {
-    return process.env.FEISHU_APP_TOKEN;
+    return this.configService.getRawValue('FEISHU_APP_TOKEN');
   }
 
   private get tableId() {
-    return process.env.FEISHU_TABLE_ID;
+    return this.configService.getRawValue('FEISHU_TABLE_ID');
   }
 
   private get userIdType() {
-    return process.env.FEISHU_USER_ID_TYPE || 'open_id';
+    return this.configService.getRawValue('FEISHU_USER_ID_TYPE') || 'open_id';
   }
 
   private get userNameMap() {
-    if (this.userNameMapCache) {
-      return this.userNameMapCache;
-    }
-    const raw = process.env.FEISHU_USER_NAME_MAP;
+    const raw = this.configService.getRawValue('FEISHU_USER_NAME_MAP');
     if (!raw) {
-      this.userNameMapCache = {};
-      return this.userNameMapCache;
+      return {};
     }
     try {
       const parsed = JSON.parse(raw) as Record<string, string>;
-      this.userNameMapCache = parsed ?? {};
-      return this.userNameMapCache;
+      return parsed ?? {};
     } catch {
       throw new Error('Invalid FEISHU_USER_NAME_MAP JSON');
     }
   }
 
   private get multiSelectFields() {
-    const raw = process.env.FEISHU_MULTI_SELECT_FIELDS;
+    const raw = this.configService.getRawValue('FEISHU_MULTI_SELECT_FIELDS');
     if (!raw) return [];
     return raw
       .split(',')
@@ -65,13 +63,13 @@ export class FeishuService {
   }
 
   private async getTenantAccessToken(): Promise<string> {
-    const cached = this.cache;
-    if (cached && cached.expiresAtMs > Date.now() + 60_000) {
-      return cached.token;
-    }
-
     const appId = this.requireEnv(this.appId, 'FEISHU_APP_ID');
     const appSecret = this.requireEnv(this.appSecret, 'FEISHU_APP_SECRET');
+
+    const cached = this.cache;
+    if (cached && cached.appId === appId && cached.expiresAtMs > Date.now() + 60_000) {
+      return cached.token;
+    }
 
     const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
       method: 'POST',
@@ -89,7 +87,7 @@ export class FeishuService {
     }
 
     const expiresAtMs = Date.now() + data.expire * 1000;
-    this.cache = { token: data.tenant_access_token, expiresAtMs };
+    this.cache = { token: data.tenant_access_token, expiresAtMs, appId };
     return data.tenant_access_token;
   }
 

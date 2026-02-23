@@ -2277,7 +2277,13 @@ function App() {
         )}
 
         {view === 'ai' && (
-          <AiView aiReport={aiReport} onGenerate={generateReport} />
+          <AiView
+            aiReport={aiReport}
+            onGenerate={generateReport}
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={(id) => { if (id) void refreshAll(id); }}
+          />
         )}
 
         {view === 'notifications' && (

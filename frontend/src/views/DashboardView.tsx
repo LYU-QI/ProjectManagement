@@ -48,42 +48,132 @@ function formatMoney(n: number): string {
   return n.toLocaleString();
 }
 
-/** 健康度仪表盘组件 */
+/** 健康度仪表盘组件 - 带动态动画 */
 function GaugeChart({ score, size = 100 }: { score: number; size?: number }) {
-  const r = (size - 10) / 2;
+  const r = (size - 12) / 2;
   const cx = size / 2;
-  const cy = size / 2;
-  const circumference = Math.PI * r; // 半圆
+  const cy = size / 2 + 2;
+  const circumference = Math.PI * r;
   const filled = (score / 100) * circumference;
   const color = healthColor(score);
+  const label = healthLabel(score);
+
+  // 不同等级的状态图标
+  const icon = score >= 80 ? '✓' : score >= 60 ? '!' : score >= 40 ? '⚠' : '✕';
+
+  // 动态动画强度：分数越低，动画越剧烈
+  const isDanger = score < 40;
+  const isWarning = score >= 40 && score < 60;
+
+  // 刻度线位置（0, 25, 50, 75, 100 对应半圆弧上的角度）
+  const ticks = [0, 25, 50, 75, 100];
+
+  // 生成 CSS keyframe id (避免全局冲突)
+  const pulseId = `pulse-${score}`;
 
   return (
-    <svg width={size} height={size * 0.65} viewBox={`0 0 ${size} ${size * 0.65}`}>
-      {/* 背景弧 */}
+    <svg width={size} height={size * 0.72} viewBox={`0 0 ${size} ${size * 0.72}`}>
+      <defs>
+        {/* 渐变弧线 */}
+        <linearGradient id={`gauge-grad-${score}`} x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#ff3366" />
+          <stop offset="40%" stopColor="#ff8800" />
+          <stop offset="65%" stopColor="#ffcc00" />
+          <stop offset="100%" stopColor="#00ff88" />
+        </linearGradient>
+        {/* 危险脉冲动画 */}
+        {isDanger && (
+          <style>{`
+            @keyframes ${pulseId} {
+              0%, 100% { opacity: 1; filter: drop-shadow(0 0 3px ${color}); }
+              50% { opacity: 0.5; filter: drop-shadow(0 0 10px ${color}) drop-shadow(0 0 20px ${color}); }
+            }
+          `}</style>
+        )}
+        {/* 警告呼吸动画 */}
+        {isWarning && (
+          <style>{`
+            @keyframes ${pulseId} {
+              0%, 100% { filter: drop-shadow(0 0 3px ${color}); }
+              50% { filter: drop-shadow(0 0 8px ${color}); }
+            }
+          `}</style>
+        )}
+      </defs>
+
+      {/* 刻度线 */}
+      {ticks.map((tick) => {
+        const angle = Math.PI - (tick / 100) * Math.PI;
+        const x1 = cx + (r - 2) * Math.cos(angle);
+        const y1 = cy - (r - 2) * Math.sin(angle);
+        const x2 = cx + (r + 4) * Math.cos(angle);
+        const y2 = cy - (r + 4) * Math.sin(angle);
+        return (
+          <line key={tick} x1={x1} y1={y1} x2={x2} y2={y2}
+            stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+        );
+      })}
+
+      {/* 背景弧（渐变底色） */}
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
         fill="none"
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth={6}
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth={7}
         strokeLinecap="round"
       />
-      {/* 填充弧 */}
+
+      {/* 填充弧 - 带动态动画 */}
       <path
         d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
         fill="none"
         stroke={color}
-        strokeWidth={6}
+        strokeWidth={7}
         strokeLinecap="round"
         strokeDasharray={`${filled} ${circumference}`}
-        style={{ filter: `drop-shadow(0 0 4px ${color})`, transition: 'stroke-dasharray 0.8s ease' }}
+        style={{
+          filter: `drop-shadow(0 0 4px ${color})`,
+          transition: 'stroke-dasharray 1s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.5s ease',
+          animation: (isDanger || isWarning) ? `${pulseId} ${isDanger ? '1.2s' : '2.5s'} ease-in-out infinite` : 'none',
+        }}
       />
+
+      {/* 指针 */}
+      {(() => {
+        const angle = Math.PI - (score / 100) * Math.PI;
+        const needleLen = r - 10;
+        const nx = cx + needleLen * Math.cos(angle);
+        const ny = cy - needleLen * Math.sin(angle);
+        return (
+          <>
+            <circle cx={cx} cy={cy} r={3} fill={color} style={{ filter: `drop-shadow(0 0 3px ${color})` }} />
+            <line x1={cx} y1={cy} x2={nx} y2={ny}
+              stroke={color} strokeWidth={1.5} strokeLinecap="round"
+              style={{ transition: 'all 1s cubic-bezier(0.4, 0, 0.2, 1)', filter: `drop-shadow(0 0 2px ${color})` }}
+            />
+          </>
+        );
+      })()}
+
       {/* 分数 */}
-      <text x={cx} y={cy - 6} textAnchor="middle" fill={color} fontSize={size * 0.22} fontFamily="Orbitron, monospace" fontWeight="bold">
+      <text x={cx} y={cy - 12} textAnchor="middle" fill={color}
+        fontSize={size * 0.2} fontFamily="Orbitron, monospace" fontWeight="bold"
+        style={{ transition: 'fill 0.5s ease' }}>
         {score}
       </text>
-      <text x={cx} y={cy + 8} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={8}>
-        {healthLabel(score)}
+
+      {/* 状态标签 */}
+      <text x={cx} y={cy + 6} textAnchor="middle" fill={color} fontSize={9}
+        fontWeight={isDanger ? 'bold' : 'normal'}
+        style={{ transition: 'fill 0.5s ease' }}>
+        {label}
       </text>
+
+      {/* 危险时底部红色警示点 */}
+      {isDanger && (
+        <circle cx={cx} cy={cy + 14} r={2} fill="#ff3366"
+          style={{ animation: `${pulseId} 1.2s ease-in-out infinite` }} />
+      )}
     </svg>
   );
 }

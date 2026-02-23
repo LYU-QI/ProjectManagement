@@ -10,5 +10,6 @@ import { AuthModule } from '../auth/auth.module';
     imports: [AuthModule],
     controllers: [ConfigController],
     providers: [ConfigService],
+    exports: [ConfigService],
 })
 export class ConfigModule { }

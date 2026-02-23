@@ -5,3 +5,4 @@ backend/dist
 frontend/dist
 frontend/node_modules
 backend/node_modules
+desktop/dist/

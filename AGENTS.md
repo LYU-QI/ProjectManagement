@@ -1,40 +1,33 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `backend/`: NestJS API. Main entry in `backend/src/main.ts` with modules under `backend/src/modules/` (e.g., auth, projects, costs, schedule, audit). Prisma schema and migrations live in `backend/prisma/`.
-- `frontend/`: React + Vite admin UI. App shell in `frontend/src/App.tsx`, views in `frontend/src/views/`, shared UI in `frontend/src/components/`, API clients in `frontend/src/api/`, and shared types in `frontend/src/types.ts`.
-- `docs/`: Reference docs such as `docs/api.md`.
-- Root plans/specs: `spec.md`, `development-plan.md`, `development-plan-estimate.md`.
+## 项目结构与模块组织
+- `frontend/` 为 Vite + React 前端。入口在 `frontend/src/main.tsx` 和 `frontend/src/App.tsx`，页面位于 `frontend/src/views/`，通用组件在 `frontend/src/components/`，API 封装在 `frontend/src/api/`，样式在 `frontend/src/styles.css`。
+- `backend/` 为 NestJS 服务端。业务模块在 `backend/src/modules/`（如 `projects/`、`feishu/`、`risks/`），入口为 `backend/src/main.ts`，模块注册在 `backend/src/app.module.ts`。
+- `backend/prisma/` 存放 Prisma schema 与迁移文件。
+- `docs/` 与 `README.md` 为辅助文档。
 
-## Build, Test, and Development Commands
-- `npm install` then `npm install --workspace backend` and `npm install --workspace frontend` to install dependencies.
-- `npm run dev:backend`: Start NestJS API (default `http://localhost:3000`).
-- `npm run dev:frontend`: Start Vite UI (default `http://localhost:5173`).
-- `npm run dev`: Run both (backend + frontend).
-- `npm run build`: Build backend and frontend.
-- `npm run -w backend prisma:generate`: Generate Prisma client.
-- `npm run -w backend prisma:migrate`: Apply local migrations.
-- `npm run -w backend prisma:seed`: Seed default users.
-- `docker compose up -d`: Optional PostgreSQL/Redis.
+## 构建、测试与开发命令
+- `npm run dev:backend`：以 watch 模式启动后端 API。
+- `npm run dev:frontend`：启动前端开发服务器（默认 `http://localhost:5173/`）。
+- `npm run dev`：同时启动前后端。
+- `npm run build`：构建前后端产物。
+- `npm run -w backend prisma:migrate`：执行数据库迁移。
 
-## Coding Style & Naming Conventions
-- Indentation is 2 spaces; keep existing formatting style.
-- TypeScript/React with semicolons and single quotes is the prevailing style.
-- Modules: NestJS feature folders under `backend/src/modules/<feature>/`.
-- Components/Views: PascalCase filenames (e.g., `ResourcesView.tsx`).
-- No lint/format tooling is configured; keep diffs tight and consistent with surrounding code.
+## 编码规范与命名约定
+- 统一使用 2 空格缩进。
+- React 组件文件使用 `PascalCase`（如 `NotificationsView.tsx`）。
+- API 路由遵循 `/api/v1/...` 风格。
+- CSS 类名使用 `kebab-case`，并优先复用 `frontend/src/styles.css` 中的变量。
+- 当前未配置 lint（`backend` 中 `lint` 仅占位），请保持风格与相邻代码一致。
 
-## Testing Guidelines
-- There is no automated test framework configured yet.
-- Validate changes with `npm run build` and manual UI/API checks.
-- If you add risky changes, include a short manual test note in your PR.
+## 测试规范
+- 目前未配置测试框架。如新增测试，建议后端使用 `*.spec.ts`，前端使用 `*.test.tsx`，并在本文件补充运行方式。
 
-## Commit & Pull Request Guidelines
-- Commit messages follow a short, imperative, sentence-case style (e.g., “Integrate Feishu schedule view”).
-- Prefer small, focused commits.
-- PRs should include: summary, key screenshots for UI changes, and any manual verification steps.
-- If you introduce Prisma schema changes, include the migration under `backend/prisma/migrations/`.
+## 提交与 PR 规范
+- 提交信息建议使用 `feat:`、`refactor:` 等简洁前缀，后接明确改动说明。
+- PR 需包含：修改摘要、关联需求/问题、UI 改动截图（如有）。
+- 若涉及 Prisma schema 变更，请在 PR 说明迁移步骤。
 
-## Configuration Tips
-- Backend config is via `backend/.env` (copy from `backend/.env.example`).
-- Do not commit secrets. Keep Feishu and DB credentials in `.env` only.
+## 安全与配置提示
+- 环境变量通过 `.env` 与 Config 模块管理，禁止提交密钥。
+- 变更 Prisma schema 后需执行 `npm run -w backend prisma:migrate` 并确认服务可启动。

@@ -1,0 +1,81 @@
+{
+    "name": "projectlvqi-desktop",
+    "version": "1.0.0",
+    "description": "天枢 · 全局管控矩阵 - 桌面版",
+    "author": "ProjectLVQI",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "pack": "electron-builder --dir",
+        "dist": "electron-builder"
+    },
+    "build": {
+        "appId": "com.projectlvqi.desktop",
+        "productName": "天枢管控矩阵",
+        "mac": {
+            "target": "dmg",
+            "category": "public.app-category.project-management"
+        },
+        "dmg": {
+            "title": "天枢管控矩阵",
+            "contents": [
+                {
+                    "x": 130,
+                    "y": 220
+                },
+                {
+                    "x": 410,
+                    "y": 220,
+                    "type": "link",
+                    "path": "/Applications"
+                }
+            ]
+        },
+        "files": [
+            "main.js",
+            "preload.js"
+        ],
+        "extraResources": [
+            {
+                "from": "../backend/dist",
+                "to": "backend/dist",
+                "filter": [
+                    "**/*"
+                ]
+            },
+            {
+                "from": "../backend/prisma/projectlvqi.db",
+                "to": "backend/prisma/projectlvqi.db"
+            },
+            {
+                "from": "../backend/.env",
+                "to": "backend/.env"
+            },
+            {
+                "from": "../node_modules",
+                "to": "node_modules",
+                "filter": [
+                    "**/*",
+                    "!.cache/**",
+                    "!**/test/**",
+                    "!**/tests/**",
+                    "!**/*.map",
+                    "!**/*.ts",
+                    "!**/*.md"
+                ]
+            },
+            {
+                "from": "../frontend/dist",
+                "to": "frontend/dist",
+                "filter": [
+                    "**/*"
+                ]
+            }
+        ],
+        "asar": false
+    },
+    "devDependencies": {
+        "electron": "^33.0.0",
+        "electron-builder": "^25.1.8"
+    }
+}

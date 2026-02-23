@@ -6,10 +6,11 @@ const GROUP_ICONS: Record<string, string> = {
     database: '🗄️',
     security: '🔐',
     feishu: '🐦',
+    ai: '🤖',
 };
 
 /** 分组排序 */
-const GROUP_ORDER = ['database', 'security', 'feishu'];
+const GROUP_ORDER = ['database', 'security', 'feishu', 'ai'];
 
 interface SettingsViewProps {
     onError: (msg: string) => void;

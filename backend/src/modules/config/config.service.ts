@@ -30,6 +30,9 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     FEISHU_TABLE_ID: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书多维表格 Table ID' },
     FEISHU_USER_ID_TYPE: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书用户 ID 类型' },
     FEISHU_USER_NAME_MAP: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '用户名到飞书 ID 的映射（JSON 格式）' },
+    AI_API_URL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型 API 端点（兼容 OpenAI 格式，如 https://api.deepseek.com/v1）' },
+    AI_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'AI 模型 API 密钥' },
+    AI_MODEL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型名称（如 deepseek-chat、gpt-4o、qwen-plus）' },
 };
 
 @Injectable()
@@ -110,6 +113,14 @@ export class ConfigService {
     }
 
     /**
+     * 获取单个配置项的原始值（内部使用）
+     */
+    getRawValue(key: string): string {
+        const envVars = this.parseEnvFile();
+        return envVars[key] ?? '';
+    }
+
+    /**
      * 批量更新配置项，写回 .env 文件
      */
     updateAll(updates: Record<string, string>): { success: boolean; message: string } {
@@ -125,11 +136,12 @@ export class ConfigService {
 
         // 重建 .env 文件内容
         const lines: string[] = [];
-        const groups = ['database', 'security', 'feishu'];
+        const groups = ['database', 'security', 'feishu', 'ai'];
         const groupLabels: Record<string, string> = {
             database: '数据库配置',
             security: '安全配置',
             feishu: '飞书多维表格配置',
+            ai: 'AI 模型配置',
         };
 
         for (const group of groups) {
