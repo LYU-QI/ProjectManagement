@@ -307,7 +307,8 @@ function App() {
           ownerId: 1,
           budget,
           startDate: String(form.get('startDate') || ''),
-          endDate: String(form.get('endDate') || '')
+          endDate: String(form.get('endDate') || ''),
+          feishuChatIds: String(form.get('feishuChatIds') || '')
         });
         createdId = created.id;
       });
@@ -472,7 +473,8 @@ function App() {
           name: String(draft.name || ''),
           budget,
           startDate: draft.startDate || null,
-          endDate: draft.endDate || null
+          endDate: draft.endDate || null,
+          feishuChatIds: draft.feishuChatIds || null
         });
       });
       setMessage(`项目「${draft.name}」已更新。`);

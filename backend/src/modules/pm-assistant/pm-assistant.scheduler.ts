@@ -3,6 +3,7 @@ import { SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { ConfigService } from '../config/config.service';
 import { PmAssistantService } from './pm-assistant.service';
+import { PrismaService } from '../../database/prisma.service';
 import type { PmJobId, PmScheduleDefinition, PmScheduleState } from './pm-assistant.types';
 
 const DEFAULT_TZ = 'Asia/Shanghai';
@@ -70,7 +71,8 @@ export class PmAssistantScheduler implements OnModuleInit {
   constructor(
     private readonly pmAssistantService: PmAssistantService,
     private readonly configService: ConfigService,
-    private readonly schedulerRegistry: SchedulerRegistry
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly prisma: PrismaService
   ) {}
 
   onModuleInit() {
@@ -100,7 +102,16 @@ export class PmAssistantScheduler implements OnModuleInit {
   private async run(jobId: PmJobId) {
     if (!this.isEnabled()) return;
     try {
-      await this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule' });
+      const projects = await this.prisma.project.findMany({
+        where: { feishuChatIds: { not: null } },
+        select: { id: true, feishuChatIds: true }
+      });
+      const projectTargets = projects.filter((p) => (p.feishuChatIds || '').trim().length > 0);
+      if (projectTargets.length > 0) {
+        await Promise.all(projectTargets.map((p) => this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule', projectId: p.id })));
+      } else {
+        await this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule' });
+      }
       this.logger.log(`PM Assistant job sent: ${jobId}`);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);

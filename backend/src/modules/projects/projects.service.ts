@@ -7,6 +7,7 @@ interface CreateProjectInput {
   budget: number;
   startDate?: string;
   endDate?: string;
+  feishuChatIds?: string;
 }
 
 interface UpdateProjectInput {
@@ -14,6 +15,7 @@ interface UpdateProjectInput {
   budget?: number;
   startDate?: string;
   endDate?: string;
+  feishuChatIds?: string;
 }
 
 @Injectable()

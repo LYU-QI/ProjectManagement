@@ -159,6 +159,7 @@ export interface ProjectItem {
   budget: number;
   startDate?: string | null;
   endDate?: string | null;
+  feishuChatIds?: string | null;
 }
 
 export interface CostEntryItem {

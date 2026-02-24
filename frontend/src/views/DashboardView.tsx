@@ -334,6 +334,7 @@ export default function DashboardView({
           <input name="budget" type="number" step="0.01" placeholder="预算" required />
           <input name="startDate" type="date" />
           <input name="endDate" type="date" />
+          <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
           <button className="btn" type="submit">新增项目</button>
         </form>
       )}
@@ -561,6 +562,7 @@ export default function DashboardView({
               <th>预算</th>
               <th>开始</th>
               <th>结束</th>
+              <th>群聊ChatID</th>
               {canWrite && <th>操作</th>}
             </tr>
           </thead>
@@ -647,6 +649,22 @@ export default function DashboardView({
                       />
                     ) : (
                       rowDraft.endDate || '-'
+                    )}
+                  </td>
+                  <td
+                    className={isEditing && projectEdit.editingField === 'feishuChatIds' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'feishuChatIds')}
+                  >
+                    {isEditing && projectEdit.editingField === 'feishuChatIds' ? (
+                      <input
+                        data-project-edit={`${project.id}-feishuChatIds`}
+                        value={rowDraft.feishuChatIds ?? ''}
+                        onChange={(e) => projectEdit.updateDraft('feishuChatIds', e.target.value)}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                        onBlur={() => projectEdit.finalize(project)}
+                      />
+                    ) : (
+                      rowDraft.feishuChatIds || '-'
                     )}
                   </td>
                   {canWrite && (

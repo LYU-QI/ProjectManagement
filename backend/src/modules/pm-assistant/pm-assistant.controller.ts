@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsNumber } from 'class-validator';
 import { PmAssistantService } from './pm-assistant.service';
 import { PmAssistantScheduler } from './pm-assistant.scheduler';
 import type { PmJobId } from './pm-assistant.types';
@@ -30,6 +30,14 @@ class RunJobDto {
   @IsOptional()
   @IsString()
   receiveId?: string;
+
+  @IsOptional()
+  @IsString()
+  receiveIds?: string;
+
+  @IsOptional()
+  @IsNumber()
+  projectId?: number;
 }
 
 class UpdateScheduleDto {
@@ -92,6 +100,8 @@ export class PmAssistantController {
     return this.pmAssistantService.runJob(body.jobId, {
       dryRun: body.dryRun,
       receiveId: body.receiveId,
+      receiveIds: body.receiveIds ? body.receiveIds.split(/[,;\n]/).map((id) => id.trim()).filter(Boolean) : undefined,
+      projectId: body.projectId,
       triggeredBy: 'manual'
     });
   }

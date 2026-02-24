@@ -20,6 +20,10 @@ class CreateProjectDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuChatIds?: string;
 }
 
 class UpdateProjectDto {
@@ -38,6 +42,10 @@ class UpdateProjectDto {
   @IsOptional()
   @IsString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuChatIds?: string;
 }
 
 @Controller('api/v1/projects')

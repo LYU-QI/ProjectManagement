@@ -94,7 +94,7 @@ export class PmAssistantService {
 
   async runJob(
     jobId: PmJobId,
-    opts?: { dryRun?: boolean; receiveId?: string; triggeredBy?: 'manual' | 'schedule' }
+    opts?: { dryRun?: boolean; receiveId?: string; receiveIds?: string[]; projectId?: number; triggeredBy?: 'manual' | 'schedule' }
   ): Promise<PmRunResult> {
     const job = this.getJob(jobId);
     const triggeredBy = opts?.triggeredBy ?? 'manual';
@@ -111,7 +111,10 @@ export class PmAssistantService {
       return { jobId, sent: false, summary: `任务已禁用：${job.name}`, card: {} };
     }
     try {
-      const { card, summary, mentions } = await this.buildCard(jobId);
+      const projectName = opts?.projectId
+        ? (await this.prisma.project.findUnique({ where: { id: opts.projectId }, select: { name: true } }))?.name
+        : undefined;
+      const { card, summary, mentions } = await this.buildCard(jobId, projectName);
       const summarized = await this.summarizeWithAi(jobId, summary);
 
       if (opts?.dryRun) {
@@ -126,17 +129,25 @@ export class PmAssistantService {
         return { jobId, sent: false, summary: summarized, card };
       }
 
-      const receiveId = opts?.receiveId || this.getDefaultChatId();
-      if (!receiveId) {
+      let receiveIds = opts?.receiveIds && opts.receiveIds.length > 0
+        ? opts.receiveIds
+        : opts?.projectId
+          ? await this.getProjectChatIds(opts.projectId)
+          : [];
+      if (receiveIds.length === 0) {
+        const fallback = this.getDefaultChatId();
+        if (fallback) receiveIds = [fallback];
+      }
+      if (receiveIds.length === 0) {
         throw new BadRequestException('未配置 FEISHU_CHAT_ID，无法发送消息。');
       }
 
-      await this.feishuService.sendInteractiveMessage({
+      await Promise.all(receiveIds.map((receiveId) => this.feishuService.sendInteractiveMessage({
         receiveId,
         receiveIdType: 'chat_id',
         card,
         mentions
-      });
+      })));
 
       await this.pushLog({
         jobId,
@@ -162,6 +173,19 @@ export class PmAssistantService {
 
   private getDefaultChatId() {
     return this.configService.getRawValue('FEISHU_CHAT_ID');
+  }
+
+  private parseChatIds(raw?: string | null) {
+    if (!raw) return [];
+    return raw
+      .split(/[,;\n]/)
+      .map((id) => id.trim())
+      .filter(Boolean);
+  }
+
+  private async getProjectChatIds(projectId: number) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    return this.parseChatIds(project?.feishuChatIds);
   }
 
   private getJob(jobId: PmJobId) {
@@ -299,7 +323,7 @@ export class PmAssistantService {
     }));
   }
 
-  private async buildCard(jobId: PmJobId) {
+  private async buildCard(jobId: PmJobId, projectName?: string) {
     const today = new Date();
     const todayStr = this.formatDate(today);
     const tasks = await this.loadFeishuTasks();
@@ -332,12 +356,13 @@ export class PmAssistantService {
       };
     });
 
-    const overdue = normalized.filter((t) => t.end && t.status !== '已完成' && t.end < today);
-    const blocked = normalized.filter((t) => t.blocked || t.status === '阻塞');
-    const highRisk = normalized.filter((t) => ['高', 'High', 'high'].includes(t.risk));
-    const todayTasks = normalized.filter((t) => t.end && this.formatDate(t.end) === todayStr && t.status !== '已完成');
-    const upcomingMilestones = normalized.filter((t) => t.milestone && t.end && this.daysBetween(today, t.end) <= 3 && t.status !== '已完成');
-    const completedMilestones = normalized.filter((t) => t.milestone && t.status === '已完成');
+    const scoped = projectName ? normalized.filter((t) => t.project === projectName) : normalized;
+    const overdue = scoped.filter((t) => t.end && t.status !== '已完成' && t.end < today);
+    const blocked = scoped.filter((t) => t.blocked || t.status === '阻塞');
+    const highRisk = scoped.filter((t) => ['高', 'High', 'high'].includes(t.risk));
+    const todayTasks = scoped.filter((t) => t.end && this.formatDate(t.end) === todayStr && t.status !== '已完成');
+    const upcomingMilestones = scoped.filter((t) => t.milestone && t.end && this.daysBetween(today, t.end) <= 3 && t.status !== '已完成');
+    const completedMilestones = scoped.filter((t) => t.milestone && t.status === '已完成');
 
     let title = '';
     let template: 'red' | 'orange' | 'green' | 'blue' | 'purple' = 'blue';
@@ -401,7 +426,7 @@ export class PmAssistantService {
         title = '资源负载分析';
         template = 'blue';
         const loadMap = new Map<string, { name: string; load: number; overdue: number; todo: number; doing: number }>();
-        normalized.forEach((t) => {
+        scoped.forEach((t) => {
           const names = t.assignees.length > 0 ? t.assignees.map((u) => u.name) : ['未指派'];
           const isOverdue = t.end && t.end < today && t.status !== '已完成';
           const isTodo = t.status === '待办';
@@ -426,11 +451,11 @@ export class PmAssistantService {
       case 'progress-board': {
         title = '进度看板';
         template = 'green';
-        const total = normalized.length;
-        const done = normalized.filter((t) => t.status === '已完成').length;
-        const doing = normalized.filter((t) => t.status === '进行中').length;
-        const todo = normalized.filter((t) => t.status === '待办').length;
-        const blockedCount = normalized.filter((t) => t.status === '阻塞' || t.blocked).length;
+        const total = scoped.length;
+        const done = scoped.filter((t) => t.status === '已完成').length;
+        const doing = scoped.filter((t) => t.status === '进行中').length;
+        const todo = scoped.filter((t) => t.status === '待办').length;
+        const blockedCount = scoped.filter((t) => t.status === '阻塞' || t.blocked).length;
         const rate = total > 0 ? ((done / total) * 100).toFixed(1) : '0';
         lines = [
           `任务总数 ${total}，完成 ${done}（完成率 ${rate}%）`,
@@ -441,7 +466,7 @@ export class PmAssistantService {
       case 'trend-predict': {
         title = '任务趋势预测';
         template = 'blue';
-        const deviations = normalized
+        const deviations = scoped
           .map((t) => {
             if (!t.start || !t.end || t.progress === null) return null;
             const totalDays = Math.max(1, this.daysBetween(t.start, t.end));
@@ -472,7 +497,7 @@ export class PmAssistantService {
       case 'daily-report': {
         title = '晚间日报';
         template = 'green';
-        const doneToday = normalized.filter((t) => t.status === '已完成' && t.end && this.formatDate(t.end) === todayStr);
+        const doneToday = scoped.filter((t) => t.status === '已完成' && t.end && this.formatDate(t.end) === todayStr);
         lines = doneToday.slice(0, 8).map((t) => `• ${t.title}（${t.project}）已完成`);
         if (lines.length === 0) lines = ['今日暂无已完成任务，建议复盘阻塞与推进重点。'];
         break;
@@ -480,9 +505,9 @@ export class PmAssistantService {
       case 'weekly-report': {
         title = '周报摘要';
         template = 'purple';
-        const total = normalized.length;
-        const done = normalized.filter((t) => t.status === '已完成').length;
-        const blockedCount = normalized.filter((t) => t.status === '阻塞' || t.blocked).length;
+        const total = scoped.length;
+        const done = scoped.filter((t) => t.status === '已完成').length;
+        const blockedCount = scoped.filter((t) => t.status === '阻塞' || t.blocked).length;
         lines = [
           `本周任务总数 ${total}，完成 ${done}，阻塞 ${blockedCount}`,
           `超期任务 ${overdue.length} 项，高风险 ${highRisk.length} 项`

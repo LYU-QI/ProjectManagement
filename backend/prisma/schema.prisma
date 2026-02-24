@@ -80,6 +80,7 @@ model Project {
   budget       Float
   startDate    String?
   endDate      String?
+  feishuChatIds String?
   owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
   requirements Requirement[]
   costs        CostEntry[]
