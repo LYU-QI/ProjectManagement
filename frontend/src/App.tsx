@@ -41,8 +41,9 @@ import AuditView from './views/AuditView';
 import AiView from './views/AiView';
 import SettingsView from './views/SettingsView';
 import FeishuUsersView from './views/FeishuUsersView';
+import PmAssistantView from './views/PmAssistantView';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'global' | 'settings';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 
 function focusInlineEditor(selector: string) {
@@ -129,7 +130,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'global', 'settings'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
@@ -1910,6 +1911,7 @@ function App() {
         {canWrite && <button className={view === 'audit' ? 'active' : ''} onClick={() => { setView('audit'); void loadAuditLogs(); }}>[ 审计日志 ]</button>}
         <button className={view === 'feishu' ? 'active' : ''} onClick={() => setView('feishu')}>[ 飞书同步 ]</button>
         {canWrite && <button className={view === 'feishu-users' ? 'active' : ''} onClick={() => setView('feishu-users')}>[ 负责人管理 ]</button>}
+        {canWrite && <button className={view === 'pm-assistant' ? 'active' : ''} onClick={() => setView('pm-assistant')}>[ PM 助手 ]</button>}
         <button className={view === 'ai' ? 'active' : ''} onClick={() => setView('ai')}>[ AI 驱动核心 ]</button>
         {canWrite && <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>[ 系统配置 ]</button>}
       </aside>
@@ -1925,7 +1927,7 @@ function App() {
           </div>
         </div>
 
-        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && (
+        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'pm-assistant' && (
           <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
             <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
               <div>
@@ -2300,6 +2302,10 @@ function App() {
 
         {view === 'feishu-users' && (
           <FeishuUsersView canWrite={canWrite} />
+        )}
+
+        {view === 'pm-assistant' && (
+          <PmAssistantView />
         )}
 
         {view === 'ai' && (

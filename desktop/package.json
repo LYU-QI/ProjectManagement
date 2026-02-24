@@ -6,8 +6,8 @@
     "main": "main.js",
     "scripts": {
         "start": "electron .",
-        "pack": "electron-builder --dir",
-        "dist": "electron-builder"
+        "pack": "npm --prefix ../backend run prisma:generate:desktop && electron-builder --dir",
+        "dist": "npm --prefix ../backend run prisma:generate:desktop && electron-builder"
     },
     "build": {
         "appId": "com.projectlvqi.desktop",

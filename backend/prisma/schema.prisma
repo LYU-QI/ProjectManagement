@@ -187,6 +187,25 @@ model Worklog {
   user       User?    @relation(fields: [userId], references: [id])
 }
 
+model PmAssistantLog {
+  id          Int      @id @default(autoincrement())
+  jobId       String
+  triggeredBy String
+  status      String
+  summary     String
+  rawSummary  String?
+  aiSummary   String?
+  error       String?
+  createdAt   DateTime @default(now())
+}
+
+model PmAssistantJobConfig {
+  id        Int      @id @default(autoincrement())
+  jobId     String   @unique
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
 model Notification {
   id        Int               @id @default(autoincrement())
   projectId Int?

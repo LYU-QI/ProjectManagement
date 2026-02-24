@@ -1,8 +1,12 @@
 # Repository Guidelines
 
 ## 项目结构与模块组织
-- `frontend/` 为 Vite + React 前端。入口在 `frontend/src/main.tsx` 和 `frontend/src/App.tsx`，页面位于 `frontend/src/views/`，通用组件在 `frontend/src/components/`，API 封装在 `frontend/src/api/`，样式在 `frontend/src/styles.css`。
-- `backend/` 为 NestJS 服务端。业务模块在 `backend/src/modules/`（如 `projects/`、`feishu/`、`risks/`），入口为 `backend/src/main.ts`，模块注册在 `backend/src/app.module.ts`。
+- `frontend/` 为 Vite + React 前端。入口在 `frontend/src/main.tsx` 和 `frontend/src/App.tsx`，页面位于 `frontend/src/views/`（包含 `AiView.tsx`、`PmAssistantView.tsx` 等），通用组件在 `frontend/src/components/`，API 封装在 `frontend/src/api/`，样式在 `frontend/src/styles.css`。
+- `backend/` 为 NestJS 服务端。核心模块：
+  - `ai/`：提供会议纪要解析、Dashboard 摘要、风险预测等 AI 能力。
+  - `pm-assistant/`：PM 助手模块，负责定时/手动触发飞书机器人消息推送（早报、看板、风险提醒等）。
+  - `feishu/`：飞书开放平台集成。
+  - `projects/` / `requirements/` / `costs/`：基础业务模块。
 - `backend/prisma/` 存放 Prisma schema 与迁移文件。
 - `desktop/` 为 Electron 桌面端（入口 `desktop/main.js`，预加载 `desktop/preload.js`，打包配置在 `desktop/package.json`）。
 - `docs/` 与 `README.md` 为辅助文档。

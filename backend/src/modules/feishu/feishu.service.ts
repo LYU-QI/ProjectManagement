@@ -364,4 +364,25 @@ export class FeishuService {
       { method: 'DELETE' }
     );
   }
+
+  async sendInteractiveMessage(input: {
+    receiveId: string;
+    receiveIdType?: 'chat_id' | 'open_id' | 'user_id' | 'email';
+    card: Record<string, unknown>;
+    mentions?: Array<{ key: string; id: { open_id: string } }>;
+  }) {
+    const receiveIdType = input.receiveIdType || 'chat_id';
+    const payload: Record<string, unknown> = {
+      receive_id: input.receiveId,
+      msg_type: 'interactive',
+      content: JSON.stringify(input.card),
+    };
+    if (input.mentions && input.mentions.length > 0) {
+      payload.mentions = input.mentions;
+    }
+    return this.request(`/im/v1/messages?receive_id_type=${receiveIdType}`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  }
 }

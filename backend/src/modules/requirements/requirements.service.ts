@@ -24,7 +24,7 @@ export class RequirementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService
-  ) {}
+  ) { }
 
   async list(projectId?: number) {
     return this.prisma.requirement.findMany({
@@ -119,8 +119,8 @@ export class RequirementsService {
           requirementId: id,
           changedBy,
           reason,
-          before,
-          after,
+          before: before as any,
+          after: after as any,
           version: nextVersion
         }
       });

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -19,10 +20,12 @@ import { UsersModule } from './modules/users/users.module';
 import { RisksModule } from './modules/risks/risks.module';
 import { ConfigModule } from './modules/config/config.module';
 import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
+import { PmAssistantModule } from './modules/pm-assistant/pm-assistant.module';
 
 @Module({
   imports: [
     DatabaseModule,
+    ScheduleModule.forRoot(),
     NotificationsModule,
     AuthModule,
     ProjectsModule,
@@ -37,7 +40,8 @@ import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
     FeishuModule,
     RisksModule,
     ConfigModule,
-    FeishuUsersModule
+    FeishuUsersModule,
+    PmAssistantModule
   ],
   controllers: [AppController],
   providers: [

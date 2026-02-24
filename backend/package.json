@@ -8,6 +8,7 @@
     "start": "node dist/src/main.js",
     "lint": "echo \"lint not configured\"",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:generate:desktop": "prisma generate --schema prisma/schema.desktop.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "prisma:seed": "ts-node prisma/seed.ts"
   },
@@ -16,6 +17,7 @@
     "@nestjs/core": "^10.4.15",
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^10.4.15",
+    "@nestjs/schedule": "^3.0.4",
     "@prisma/client": "^6.19.2",
     "@types/pdf-parse": "^1.1.5",
     "class-transformer": "^0.5.1",
