@@ -21,6 +21,7 @@ import { RisksModule } from './modules/risks/risks.module';
 import { ConfigModule } from './modules/config/config.module';
 import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
 import { PmAssistantModule } from './modules/pm-assistant/pm-assistant.module';
+import { PrdModule } from './modules/prd/prd.module';
 
 @Module({
   imports: [
@@ -41,7 +42,8 @@ import { PmAssistantModule } from './modules/pm-assistant/pm-assistant.module';
     RisksModule,
     ConfigModule,
     FeishuUsersModule,
-    PmAssistantModule
+    PmAssistantModule,
+    PrdModule
   ],
   controllers: [AppController],
   providers: [

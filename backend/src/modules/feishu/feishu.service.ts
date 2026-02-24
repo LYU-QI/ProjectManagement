@@ -48,7 +48,59 @@ export class FeishuService {
     return raw
       .split(',')
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((item) => this.resolveFieldName(item));
+  }
+
+  private get fieldMap() {
+    const raw = this.configService.getRawValue('FEISHU_FIELD_MAP');
+    if (!raw) return {};
+    const trimmed = raw.trim();
+    try {
+      if (trimmed.startsWith('{')) {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          return Object.fromEntries(
+            Object.entries(parsed as Record<string, unknown>)
+              .map(([k, v]) => [String(k).trim(), String(v).trim()])
+              .filter(([k, v]) => k && v)
+          );
+        }
+      }
+    } catch {
+      // fall through to csv parsing
+    }
+    return Object.fromEntries(
+      trimmed
+        .split(',')
+        .map((pair) => pair.trim())
+        .filter(Boolean)
+        .map((pair) => {
+          const [left, right] = pair.split(/[:=]/, 2).map((v) => v?.trim());
+          return [left || '', right || ''];
+        })
+        .filter(([k, v]) => k && v)
+    );
+  }
+
+  private resolveFieldName(name: string) {
+    const mapped = this.fieldMap[name];
+    return mapped && mapped.trim() ? mapped.trim() : name;
+  }
+
+  private mapFieldsToLogical(fields: Record<string, unknown> | null | undefined) {
+    if (!fields || typeof fields !== 'object') return fields as Record<string, unknown> | null | undefined;
+    const inverseMap = Object.fromEntries(
+      Object.entries(this.fieldMap).map(([logical, actual]) => [actual, logical])
+    );
+    const mapped: Record<string, unknown> = {};
+    Object.entries(fields).forEach(([key, value]) => {
+      const logical = inverseMap[key] || key;
+      if (mapped[logical] === undefined) {
+        mapped[logical] = value;
+      }
+    });
+    return mapped;
   }
 
   private requireEnv(value: string | undefined, name: string) {
@@ -114,7 +166,13 @@ export class FeishuService {
     if (!fieldNames) return undefined;
     const trimmed = fieldNames.trim();
     if (trimmed.startsWith('[')) return trimmed;
-    return JSON.stringify(trimmed.split(',').map((name) => name.trim()).filter(Boolean));
+    return JSON.stringify(
+      trimmed
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .map((name) => this.resolveFieldName(name))
+    );
   }
 
   private normalizeDate(value: unknown) {
@@ -201,18 +259,21 @@ export class FeishuService {
   }
 
   private async normalizeFields(fields: Record<string, unknown>) {
+    const mappedFields = Object.fromEntries(
+      Object.entries(fields).map(([key, value]) => [this.resolveFieldName(key), value])
+    );
     const multiSelect = new Set(this.multiSelectFields);
     const withMultiSelect = Object.fromEntries(
-      Object.entries(fields).map(([key, value]) => (
+      Object.entries(mappedFields).map(([key, value]) => (
         multiSelect.has(key) ? [key, this.normalizeMultiSelect(value)] : [key, value]
       ))
     );
     return {
       ...withMultiSelect,
-      负责人: await this.normalizeAssignee(withMultiSelect['负责人']),
-      开始时间: this.normalizeDate(withMultiSelect['开始时间']),
-      截止时间: this.normalizeDate(withMultiSelect['截止时间']),
-      进度: this.normalizeProgress(withMultiSelect['进度'])
+      [this.resolveFieldName('负责人')]: await this.normalizeAssignee(withMultiSelect[this.resolveFieldName('负责人')]),
+      [this.resolveFieldName('开始时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('开始时间')]),
+      [this.resolveFieldName('截止时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('截止时间')]),
+      [this.resolveFieldName('进度')]: this.normalizeProgress(withMultiSelect[this.resolveFieldName('进度')])
     };
   }
 
@@ -251,14 +312,31 @@ export class FeishuService {
     const userIdType = query.userIdType || this.userIdType;
     if (userIdType) params.set('user_id_type', userIdType);
 
-    const data = await this.request<{ items: Array<Record<string, unknown>>; page_token?: string; has_more?: boolean }>(
-      `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`
-    );
+    let data: { items: Array<Record<string, unknown>>; page_token?: string; has_more?: boolean };
+    const url = `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`;
+    try {
+      data = await this.request(url);
+    } catch (err: any) {
+      const message = err?.message || '';
+      if (fieldNames && message.includes('FieldNameNotFound')) {
+        this.logger.warn(`Feishu field_names invalid, retrying without field_names: ${fieldNames}`);
+        params.delete('field_names');
+        const fallbackUrl = `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`;
+        data = await this.request(fallbackUrl);
+      } else {
+        throw err;
+      }
+    }
+
+    const mappedItems = (data.items || []).map((item: any) => ({
+      ...item,
+      fields: this.mapFieldsToLogical(item?.fields as Record<string, unknown> | undefined)
+    }));
 
     // 自动收集名册：提取所有记录中的负责人信息并全量同步入库
     try {
       const allUsersFound: { name: string; openId: string }[] = [];
-      data.items.forEach((item: any) => {
+      mappedItems.forEach((item: any) => {
         const users = this.extractUserInfo(item?.fields?.['负责人']);
         allUsersFound.push(...users);
       });
@@ -276,14 +354,19 @@ export class FeishuService {
     const filterAssignee = query.filterAssignee?.trim().toLowerCase();
     const filterRisk = query.filterRisk?.trim();
 
-    let items = data.items;
+    const projectKey = this.resolveFieldName('所属项目');
+    const statusKey = this.resolveFieldName('状态');
+    const riskKey = this.resolveFieldName('风险等级');
+    const assigneeKey = this.resolveFieldName('负责人');
+
+    let items = mappedItems;
     if (filterProject || filterStatus || filterAssignee || filterRisk) {
       items = items.filter((item: any) => {
         const fields = item?.fields || {};
-        const project = String(fields['所属项目'] ?? '');
-        const status = String(fields['状态'] ?? '');
-        const risk = String(fields['风险等级'] ?? '');
-        const assignee = this.extractAssigneeText(fields['负责人']);
+        const project = String(fields[projectKey] ?? '');
+        const status = String(fields[statusKey] ?? '');
+        const risk = String(fields[riskKey] ?? '');
+        const assignee = this.extractAssigneeText(fields[assigneeKey]);
         if (filterProject && project !== filterProject) return false;
         if (filterStatus && status !== filterStatus) return false;
         if (filterRisk && risk !== filterRisk) return false;
@@ -313,8 +396,8 @@ export class FeishuService {
       });
     }
 
-    if (items === data.items && !query.search) {
-      return data;
+    if (items === mappedItems && !query.search) {
+      return { ...data, items: mappedItems };
     }
 
     return {

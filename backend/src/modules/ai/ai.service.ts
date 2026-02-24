@@ -4,7 +4,24 @@ import * as xlsx from 'xlsx';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
-const pdfParse = require('pdf-parse');
+const pdfParseModule = require('pdf-parse');
+async function parsePdfBuffer(buffer: Buffer) {
+  if (typeof pdfParseModule === 'function') {
+    return pdfParseModule(buffer);
+  }
+  if (pdfParseModule?.default && typeof pdfParseModule.default === 'function') {
+    return pdfParseModule.default(buffer);
+  }
+  if (pdfParseModule?.PDFParse) {
+    const parser = new pdfParseModule.PDFParse({ data: buffer });
+    const result = await parser.getText();
+    if (parser.destroy) {
+      await parser.destroy();
+    }
+    return { text: result?.text || '' };
+  }
+  throw new Error('pdf-parse module is not callable');
+}
 
 interface WeeklyReportInput {
   projectIds: number[];
@@ -711,7 +728,7 @@ ${detailBlocks}`;
         const result = await mammoth.extractRawText({ buffer });
         parsedText = result.value.substring(0, 10000);
       } else if (lowerName.endsWith('.pdf')) {
-        const result = await pdfParse(buffer);
+        const result = await parsePdfBuffer(buffer);
         parsedText = result.text.substring(0, 10000);
       } else if (lowerName.endsWith('.txt') || lowerName.endsWith('.md')) {
         parsedText = buffer.toString('utf-8').substring(0, 10000);

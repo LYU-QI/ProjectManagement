@@ -113,6 +113,46 @@ export interface FeishuDependency {
   type: 'FS' | 'SS' | 'FF';
 }
 
+export interface PrdDocument {
+  id: number;
+  projectId: number;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PrdVersion {
+  id: number;
+  documentId: number;
+  versionLabel?: string | null;
+  fileName: string;
+  createdAt: string;
+}
+
+export interface PrdDiffToken {
+  type: 'added' | 'removed' | 'same';
+  text: string;
+}
+
+export interface PrdDiffBlock {
+  type: 'added' | 'removed' | 'same' | 'changed';
+  text?: string;
+  tokens?: PrdDiffToken[];
+}
+
+export interface PrdCompareResult {
+  leftVersion: PrdVersion;
+  rightVersion: PrdVersion;
+  summary: string;
+  counts: {
+    added: number;
+    removed: number;
+    changed: number;
+    same: number;
+  };
+  blocks: PrdDiffBlock[];
+}
+
 export interface ProjectItem {
   id: number;
   name: string;

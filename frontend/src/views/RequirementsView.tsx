@@ -1,9 +1,11 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiPost, TOKEN_KEY } from '../api/client';
+import { comparePrdVersions, createPrdDocument, listPrdDocuments, listPrdVersions, uploadPrdVersion } from '../api/prd';
 import type { Requirement, RequirementChange } from '../types';
+import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -94,6 +96,113 @@ export default function RequirementsView({
     open: false, file: null, loading: false, error: '', result: null
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [prdDocs, setPrdDocs] = useState<PrdDocument[]>([]);
+  const [prdVersions, setPrdVersions] = useState<PrdVersion[]>([]);
+  const [selectedPrdId, setSelectedPrdId] = useState<number | null>(null);
+  const [prdTitleDraft, setPrdTitleDraft] = useState('PRD');
+  const [prdUpload, setPrdUpload] = useState<{ file: File | null; versionLabel: string; loading: boolean; error: string }>({
+    file: null, versionLabel: '', loading: false, error: ''
+  });
+  const [comparePick, setComparePick] = useState<{ leftId: number | null; rightId: number | null }>({ leftId: null, rightId: null });
+  const [compareResult, setCompareResult] = useState<PrdCompareResult | null>(null);
+  const prdFileInputRef = useRef<HTMLInputElement>(null);
+
+  async function refreshPrdDocuments(projectId: number) {
+    const docs = await listPrdDocuments(projectId);
+    setPrdDocs(docs);
+    if (docs.length > 0) {
+      setSelectedPrdId((prev) => prev ?? docs[0].id);
+    } else {
+      setSelectedPrdId(null);
+      setPrdVersions([]);
+      setCompareResult(null);
+      setComparePick({ leftId: null, rightId: null });
+    }
+  }
+
+  async function refreshPrdVersions(documentId: number) {
+    const versions = await listPrdVersions(documentId);
+    setPrdVersions(versions);
+    setCompareResult(null);
+    setComparePick({ leftId: null, rightId: null });
+  }
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    void refreshPrdDocuments(selectedProjectId);
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedPrdId) return;
+    void refreshPrdVersions(selectedPrdId);
+  }, [selectedPrdId]);
+
+  async function handleCreatePrd() {
+    if (!selectedProjectId || !prdTitleDraft.trim()) return;
+    const doc = await createPrdDocument(selectedProjectId, prdTitleDraft.trim());
+    setPrdDocs((prev) => [doc, ...prev.filter((d) => d.id !== doc.id)]);
+    setSelectedPrdId(doc.id);
+    void refreshPrdDocuments(selectedProjectId);
+  }
+
+  async function handleUploadPrd() {
+    if (!selectedPrdId || !prdUpload.file) return;
+    setPrdUpload((p) => ({ ...p, loading: true, error: '' }));
+    try {
+      await uploadPrdVersion(selectedPrdId, prdUpload.file, prdUpload.versionLabel.trim() || undefined);
+      await refreshPrdVersions(selectedPrdId);
+      setPrdUpload({ file: null, versionLabel: '', loading: false, error: '' });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setPrdUpload((p) => ({ ...p, loading: false, error: detail }));
+    }
+  }
+
+  async function handleComparePrd() {
+    if (!comparePick.leftId || !comparePick.rightId) return;
+    const result = await comparePrdVersions(comparePick.leftId, comparePick.rightId);
+    setCompareResult(result);
+  }
+
+  function buildCompareMarkdown(result: PrdCompareResult) {
+    const leftLabel = result.leftVersion.versionLabel || result.leftVersion.fileName;
+    const rightLabel = result.rightVersion.versionLabel || result.rightVersion.fileName;
+    const lines = [
+      '# PRD 版本对比',
+      '',
+      `- 旧版本: ${leftLabel}`,
+      `- 新版本: ${rightLabel}`,
+      `- 摘要: ${result.summary}`,
+      '',
+      '## 变更明细'
+    ];
+
+    result.blocks.forEach((block) => {
+      if (block.type === 'added') {
+        lines.push(`- 新增: ${block.text || ''}`);
+      } else if (block.type === 'removed') {
+        lines.push(`- 删除: ${block.text || ''}`);
+      } else if (block.type === 'same') {
+        lines.push(`- 未变: ${block.text || ''}`);
+      } else if (block.type === 'changed' && block.tokens) {
+        const oldText = block.tokens.filter((t) => t.type !== 'added').map((t) => t.text).join('');
+        const newText = block.tokens.filter((t) => t.type !== 'removed').map((t) => t.text).join('');
+        lines.push(`- 修改:\n  - 旧: ${oldText}\n  - 新: ${newText}`);
+      }
+    });
+    return lines.join('\n');
+  }
+
+  function downloadText(filename: string, content: string) {
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const handleImportUpload = async () => {
     if (!importModal.file) return;
@@ -618,6 +727,126 @@ export default function RequirementsView({
           </div>
         </div>
       )}
+
+      <section className="panel prd-panel">
+        <div className="panel-header">
+          <h3>PRD 版本库</h3>
+        </div>
+        {!selectedProjectId && (
+          <p className="muted">请选择项目后再管理 PRD 版本。</p>
+        )}
+        {selectedProjectId && (
+          <>
+            <div className="row">
+              <label>PRD：</label>
+              <select
+                value={selectedPrdId ?? ''}
+                onChange={(e) => setSelectedPrdId(e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">请选择 PRD</option>
+                {prdDocs.map((doc) => (
+                  <option key={doc.id} value={doc.id}>{doc.title}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                placeholder="新 PRD 名称"
+                value={prdTitleDraft}
+                onChange={(e) => setPrdTitleDraft(e.target.value)}
+              />
+              <button className="btn" type="button" onClick={() => void handleCreatePrd()}>
+                新建 PRD
+              </button>
+            </div>
+
+            <div className="row">
+              <input
+                ref={prdFileInputRef}
+                type="file"
+                accept=".docx,.pdf"
+                onChange={(e) => setPrdUpload((p) => ({ ...p, file: e.target.files?.[0] ?? null }))}
+              />
+              <input
+                type="text"
+                placeholder="版本号（可选，如 V1.2）"
+                value={prdUpload.versionLabel}
+                onChange={(e) => setPrdUpload((p) => ({ ...p, versionLabel: e.target.value }))}
+              />
+              <button
+                className="btn"
+                type="button"
+                disabled={!selectedPrdId || !prdUpload.file || prdUpload.loading}
+                onClick={() => void handleUploadPrd()}
+              >
+                {prdUpload.loading ? '上传中...' : '上传版本'}
+              </button>
+              {prdUpload.error && <span className="warn">上传失败：{prdUpload.error}</span>}
+            </div>
+
+            <div className="row">
+              <label>对比：</label>
+              <select
+                value={comparePick.leftId ?? ''}
+                onChange={(e) => setComparePick((p) => ({ ...p, leftId: e.target.value ? Number(e.target.value) : null }))}
+              >
+                <option value="">选择旧版本</option>
+                {prdVersions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.versionLabel || v.fileName} ({new Date(v.createdAt).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              <select
+                value={comparePick.rightId ?? ''}
+                onChange={(e) => setComparePick((p) => ({ ...p, rightId: e.target.value ? Number(e.target.value) : null }))}
+              >
+                <option value="">选择新版本</option>
+                {prdVersions.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.versionLabel || v.fileName} ({new Date(v.createdAt).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+              <button className="btn" type="button" disabled={!comparePick.leftId || !comparePick.rightId} onClick={() => void handleComparePrd()}>
+                开始对比
+              </button>
+              {compareResult && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => downloadText('prd-compare.md', buildCompareMarkdown(compareResult))}
+                >
+                  下载摘要
+                </button>
+              )}
+            </div>
+
+            {compareResult && (
+              <div className="prd-compare">
+                <p className="muted">{compareResult.summary}</p>
+                <div className="diff-list">
+                  {compareResult.blocks.map((block, idx) => (
+                    <div key={`${block.type}-${idx}`} className={`diff-block diff-${block.type}`}>
+                      <span className="diff-tag">{block.type === 'added' ? '新增' : block.type === 'removed' ? '删除' : block.type === 'changed' ? '修改' : '未变'}</span>
+                      {block.type === 'changed' && block.tokens ? (
+                        <div className="diff-inline">
+                          {block.tokens.map((token, tokenIdx) => (
+                            <span key={`${token.type}-${tokenIdx}`} className={`diff-word diff-word-${token.type}`}>
+                              {token.text}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <pre>{block.text}</pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

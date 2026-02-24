@@ -87,6 +87,7 @@ model Project {
   tasks        Task[]
   worklogs     Worklog[]
   notifications Notification[]
+  prdDocuments PrdDocument[]
 }
 
 model Requirement {
@@ -124,6 +125,35 @@ model RequirementChange {
   version       String?
   createdAt     DateTime    @default(now())
   requirement   Requirement @relation(fields: [requirementId], references: [id])
+}
+
+model PrdDocument {
+  id        Int          @id @default(autoincrement())
+  projectId Int
+  title     String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  project   Project      @relation(fields: [projectId], references: [id])
+  versions  PrdVersion[]
+
+  @@index([projectId])
+}
+
+model PrdVersion {
+  id          Int      @id @default(autoincrement())
+  documentId  Int
+  versionLabel String?
+  fileName    String
+  mimeType    String?
+  fileSize    Int?
+  storagePath String
+  contentText String   @db.Text
+  contentHash String
+  createdAt   DateTime @default(now())
+  document    PrdDocument @relation(fields: [documentId], references: [id])
+
+  @@index([documentId])
+  @@index([contentHash])
 }
 
 model CostEntry {

@@ -31,6 +31,7 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     FEISHU_USER_ID_TYPE: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书用户 ID 类型' },
     FEISHU_CHAT_ID: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书群聊 Chat ID（pm-assistant 发送群消息）' },
     FEISHU_MULTI_SELECT_FIELDS: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '多维表格多选字段名（逗号分隔）' },
+    FEISHU_FIELD_MAP: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '字段名映射（逻辑名=实际名，逗号分隔；或 JSON 对象）' },
     FEISHU_PM_ASSISTANT_ENABLED: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 定时任务开关（true/false）' },
     FEISHU_PM_ASSISTANT_TZ: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 定时任务时区（如 Asia/Shanghai）' },
     FEISHU_PM_ASSISTANT_CRON_MORNING_BATCH: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '早间批次 Cron (10:00)。包含：早间播报、会议材料、资源负载、风险预警、超期提醒、里程碑提醒、阻塞预警。格式：分 时 日 月 周' },

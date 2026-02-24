@@ -510,6 +510,93 @@ input[type="checkbox"] {
   gap: 6px;
 }
 
+.prd-panel {
+  margin-top: 16px;
+}
+
+.prd-panel .row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.prd-compare {
+  margin-top: 12px;
+}
+
+.diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 480px;
+  overflow: auto;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.diff-block {
+  border-radius: 6px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.diff-block pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+}
+
+.diff-inline {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.diff-word {
+  white-space: pre-wrap;
+}
+
+.diff-word-added {
+  background: rgba(46, 204, 113, 0.22);
+}
+
+.diff-word-removed {
+  background: rgba(231, 76, 60, 0.2);
+  text-decoration: line-through;
+}
+
+.diff-tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.diff-added {
+  border-color: rgba(46, 204, 113, 0.4);
+  background: rgba(46, 204, 113, 0.12);
+}
+
+.diff-removed {
+  border-color: rgba(231, 76, 60, 0.4);
+  background: rgba(231, 76, 60, 0.12);
+}
+
+.diff-same {
+  border-color: rgba(149, 165, 166, 0.2);
+  background: rgba(149, 165, 166, 0.08);
+}
+
 /* 终端输出风 pre */
 pre {
   background: #02040a;

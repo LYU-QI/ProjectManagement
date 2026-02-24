@@ -6,3 +6,5 @@ frontend/dist
 frontend/node_modules
 backend/node_modules
 desktop/dist/
+backend/uploads/
+be_restart*.log
