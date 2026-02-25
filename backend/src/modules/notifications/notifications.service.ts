@@ -56,16 +56,17 @@ export class NotificationsService {
       .filter(Boolean);
   }
 
-  private buildCard(title: string, message: string, level: NotificationLevel) {
+  private buildCard(title: string, message: string, level: NotificationLevel, projectName?: string) {
     const colorMap: Record<NotificationLevel, string> = {
       info: 'blue',
       warning: 'orange',
       error: 'red'
     };
+    const headerTitle = projectName ? `${projectName}·${title}` : title;
     return {
       config: { wide_screen_mode: true },
       header: {
-        title: { tag: 'plain_text', content: title },
+        title: { tag: 'plain_text', content: headerTitle },
         template: colorMap[level] || 'blue'
       },
       elements: [
@@ -79,15 +80,17 @@ export class NotificationsService {
   private async sendToFeishu(projectId: number | undefined, title: string, message: string, level: NotificationLevel) {
     try {
       let chatIds: string[] = [];
+      let projectName: string | undefined;
       if (projectId) {
         const project = await this.prisma.project.findUnique({ where: { id: projectId } });
         chatIds = this.parseChatIds(project?.feishuChatIds);
+        projectName = project?.name;
       }
       if (chatIds.length === 0) {
         chatIds = this.parseChatIds(this.configService.getRawValue('FEISHU_CHAT_ID'));
       }
       if (chatIds.length === 0) return;
-      const card = this.buildCard(title, message, level);
+      const card = this.buildCard(title, message, level, projectName);
       await Promise.all(chatIds.map((id) => this.feishuService.sendInteractiveMessage({
         receiveId: id,
         receiveIdType: 'chat_id',

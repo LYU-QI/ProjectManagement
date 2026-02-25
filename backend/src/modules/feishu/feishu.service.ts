@@ -258,7 +258,7 @@ export class FeishuService {
     return '';
   }
 
-  private async normalizeFields(fields: Record<string, unknown>) {
+  private async normalizeFields(fields: Record<string, unknown>, options?: { normalizeAssignee?: boolean }) {
     const mappedFields = Object.fromEntries(
       Object.entries(fields).map(([key, value]) => [this.resolveFieldName(key), value])
     );
@@ -268,9 +268,13 @@ export class FeishuService {
         multiSelect.has(key) ? [key, this.normalizeMultiSelect(value)] : [key, value]
       ))
     );
+    const normalizeAssignee = options?.normalizeAssignee !== false;
+    const assigneeKey = this.resolveFieldName('负责人');
     return {
       ...withMultiSelect,
-      [this.resolveFieldName('负责人')]: await this.normalizeAssignee(withMultiSelect[this.resolveFieldName('负责人')]),
+      [assigneeKey]: normalizeAssignee
+        ? await this.normalizeAssignee(withMultiSelect[assigneeKey])
+        : withMultiSelect[assigneeKey],
       [this.resolveFieldName('开始时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('开始时间')]),
       [this.resolveFieldName('截止时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('截止时间')]),
       [this.resolveFieldName('进度')]: this.normalizeProgress(withMultiSelect[this.resolveFieldName('进度')])
@@ -413,14 +417,28 @@ export class FeishuService {
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const normalized = await this.normalizeFields(fields);
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
-
-    return this.request(
-      `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ fields: normalized })
+    try {
+      return await this.request(
+        `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ fields: normalized })
+        }
+      );
+    } catch (err: any) {
+      const message = err?.message || '';
+      if (message.includes('SingleSelectFieldConvFail')) {
+        const fallback = await this.normalizeFields(fields, { normalizeAssignee: false });
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ fields: fallback })
+          }
+        );
       }
-    );
+      throw err;
+    }
   }
 
   async updateRecord(recordId: string, fields: Record<string, unknown>) {
@@ -428,14 +446,28 @@ export class FeishuService {
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const normalized = await this.normalizeFields(fields);
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
-
-    return this.request(
-      `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify({ fields: normalized })
+    try {
+      return await this.request(
+        `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ fields: normalized })
+        }
+      );
+    } catch (err: any) {
+      const message = err?.message || '';
+      if (message.includes('SingleSelectFieldConvFail')) {
+        const fallback = await this.normalizeFields(fields, { normalizeAssignee: false });
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+          {
+            method: 'PUT',
+            body: JSON.stringify({ fields: fallback })
+          }
+        );
       }
-    );
+      throw err;
+    }
   }
 
   async deleteRecord(recordId: string) {

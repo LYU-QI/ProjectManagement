@@ -2307,7 +2307,7 @@ function App() {
         )}
 
         {view === 'pm-assistant' && (
-          <PmAssistantView />
+          <PmAssistantView projectId={selectedProjectId || undefined} />
         )}
 
         {view === 'ai' && (

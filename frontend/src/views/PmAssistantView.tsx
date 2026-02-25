@@ -60,7 +60,11 @@ type DefaultPrompt = {
   prompt: string;
 };
 
-export default function PmAssistantView() {
+type PmAssistantViewProps = {
+  projectId?: number;
+};
+
+export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState('');
@@ -228,7 +232,8 @@ export default function PmAssistantView() {
       const res = await apiPost<RunResult>('/pm-assistant/run', {
         jobId: selectedJobId,
         dryRun,
-        receiveId: receiveId.trim() || undefined
+        receiveId: receiveId.trim() || undefined,
+        projectId: projectId || undefined
       });
       setRunResult(res);
       void loadLogs();

@@ -31,12 +31,14 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
     id?: string;
     taskName: string; assignee: string; startDate: string;
     endDate: string; priority: string; status: string; notes: string;
+    projectName?: string;
   };
   const [nlpText, setNlpText] = useState('');
   const [nlpLoading, setNlpLoading] = useState(false);
   const [nlpResult, setNlpResult] = useState<ParsedTask | null>(null);
   const [nlpError, setNlpError] = useState('');
   const [creatingFeishu, setCreatingFeishu] = useState(false);
+  const [nlpConfirmed, setNlpConfirmed] = useState(false);
 
   // 会议纪要转任务状态
   const [meetingText, setMeetingText] = useState('');
@@ -74,6 +76,10 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
   async function handleCreateToFeishu() {
     if (!nlpResult) return;
+    if (!nlpConfirmed) {
+      setNlpError('请先确认信息无误后再创建。');
+      return;
+    }
 
     const priorityMap: Record<string, string> = {
       high: '高',
@@ -88,9 +94,10 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
     };
 
     const projectItem = projects.find(p => p.id === selectedProjectId);
+    const projectName = (nlpResult.projectName || '').trim() || projectItem?.name || '';
 
     const taskId = `temp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const fields = {
+    const fields: Record<string, any> = {
       任务ID: taskId,
       任务名称: nlpResult.taskName,
       负责人: nlpResult.assignee || '',
@@ -98,11 +105,17 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
       截止时间: nlpResult.endDate || null,
       优先级: priorityMap[nlpResult.priority] || '中',
       状态: statusMap[nlpResult.status] || '待办',
-      所属项目: projectItem?.name || '',
+      所属项目: projectName,
       是否阻塞: '否',
       风险等级: '中',
       里程碑: '否'
     };
+    Object.keys(fields).forEach((key) => {
+      const value = fields[key];
+      if (value === '' || value === null || value === undefined) {
+        delete fields[key];
+      }
+    });
 
     setCreatingFeishu(true);
     setNlpError('');
@@ -123,6 +136,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
     setNlpLoading(true);
     setNlpResult(null);
     setNlpError('');
+    setNlpConfirmed(false);
     try {
       const selectedProject = projects.find((p) => p.id === selectedProjectId);
       const res = await apiPost<{ success: boolean; task?: ParsedTask; error?: string; source?: string }>('/ai/tasks/parse', {
@@ -130,7 +144,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
         projectName: selectedProject?.name
       });
       if (res.success && res.task) {
-        setNlpResult(res.task);
+        setNlpResult({ ...res.task, projectName: selectedProject?.name || '' });
+        setNlpConfirmed(false);
       } else {
         setNlpError(res.error || '解析失败，请手动填写。');
       }
@@ -161,6 +176,11 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
     } finally {
       setMeetingLoading(false);
     }
+  }
+
+  function updateNlpResult(patch: Partial<ParsedTask>) {
+    setNlpResult((prev) => (prev ? { ...prev, ...patch } : prev));
+    setNlpConfirmed(false);
   }
 
   async function handleBatchCreate() {
@@ -506,34 +526,122 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           {nlpResult && (
             <div style={{ marginTop: 8 }}>
               <div style={{ color: '#b44dff', fontFamily: 'Orbitron, monospace', fontSize: 12, marginBottom: 10 }}>
-                ✅ 解析成功 — 请核对以下信息后手动创建任务
+                ✅ 解析成功 — 可编辑后确认，再一键创建到飞书
               </div>
-              <table className="table">
+              <table className="table" style={{ fontSize: 13 }}>
                 <tbody>
-                  {[
-                    { label: '任务名称', value: nlpResult.taskName },
-                    { label: '负责人', value: nlpResult.assignee || '（未识别）' },
-                    { label: '开始日期', value: nlpResult.startDate || '（未识别）' },
-                    { label: '截止日期', value: nlpResult.endDate || '（未识别）' },
-                    { label: '优先级', value: nlpResult.priority },
-                    { label: '状态', value: nlpResult.status },
-                    { label: '补充说明', value: nlpResult.notes || '（无）' },
-                  ].map(({ label, value }) => (
-                    <tr key={label}>
-                      <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>{label}</td>
-                      <td style={{ fontWeight: 500 }}>{value}</td>
-                    </tr>
-                  ))}
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>任务名称</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={nlpResult.taskName}
+                        onChange={(e) => updateNlpResult({ taskName: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>负责人</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={nlpResult.assignee || ''}
+                        onChange={(e) => updateNlpResult({ assignee: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        placeholder="未识别可手动填写"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>所属项目</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={nlpResult.projectName || ''}
+                        onChange={(e) => updateNlpResult({ projectName: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        placeholder="如飞书为单选，请填写已有选项"
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>开始日期</td>
+                    <td>
+                      <input
+                        type="date"
+                        value={nlpResult.startDate || ''}
+                        onChange={(e) => updateNlpResult({ startDate: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>截止日期</td>
+                    <td>
+                      <input
+                        type="date"
+                        value={nlpResult.endDate || ''}
+                        onChange={(e) => updateNlpResult({ endDate: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                      />
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>优先级</td>
+                    <td>
+                      <select
+                        value={nlpResult.priority || 'medium'}
+                        onChange={(e) => updateNlpResult({ priority: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                      >
+                        <option value="high">高</option>
+                        <option value="medium">中</option>
+                        <option value="low">低</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>状态</td>
+                    <td>
+                      <select
+                        value={nlpResult.status || 'todo'}
+                        onChange={(e) => updateNlpResult({ status: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                      >
+                        <option value="todo">待办</option>
+                        <option value="in_progress">进行中</option>
+                        <option value="done">已完成</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>补充说明</td>
+                    <td>
+                      <textarea
+                        rows={2}
+                        value={nlpResult.notes || ''}
+                        onChange={(e) => updateNlpResult({ notes: e.target.value })}
+                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        placeholder="可选"
+                      />
+                    </td>
+                  </tr>
                 </tbody>
               </table>
-              <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)' }}>
-                💡 请将以上信息复制到「需求管理」或「进度同步」模块中手动创建任务。或者您也可以：
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                <input
+                  type="checkbox"
+                  checked={nlpConfirmed}
+                  onChange={(e) => setNlpConfirmed(e.target.checked)}
+                />
+                我已确认以上信息无误
               </div>
               <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                 <button
                   className="btn"
                   type="button"
-                  disabled={creatingFeishu}
+                  disabled={creatingFeishu || !nlpConfirmed}
                   onClick={() => void handleCreateToFeishu()}
                   style={{
                     background: 'linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%)',
@@ -547,6 +655,19 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   }}
                 >
                   {creatingFeishu ? '🚀 正在同步创建至飞书...' : '⚡ 一键创建至飞书同步列表'}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)' }}
+                  onClick={() => {
+                    setNlpResult(null);
+                    setNlpText('');
+                    setNlpError('');
+                    setNlpConfirmed(false);
+                  }}
+                >
+                  重置
                 </button>
               </div>
             </div>

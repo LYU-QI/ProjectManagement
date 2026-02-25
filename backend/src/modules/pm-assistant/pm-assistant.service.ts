@@ -111,22 +111,45 @@ export class PmAssistantService {
       return { jobId, sent: false, summary: `任务已禁用：${job.name}`, card: {} };
     }
     try {
-      const projectName = opts?.projectId
-        ? (await this.prisma.project.findUnique({ where: { id: opts.projectId }, select: { name: true } }))?.name
-        : undefined;
-      const { card, summary, mentions } = await this.buildCard(jobId, projectName);
-      const summarized = await this.summarizeWithAi(jobId, summary);
+      const project = opts?.projectId
+        ? await this.prisma.project.findUnique({
+          where: { id: opts.projectId },
+          select: {
+            id: true,
+            name: true,
+            startDate: true,
+            endDate: true,
+            budget: true,
+            owner: { select: { name: true } }
+          }
+        })
+        : null;
+      const projectInfo = project ? {
+        id: project.id,
+        name: project.name,
+        ownerName: project.owner?.name || '',
+        startDate: project.startDate || '',
+        endDate: project.endDate || '',
+        budget: project.budget
+      } : undefined;
+      const { headerTitle, template, summary, mentions, todayStr, aiContext, fallbackMentionText } = await this.buildCard(jobId, projectInfo);
+      const summarized = await this.summarizeWithAi(jobId, summary, aiContext);
+      let finalText = summarized || summary;
+      if (this.shouldMention(jobId) && fallbackMentionText && !finalText.includes('<at id=')) {
+        finalText = `${finalText}\n- 负责人：${fallbackMentionText}`;
+      }
+      const card = this.buildCardPayload(headerTitle, template, finalText, todayStr);
 
       if (opts?.dryRun) {
         await this.pushLog({
           jobId,
           triggeredBy,
           status: 'dry-run',
-          summary: summarized,
+          summary: finalText,
           rawSummary: summary,
           aiSummary: summarized
         });
-        return { jobId, sent: false, summary: summarized, card };
+        return { jobId, sent: false, summary: finalText, card };
       }
 
       let receiveIds = opts?.receiveIds && opts.receiveIds.length > 0
@@ -153,11 +176,11 @@ export class PmAssistantService {
         jobId,
         triggeredBy,
         status: 'success',
-        summary: summarized,
+        summary: finalText,
         rawSummary: summary,
         aiSummary: summarized
       });
-      return { jobId, sent: true, summary: summarized, card };
+      return { jobId, sent: true, summary: finalText, card };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       await this.pushLog({
@@ -173,6 +196,10 @@ export class PmAssistantService {
 
   private getDefaultChatId() {
     return this.configService.getRawValue('FEISHU_CHAT_ID');
+  }
+
+  private shouldMention(jobId: PmJobId) {
+    return new Set<PmJobId>(['blocked-alert', 'overdue-reminder', 'risk-alerts', 'milestone-reminder']).has(jobId);
   }
 
   private parseChatIds(raw?: string | null) {
@@ -237,6 +264,21 @@ export class PmAssistantService {
       .filter((u): u is { name: string; openId: string } => !!u);
   }
 
+  private async resolveAssignees(value: unknown): Promise<Array<{ name: string; openId: string }>> {
+    const direct = this.extractUserInfo(value);
+    if (direct.length > 0) return direct;
+    if (typeof value !== 'string') return [];
+    const names = value
+      .split(/[,，、]/)
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (names.length === 0) return [];
+    const users = await this.prisma.feishuUser.findMany({
+      where: { name: { in: names } }
+    });
+    return users.map((u) => ({ name: u.name, openId: u.openId }));
+  }
+
   private getMentions(users: Array<{ name: string; openId: string }>) {
     return users.map((u) => ({ key: u.openId, id: { open_id: u.openId } }));
   }
@@ -258,7 +300,7 @@ export class PmAssistantService {
     return `FEISHU_PM_ASSISTANT_PROMPT_${jobId.toUpperCase().replace(/-/g, '_')}`;
   }
 
-  private async summarizeWithAi(jobId: PmJobId, summary: string) {
+  private async summarizeWithAi(jobId: PmJobId, summary: string, context?: string) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
     const aiApiKey = this.configService.getRawValue('AI_API_KEY');
     const aiModel = this.configService.getRawValue('AI_MODEL');
@@ -268,7 +310,17 @@ export class PmAssistantService {
     const systemPrompt =
       this.configService.getRawValue(this.getPromptKey(jobId)) ||
       this.getDefaultSystemPrompt(jobId);
-    const userPrompt = `任务类型：${jobId}\n请将以下内容压缩成 3-6 条简洁要点（保留重点指标与风险），避免冗长叙述：\n${summary}`;
+    const mentionRule = this.shouldMention(jobId)
+      ? '对于涉及任务的要点，必须保留负责人 @ 提及，格式使用 <at id="...">姓名</at>，不要省略。'
+      : '';
+    const userPrompt = [
+      `任务类型：${jobId}`,
+      context ? `项目上下文：\n${context}` : '',
+      `原始要点：\n${summary}`,
+      '请根据项目上下文进行分析与整理，输出 3-5 条简短、结构化要点，每条以「-」开头，避免空话。',
+      mentionRule,
+      '如果原始要点中包含 <at id="..."> 提及，请原样保留。'
+    ].filter(Boolean).join('\n');
     try {
       const res = await fetch(aiApiUrl, {
         method: 'POST',
@@ -297,22 +349,34 @@ export class PmAssistantService {
   }
 
   private getDefaultSystemPrompt(jobId: PmJobId) {
-    const base = '你是资深项目管理助理，擅长把项目提醒信息压缩成可快速阅读的要点。输出简洁、可执行。';
+    const base = '你是资深项目管理助理，基于项目现状数据生成简短且结构化的群消息。输出应具体、可执行，不要空话。';
     const map: Record<PmJobId, string> = {
-      'morning-briefing': `${base} 聚焦今日最重要的3-5件事，给出短行动建议。`,
-      'meeting-materials': `${base} 产出站会材料：列出阻塞/超期/高风险事项，附上负责人或依赖提示。`,
-      'risk-alerts': `${base} 以风险预警口吻输出，强调原因与影响，给出规避动作。`,
-      'overdue-reminder': `${base} 以催办口吻输出，按超期程度排序，标注紧急等级与建议处理顺序。`,
-      'milestone-reminder': `${base} 对临近里程碑给出准备事项，对完成里程碑给出简短肯定。`,
-      'blocked-alert': `${base} 聚焦阻塞原因，提出下一步解阻建议或需要的协同。`,
-      'resource-load': `${base} 输出负载分析：指出过载/空闲人员并给出分配建议。`,
-      'progress-board': `${base} 输出进度摘要：完成率、阻塞、关键偏差与下一步节奏。`,
-      'trend-predict': `${base} 输出趋势预测：指出可能延期的任务与偏差原因，给出预警等级。`,
-      'weekly-agenda': `${base} 输出周会讨论要点：本周Top风险、关键决策项、待确认事项。`,
-      'daily-report': `${base} 输出晚间日报：已完成亮点、未完成阻塞、次日重点。`,
-      'weekly-report': `${base} 输出周报摘要：完成概况、风险变化、预算/范围偏差与下周重点。`
+      'morning-briefing': `${base} 输出「概览/重点/下一步」3-5条。`,
+      'meeting-materials': `${base} 输出「阻塞/超期/需协同」3-5条。`,
+      'risk-alerts': `${base} 输出「风险点/影响/建议动作」3-5条。`,
+      'overdue-reminder': `${base} 输出「超期概览/紧急项/处理建议」3-5条。`,
+      'milestone-reminder': `${base} 输出「临近里程碑/已完成/准备事项」3-5条。`,
+      'blocked-alert': `${base} 输出「阻塞概览/原因/解阻动作」3-5条。`,
+      'resource-load': `${base} 输出「负载概览/过载/调配建议」3-5条。`,
+      'progress-board': `${base} 输出「进度概览/偏差/下一步」3-5条。`,
+      'trend-predict': `${base} 输出「趋势结论/偏差原因/预警等级」3-5条。`,
+      'weekly-agenda': `${base} 输出「本周重点/风险&阻塞/需决策事项」3-5条。`,
+      'daily-report': `${base} 输出「已完成/未完成阻塞/次日重点」3-5条。`,
+      'weekly-report': `${base} 输出「完成概况/风险变化/下周重点」3-5条。`
     };
     return map[jobId] || base;
+  }
+
+  private buildCardPayload(title: string, template: 'red' | 'orange' | 'green' | 'blue' | 'purple', contentText: string, todayStr: string) {
+    return {
+      config: { wide_screen_mode: true },
+      header: { title: { tag: 'plain_text', content: title }, template },
+      elements: [
+        { tag: 'div', text: { tag: 'lark_md', content: contentText } },
+        { tag: 'hr' },
+        { tag: 'div', text: { tag: 'lark_md', content: `数据时间：${todayStr}` } }
+      ]
+    };
   }
 
   getDefaultSystemPrompts() {
@@ -323,14 +387,14 @@ export class PmAssistantService {
     }));
   }
 
-  private async buildCard(jobId: PmJobId, projectName?: string) {
+  private async buildCard(jobId: PmJobId, project?: { id: number; name: string; ownerName?: string; startDate?: string; endDate?: string; budget?: number }) {
     const today = new Date();
     const todayStr = this.formatDate(today);
     const tasks = await this.loadFeishuTasks();
 
-    const normalized = tasks.map((record) => {
+    const normalized = await Promise.all(tasks.map(async (record) => {
       const fields = record.fields || {};
-      const assignees = this.extractUserInfo(fields[FIELD.assignee]);
+      const assignees = await this.resolveAssignees(fields[FIELD.assignee]);
       const start = this.parseDate(fields[FIELD.start]);
       const end = this.parseDate(fields[FIELD.end]);
       const status = this.asText(fields[FIELD.status]);
@@ -354,8 +418,9 @@ export class PmAssistantService {
         risk: this.asText(fields[FIELD.risk]),
         milestone: this.asText(fields[FIELD.milestone]) === '是'
       };
-    });
+    }));
 
+    const projectName = project?.name;
     const scoped = projectName ? normalized.filter((t) => t.project === projectName) : normalized;
     const overdue = scoped.filter((t) => t.end && t.status !== '已完成' && t.end < today);
     const blocked = scoped.filter((t) => t.blocked || t.status === '阻塞');
@@ -363,17 +428,31 @@ export class PmAssistantService {
     const todayTasks = scoped.filter((t) => t.end && this.formatDate(t.end) === todayStr && t.status !== '已完成');
     const upcomingMilestones = scoped.filter((t) => t.milestone && t.end && this.daysBetween(today, t.end) <= 3 && t.status !== '已完成');
     const completedMilestones = scoped.filter((t) => t.milestone && t.status === '已完成');
+    const riskAlerts = projectName
+      ? await this.prisma.riskAlert.findMany({
+        where: { project: projectName },
+        orderBy: { notifiedAt: 'desc' },
+        take: 10
+      })
+      : [];
 
     let title = '';
     let template: 'red' | 'orange' | 'green' | 'blue' | 'purple' = 'blue';
     let lines: string[] = [];
     let mentions: Array<{ key: string; id: { open_id: string } }> = [];
+    const mentionUserMap = new Map<string, string>();
+    const pushMentions = (users: Array<{ name: string; openId: string }>) => {
+      users.forEach((u) => {
+        if (u.openId) mentionUserMap.set(u.openId, u.name);
+      });
+      if (users.length > 0) mentions.push(...this.getMentions(users));
+    };
 
     switch (jobId) {
       case 'morning-briefing':
         title = '早间播报 · 今日重点';
         template = 'blue';
-        lines = todayTasks.slice(0, 8).map((t) => `• ${t.title}（${t.project}）`);
+        lines = todayTasks.slice(0, 8).map((t) => `• ${t.title}`);
         if (lines.length === 0) lines = ['今日暂无到期任务，可推进中长期事项。'];
         break;
       case 'meeting-materials':
@@ -381,14 +460,18 @@ export class PmAssistantService {
         template = 'blue';
         lines = [
           `阻塞任务 ${blocked.length} 项，超期任务 ${overdue.length} 项。`,
-          ...blocked.slice(0, 5).map((t) => `• ${t.title}（${t.project}）${t.blockReason ? `，原因：${t.blockReason}` : ''}`),
-          ...overdue.slice(0, 5).map((t) => `• ${t.title}（${t.project}）已超期 ${this.daysBetween(t.end!, today)} 天`)
+          ...blocked.slice(0, 5).map((t) => `• ${t.title}${t.blockReason ? `，原因：${t.blockReason}` : ''}`),
+          ...overdue.slice(0, 5).map((t) => `• ${t.title} 已超期 ${this.daysBetween(t.end!, today)} 天`)
         ].filter(Boolean);
         break;
       case 'risk-alerts':
         title = '风险预警 · 重点关注';
         template = 'orange';
-        lines = highRisk.slice(0, 8).map((t) => `• ${t.title}（${t.project}）风险等级：${t.risk || '高'}`);
+        lines = highRisk.slice(0, 8).map((t) => {
+          const mentionText = this.buildMentionText(t.assignees);
+          if (mentionText) pushMentions(t.assignees);
+          return `• ${t.title} 风险等级：${t.risk || '高'} ${mentionText}`.trim();
+        });
         if (lines.length === 0) lines = ['暂无高风险任务，保持监控。'];
         break;
       case 'overdue-reminder':
@@ -398,8 +481,8 @@ export class PmAssistantService {
           const days = this.daysBetween(t.end!, today);
           const level = days >= 7 ? '🚨 紧急' : days >= 4 ? '⚠️ 加急' : '⚠️ 提醒';
           const mentionText = this.buildMentionText(t.assignees);
-          if (mentionText) mentions.push(...this.getMentions(t.assignees));
-          return `• ${level} ${t.title}（${t.project}）超期 ${days} 天 ${mentionText}`.trim();
+          if (mentionText) pushMentions(t.assignees);
+          return `• ${level} ${t.title} 超期 ${days} 天 ${mentionText}`.trim();
         });
         if (lines.length === 0) lines = ['暂无超期任务。'];
         break;
@@ -407,8 +490,16 @@ export class PmAssistantService {
         title = '里程碑提醒';
         template = upcomingMilestones.length > 0 ? 'orange' : 'green';
         lines = [
-          ...upcomingMilestones.map((t) => `• 临近里程碑：${t.title}（${t.project}）截止 ${this.formatDate(t.end!)}`),
-          ...completedMilestones.slice(0, 5).map((t) => `• 🎉 已完成里程碑：${t.title}（${t.project}）`)
+          ...upcomingMilestones.map((t) => {
+            const mentionText = this.buildMentionText(t.assignees);
+            if (mentionText) pushMentions(t.assignees);
+            return `• 临近里程碑：${t.title} 截止 ${this.formatDate(t.end!)} ${mentionText}`.trim();
+          }),
+          ...completedMilestones.slice(0, 5).map((t) => {
+            const mentionText = this.buildMentionText(t.assignees);
+            if (mentionText) pushMentions(t.assignees);
+            return `• 🎉 已完成里程碑：${t.title} ${mentionText}`.trim();
+          })
         ];
         if (lines.length === 0) lines = ['暂无里程碑提醒。'];
         break;
@@ -417,8 +508,8 @@ export class PmAssistantService {
         template = 'red';
         lines = blocked.slice(0, 10).map((t) => {
           const mentionText = this.buildMentionText(t.assignees);
-          if (mentionText) mentions.push(...this.getMentions(t.assignees));
-          return `• ${t.title}（${t.project}）${t.blockReason ? `｜${t.blockReason}` : ''} ${mentionText}`.trim();
+          if (mentionText) pushMentions(t.assignees);
+          return `• ${t.title}${t.blockReason ? `｜${t.blockReason}` : ''} ${mentionText}`.trim();
         });
         if (lines.length === 0) lines = ['暂无阻塞任务。'];
         break;
@@ -480,7 +571,7 @@ export class PmAssistantService {
           .slice(0, 6);
         lines = deviations.map((d) => {
           const level = d.deviation < -20 ? '🚨 严重滞后' : d.deviation < -10 ? '⚠️ 轻微滞后' : '✅ 正常';
-          return `• ${d.title}（${d.project}）${level}，偏差 ${d.deviation.toFixed(1)}%`;
+          return `• ${d.title} ${level}，偏差 ${d.deviation.toFixed(1)}%`;
         });
         if (lines.length === 0) lines = ['暂无可预测的进度数据。'];
         break;
@@ -498,7 +589,7 @@ export class PmAssistantService {
         title = '晚间日报';
         template = 'green';
         const doneToday = scoped.filter((t) => t.status === '已完成' && t.end && this.formatDate(t.end) === todayStr);
-        lines = doneToday.slice(0, 8).map((t) => `• ${t.title}（${t.project}）已完成`);
+        lines = doneToday.slice(0, 8).map((t) => `• ${t.title} 已完成`);
         if (lines.length === 0) lines = ['今日暂无已完成任务，建议复盘阻塞与推进重点。'];
         break;
       }
@@ -519,17 +610,128 @@ export class PmAssistantService {
     }
 
     const contentText = lines.length > 0 ? lines.join('\n') : '暂无内容。';
-    const card = {
-      config: { wide_screen_mode: true },
-      header: { title: { tag: 'plain_text', content: title }, template },
-      elements: [
-        { tag: 'div', text: { tag: 'lark_md', content: contentText } },
-        { tag: 'hr' },
-        { tag: 'div', text: { tag: 'lark_md', content: `数据时间：${todayStr}` } }
-      ]
+    if (!this.shouldMention(jobId)) {
+      mentions = [];
+    } else if (mentions.length > 1) {
+      const uniq = new Map(mentions.map((m) => [m.key, m]));
+      mentions = Array.from(uniq.values());
+    }
+    const fallbackMentionText = this.shouldMention(jobId) && mentionUserMap.size > 0
+      ? Array.from(mentionUserMap.entries())
+        .map(([id, name]) => `<at id="${id}">${name}</at>`)
+        .join(' ')
+      : '';
+    const headerTitle = projectName ? `${projectName}·${title}` : title;
+    const aiContext = this.buildAiContext({
+      jobId,
+      todayStr,
+      project,
+      scoped,
+      overdue,
+      blocked,
+      highRisk,
+      upcomingMilestones,
+      completedMilestones,
+      riskAlerts
+    });
+
+    return { headerTitle, template, summary: contentText, mentions, todayStr, aiContext, fallbackMentionText };
+  }
+
+  private buildAiContext(input: {
+    jobId: PmJobId;
+    todayStr: string;
+    project?: { id: number; name: string; ownerName?: string; startDate?: string; endDate?: string; budget?: number };
+    scoped: Array<{ title: string; status: string; assignees: Array<{ name: string; openId: string }>; start: Date | null; end: Date | null; progress: number | null; project: string; blocked: boolean; blockReason: string; risk: string; milestone: boolean }>;
+    overdue: Array<{ title: string; assignees: Array<{ name: string; openId: string }>; end: Date | null; blockReason: string }>;
+    blocked: Array<{ title: string; assignees: Array<{ name: string; openId: string }>; blockReason: string }>;
+    highRisk: Array<{ title: string; assignees: Array<{ name: string; openId: string }>; risk: string }>;
+    upcomingMilestones: Array<{ title: string; end: Date | null; assignees: Array<{ name: string; openId: string }> }>;
+    completedMilestones: Array<{ title: string; assignees: Array<{ name: string; openId: string }> }>;
+    riskAlerts: Array<{ taskName: string | null; project: string | null; endDate: string | null; progress: number | null; daysLeft: number | null }>;
+  }) {
+    const { project, scoped, overdue, blocked, highRisk, upcomingMilestones, completedMilestones, riskAlerts, todayStr } = input;
+    const total = scoped.length;
+    const done = scoped.filter((t) => t.status === '已完成').length;
+    const doing = scoped.filter((t) => t.status === '进行中').length;
+    const todo = scoped.filter((t) => t.status === '待办').length;
+    const blockedCount = blocked.length;
+    const overdueCount = overdue.length;
+    const highRiskCount = highRisk.length;
+
+    const formatAssignee = (users: Array<{ name: string }>) => {
+      if (users.length === 0) return '';
+      return users.map((u) => u.name).filter(Boolean).join('、');
     };
 
-    return { card, summary: contentText, mentions };
+    const lines: string[] = [];
+    lines.push(`日期：${todayStr}`);
+    if (project) {
+      lines.push(`项目：${project.name}`);
+      if (project.ownerName) lines.push(`负责人：${project.ownerName}`);
+      if (project.startDate || project.endDate) lines.push(`周期：${project.startDate || '-'} ~ ${project.endDate || '-'}`);
+      if (Number.isFinite(project.budget)) lines.push(`预算：${project.budget}`);
+    }
+
+    lines.push(`任务概览：总数${total}，进行中${doing}，待办${todo}，完成${done}，阻塞${blockedCount}，超期${overdueCount}，高风险${highRiskCount}`);
+
+    if (blocked.length > 0) {
+      const items = blocked.slice(0, 6).map((t) => {
+        const mentionText = this.buildMentionText(t.assignees);
+        const assigneeText = formatAssignee(t.assignees);
+        return `- ${t.title}${t.blockReason ? `｜${t.blockReason}` : ''}${assigneeText ? `（负责人：${assigneeText}）` : ''}${mentionText ? ` ${mentionText}` : ''}`;
+      });
+      lines.push('阻塞任务：');
+      lines.push(...items);
+    }
+
+    if (overdue.length > 0) {
+      const items = overdue.slice(0, 6).map((t) => {
+        const mentionText = this.buildMentionText(t.assignees);
+        const assigneeText = formatAssignee(t.assignees);
+        return `- ${t.title}${t.end ? `（截止：${this.formatDate(t.end)}）` : ''}${assigneeText ? `（负责人：${assigneeText}）` : ''}${mentionText ? ` ${mentionText}` : ''}`;
+      });
+      lines.push('超期任务：');
+      lines.push(...items);
+    }
+
+    if (highRisk.length > 0) {
+      const items = highRisk.slice(0, 6).map((t) => {
+        const mentionText = this.buildMentionText(t.assignees);
+        const assigneeText = formatAssignee(t.assignees);
+        return `- ${t.title}${t.risk ? `（风险：${t.risk}）` : ''}${assigneeText ? `（负责人：${assigneeText}）` : ''}${mentionText ? ` ${mentionText}` : ''}`;
+      });
+      lines.push('高风险任务：');
+      lines.push(...items);
+    }
+
+    if (upcomingMilestones.length > 0) {
+      const items = upcomingMilestones.slice(0, 5).map((t) => {
+        const mentionText = this.buildMentionText(t.assignees);
+        const assigneeText = formatAssignee(t.assignees);
+        return `- ${t.title}${t.end ? `（截止：${this.formatDate(t.end)}）` : ''}${assigneeText ? `（负责人：${assigneeText}）` : ''}${mentionText ? ` ${mentionText}` : ''}`;
+      });
+      lines.push('临近里程碑：');
+      lines.push(...items);
+    }
+
+    if (completedMilestones.length > 0) {
+      const items = completedMilestones.slice(0, 5).map((t) => {
+        const mentionText = this.buildMentionText(t.assignees);
+        const assigneeText = formatAssignee(t.assignees);
+        return `- ${t.title}${assigneeText ? `（负责人：${assigneeText}）` : ''}${mentionText ? ` ${mentionText}` : ''}`;
+      });
+      lines.push('已完成里程碑：');
+      lines.push(...items);
+    }
+
+    if (riskAlerts.length > 0) {
+      const items = riskAlerts.slice(0, 6).map((r) => `- ${r.taskName || '未命名'}${r.endDate ? `（截止：${r.endDate}）` : ''}${r.daysLeft !== null && r.daysLeft !== undefined ? `（剩余${r.daysLeft}天）` : ''}`);
+      lines.push('系统风险告警：');
+      lines.push(...items);
+    }
+
+    return lines.join('\n');
   }
 
   private async pushLog(input: {
