@@ -11,3 +11,26 @@ Port 5176 is in use, trying another one...
 
   ➜  Local:   http://localhost:5177/
   ➜  Network: use --host to expose
+10:16:26 [vite] (client) hmr update /src/views/PmAssistantView.tsx
+10:16:30 [vite] (client) hmr update /src/App.tsx
+10:16:40 [vite] (client) hmr update /src/views/PmAssistantView.tsx
+10:16:43 [vite] (client) hmr update /src/App.tsx
+14:45:38 [vite] (client) hmr update /src/views/AiView.tsx
+14:46:08 [vite] (client) hmr update /src/views/AiView.tsx
+15:05:59 [vite] (client) hmr update /src/views/AiView.tsx
+15:11:00 [vite] (client) hmr update /src/views/AiView.tsx
+15:11:07 [vite] (client) hmr update /src/views/AiView.tsx
+17:29:58 [vite] (client) hmr update /src/App.tsx, /src/views/RequirementsView.tsx, /src/views/DashboardView.tsx, /src/views/FeishuUsersView.tsx, /src/views/AiView.tsx, /src/views/PmAssistantView.tsx, /src/views/SettingsView.tsx
+17:36:40 [vite] (client) hmr update /src/views/RequirementsView.tsx
+17:36:42 [vite] (client) hmr update /src/views/RequirementsView.tsx
+18:27:17 [vite] (client) hmr update /src/App.tsx, /src/views/RequirementsView.tsx, /src/views/DashboardView.tsx, /src/views/FeishuUsersView.tsx, /src/views/AiView.tsx, /src/views/PmAssistantView.tsx, /src/views/SettingsView.tsx
+18:29:49 [vite] .env changed, restarting server...
+18:29:49 [vite] .env changed, restarting server...
+18:29:49 [vite] server restarted.
+16:24:12 [vite] (client) hmr update /src/App.tsx, /src/views/RequirementsView.tsx, /src/views/FeishuUsersView.tsx, /src/views/DashboardView.tsx, /src/views/AiView.tsx, /src/views/PmAssistantView.tsx, /src/views/SettingsView.tsx
+16:24:25 [vite] (client) hmr update /src/views/RequirementsView.tsx
+16:24:33 [vite] (client) hmr update /src/views/RequirementsView.tsx
+16:35:01 [vite] (client) hmr update /src/views/SettingsView.tsx
+22:38:55 [vite] (client) hmr update /src/views/ScheduleView.tsx
+22:43:21 [vite] (client) hmr update /src/views/ScheduleView.tsx
+22:43:56 [vite] (client) hmr update /src/views/ScheduleView.tsx

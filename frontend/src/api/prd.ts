@@ -20,7 +20,7 @@ export async function uploadPrdVersion(documentId: number, file: File, versionLa
   formData.append('file', file);
   if (versionLabel) formData.append('versionLabel', versionLabel);
 
-  const res = await fetch(`http://localhost:3000/api/v1/prd/documents/${documentId}/versions`, {
+  const res = await fetch(`http://127.0.0.1:3000/api/v1/prd/documents/${documentId}/versions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}` },
     body: formData
@@ -28,7 +28,7 @@ export async function uploadPrdVersion(documentId: number, file: File, versionLa
 
   if (!res.ok) {
     let msg = res.statusText;
-    try { const err = await res.json(); msg = err.message || msg; } catch {}
+    try { const err = await res.json(); msg = err.message || msg; } catch { }
     throw new Error(msg);
   }
   return res.json() as Promise<PrdVersion>;

@@ -54,6 +54,17 @@ function formatProgress(value: string) {
   return `${rounded}%`;
 }
 
+function formatAssignee(value: string) {
+  if (!value) return '-';
+  const cleaned = value
+    .replace(/ou_[a-zA-Z0-9]+/g, '')
+    .replace(/[()（）\[\]]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+[,-]\s*$/, '')
+    .trim();
+  return cleaned || '-';
+}
+
 export default function ScheduleView({
   canWrite,
   tasks,
@@ -333,14 +344,13 @@ export default function ScheduleView({
           <div className="card" style={{ marginTop: 12 }}>
             <h3>任务列表</h3>
             <table className="table">
-              <thead><tr><th>任务ID</th><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
+              <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
               <tbody>
                 {tasks.map((t) => {
                   return (
                     <tr key={t.recordId}>
-                      <td>{t.任务ID}</td>
                       <td>{t.任务名称}</td>
-                      <td>{t.负责人 || '-'}</td>
+                      <td>{formatAssignee(t.负责人)}</td>
                       <td>{t.状态}</td>
                       <td>{t.开始时间}</td>
                       <td>{t.截止时间}</td>
@@ -355,14 +365,13 @@ export default function ScheduleView({
           <div className="card" style={{ marginTop: 12 }}>
             <h3>里程碑</h3>
             <table className="table">
-              <thead><tr><th>里程碑ID</th><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
+              <thead><tr><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
               <tbody>
                 {milestones.map((m) => {
                   return (
                     <tr key={m.recordId}>
-                      <td>{m.任务ID}</td>
                       <td>{m.任务名称}</td>
-                      <td>{m.负责人 || '-'}</td>
+                      <td>{formatAssignee(m.负责人)}</td>
                       <td>{m.开始时间}</td>
                       <td>{m.截止时间 || '-'}</td>
                       <td>{m.状态}</td>
@@ -439,11 +448,13 @@ export default function ScheduleView({
                 {scheduleDependencies.map((dep) => {
                   const task = tasks.find((item) => item.recordId === dep.taskRecordId);
                   const dependsOn = tasks.find((item) => item.recordId === dep.dependsOnRecordId);
+                  const taskLabel = task?.任务名称 || '未命名任务';
+                  const dependsOnLabel = dependsOn?.任务名称 || '未命名任务';
                   return (
                     <tr key={dep.id}>
-                      <td>{task?.任务名称 || dep.taskId || dep.taskRecordId}</td>
+                      <td>{taskLabel}</td>
                       <td>{dep.type}</td>
-                      <td>{dependsOn?.任务名称 || dep.dependsOnTaskId || dep.dependsOnRecordId}</td>
+                      <td>{dependsOnLabel}</td>
                       <td>
                         {canWrite ? (
                           <button className="btn" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>

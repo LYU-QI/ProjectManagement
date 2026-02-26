@@ -11,7 +11,7 @@ type AuthUser = {
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<{
@@ -53,7 +53,7 @@ export class AuditInterceptor implements NestInterceptor {
                 method,
                 path,
                 projectId: projectId ?? undefined,
-                requestBody
+                requestBody: requestBody as any
               }
             })
             .catch(() => undefined);

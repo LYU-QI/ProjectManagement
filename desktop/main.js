@@ -58,16 +58,17 @@ function startBackend() {
             env.DATABASE_URL = `file:${dbPath}`;
         }
 
-        console.log('正在启动后端服务...');
-        console.log('入口:', backendEntry);
-        console.log('NODE_PATH:', nodeModulesPath);
-        console.log('CWD:', backendCwd);
+        console.log('正在检查资源文件...');
+        const filesToCheck = [backendEntry, backendCwd, nodeModulesPath];
+        filesToCheck.forEach(f => {
+            console.log(`- 检查路径 [${fs.existsSync(f) ? 'OK' : 'MISSING'}]: ${f}`);
+        });
 
         backendProcess = fork(backendEntry, [], {
             cwd: backendCwd,
             env,
             silent: true,
-            // 重要：设置 execPath 使用系统自带的 Node（Electron fork 使用 Electron 的 Node）
+            execArgv: [] // 确保不继承主进程的调试参数
         });
 
         let resolved = false;
@@ -75,34 +76,45 @@ function startBackend() {
         backendProcess.stdout?.on('data', (data) => {
             const msg = data.toString();
             console.log('[后端]', msg);
-            if (!resolved && msg.includes('Nest application successfully started')) {
+            // 某些情况下 Nest 输出可能被截断，进行模糊匹配
+            if (!resolved && (msg.includes('Nest application successfully started') || msg.includes('started on port'))) {
                 resolved = true;
+                console.log('检测到后端启动成功信号');
                 resolve();
             }
         });
 
+        let stderrBuffer = '';
         backendProcess.stderr?.on('data', (data) => {
-            console.error('[后端错误]', data.toString());
+            const errorMsg = data.toString();
+            console.error('[后端错误]', errorMsg);
+            stderrBuffer += errorMsg;
         });
 
         backendProcess.on('error', (err) => {
-            console.error('后端进程错误:', err);
-            if (!resolved) { resolved = true; reject(err); }
+            console.error('后端进程创建失败:', err);
+            if (!resolved) {
+                resolved = true;
+                reject(new Error(`无法启动后端进程: ${err.message}\n${stderrBuffer}`));
+            }
         });
 
-        backendProcess.on('exit', (code) => {
-            console.log('后端进程退出, code:', code);
-            if (!resolved) { resolved = true; reject(new Error(`后端退出 code=${code}`)); }
+        backendProcess.on('exit', (code, signal) => {
+            console.log(`后端进程退出: code=${code}, signal=${signal}`);
+            if (!resolved) {
+                resolved = true;
+                reject(new Error(`后端进程异常退出 (code=${code})。\n报错详情:\n${stderrBuffer || '无详情'}`));
+            }
             backendProcess = null;
         });
 
-        // 超时 20 秒
+        // 超时 30 秒（加载大量依赖可能较慢）
         setTimeout(() => {
             if (!resolved) {
                 resolved = true;
-                reject(new Error('后端启动超时(20s)'));
+                reject(new Error(`后端启动超时(30s)。\n当前 stderr:\n${stderrBuffer || '无输出'}`));
             }
-        }, 20000);
+        }, 30000);
     });
 }
 

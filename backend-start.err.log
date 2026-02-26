@@ -22,3 +22,653 @@ Unique constraint failed on the fields: (`id`)
     at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
     at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
     at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:50 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:50 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:50 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:52 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:52 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:52 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:34:57 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/projects/projects.service.js:20:36
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.user.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/users/users.service.js:20:33
+
+  17     this.prisma = prisma;
+  18 }
+  19 list() {
+→ 20     return this.prisma.user.findMany(
+The column `User.role` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+[31m[Nest] 9959  - [39m02/25/2026, 01:36:17 [31m  ERROR[39m [38;5;3m[ExceptionsHandler] [39m[31m
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.[39m
+PrismaClientKnownRequestError: 
+Invalid `this.prisma.project.findMany()` invocation in
+/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:22:33
+
+  19 }
+  20 async overview() {
+  21     const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+→ 22         this.prisma.project.findMany(
+The column `Project.ownerId` does not exist in the current database.
+    at ei.handleRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+    at ei.request (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+    at async a (/Users/riqi/project/ProjectManagement/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+    at async Promise.all (index 0)
+    at async DashboardService.overview (/Users/riqi/project/ProjectManagement/backend/dist/src/modules/dashboard/dashboard.service.js:21:66)
+[31m[Nest] 13109  - [39m02/25/2026, 01:37:54 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +6ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 13172  - [39m02/25/2026, 01:37:55 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 15566  - [39m02/25/2026, 10:08:32 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 15665  - [39m02/25/2026, 10:08:57 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +4ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 15757  - [39m02/25/2026, 10:09:09 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 16654  - [39m02/25/2026, 10:21:39 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 17547  - [39m02/25/2026, 10:38:00 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +3ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 19440  - [39m02/25/2026, 11:21:24 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 19515  - [39m02/25/2026, 11:21:48 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +2ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 19578  - [39m02/25/2026, 11:21:58 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +1ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1
+[31m[Nest] 19732  - [39m02/25/2026, 11:22:36 [31m  ERROR[39m [38;5;3m[NestApplication] [39m[31mError: listen EADDRINUSE: address already in use :::3000[39m[38;5;3m +6ms[39m
+node:net:1940
+    const ex = new UVExceptionWithHostPort(err, 'listen', address, port);
+               ^
+
+Error: listen EADDRINUSE: address already in use :::3000
+    at Server.setupListenHandle [as _listen2] (node:net:1940:16)
+    at listenInCluster (node:net:1997:12)
+    at Server.listen (node:net:2102:7)
+    at ExpressAdapter.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/platform-express/adapters/express-adapter.js:95:32)
+    at /Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:183:30
+    at new Promise (<anonymous>)
+    at NestApplication.listen (/Users/riqi/project/ProjectManagement/node_modules/@nestjs/core/nest-application.js:173:16)
+    at async bootstrap (/Users/riqi/project/ProjectManagement/backend/dist/src/main.js:44:5) {
+  code: 'EADDRINUSE',
+  errno: -48,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v25.2.1

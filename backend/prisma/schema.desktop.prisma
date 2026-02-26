@@ -7,10 +7,11 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
+  url      = "file:./projectlvqi.db"
 }
 
-// ---- 枚举在 SQLite 中不原生支持，但 Prisma 会通过字符串映射处理 ----
+// ---- SQLite doesn't support native enums, but Prisma will map them to text/strings ----
+// We define them here so the Prisma Client still exports the corresponding types/enums.
 
 enum UserRole {
   pm
@@ -126,8 +127,8 @@ model RequirementChange {
   requirementId Int
   changedBy     String?
   reason        String?
-  before        String?
-  after         String?
+  before        String?     // SQLite doesn't support Json
+  after         String?     // SQLite doesn't support Json
   version       String?
   createdAt     DateTime    @default(now())
   requirement   Requirement @relation(fields: [requirementId], references: [id])
@@ -146,17 +147,17 @@ model PrdDocument {
 }
 
 model PrdVersion {
-  id           Int      @id @default(autoincrement())
-  documentId   Int
+  id          Int      @id @default(autoincrement())
+  documentId  Int
   versionLabel String?
-  fileName     String
-  mimeType     String?
-  fileSize     Int?
-  storagePath  String
-  contentText  String
-  contentHash  String
-  createdAt    DateTime @default(now())
-  document     PrdDocument @relation(fields: [documentId], references: [id])
+  fileName    String
+  mimeType    String?
+  fileSize    Int?
+  storagePath String
+  contentText String
+  contentHash String
+  createdAt   DateTime @default(now())
+  document    PrdDocument @relation(fields: [documentId], references: [id])
 
   @@index([documentId])
   @@index([contentHash])
@@ -223,6 +224,25 @@ model Worklog {
   user       User?    @relation(fields: [userId], references: [id])
 }
 
+model PmAssistantLog {
+  id          Int      @id @default(autoincrement())
+  jobId       String
+  triggeredBy String
+  status      String
+  summary     String
+  rawSummary  String?
+  aiSummary   String?
+  error       String?
+  createdAt   DateTime @default(now())
+}
+
+model PmAssistantJobConfig {
+  id        Int      @id @default(autoincrement())
+  jobId     String   @unique
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
 model Notification {
   id        Int               @id @default(autoincrement())
   projectId Int?
@@ -284,7 +304,7 @@ model AuditLog {
   method     String
   path       String
   projectId  Int?
-  requestBody String?
+  requestBody String?   // SQLite doesn't support Json
   createdAt  DateTime @default(now())
 }
 

@@ -152,11 +152,14 @@ export class PmAssistantService {
         return { jobId, sent: false, summary: finalText, card };
       }
 
+      const manualIds = opts?.receiveId ? [opts.receiveId] : [];
       let receiveIds = opts?.receiveIds && opts.receiveIds.length > 0
         ? opts.receiveIds
-        : opts?.projectId
-          ? await this.getProjectChatIds(opts.projectId)
-          : [];
+        : manualIds.length > 0
+          ? manualIds
+          : opts?.projectId
+            ? await this.getProjectChatIds(opts.projectId)
+            : [];
       if (receiveIds.length === 0) {
         const fallback = this.getDefaultChatId();
         if (fallback) receiveIds = [fallback];

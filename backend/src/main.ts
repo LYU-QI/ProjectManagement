@@ -33,12 +33,31 @@ function loadEnv() {
 
 async function bootstrap() {
   loadEnv();
+
+  console.log('--- 后端启动环境信息 ---');
+  console.log('PORT:', process.env.PORT || 3000);
+  console.log('DATABASE_URL:', process.env.DATABASE_URL);
+  console.log('NODE_ENV:', process.env.NODE_ENV);
+  console.log('CWD:', process.cwd());
+  console.log('------------------------');
+
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+
+  // 开放 CORS 以支持 Electron 静态文件访问 (file://)
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   const reflector = app.get(Reflector);
   app.useGlobalGuards(new JwtAuthGuard(reflector, app.get(JwtService)), new RolesGuard(reflector));
-  await app.listen(3000);
+
+  const port = process.env.PORT || 3000;
+  const host = process.env.HOST || '127.0.0.1';
+  await app.listen(port, host);
+  console.log(`Nest application successfully started on port ${port}`);
 }
 
 bootstrap();
