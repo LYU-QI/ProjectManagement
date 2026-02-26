@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiPost, API_BASE, TOKEN_KEY } from '../api/client';
-import { comparePrdVersions, createPrdDocument, listPrdDocuments, listPrdVersions, uploadPrdVersion } from '../api/prd';
+import { comparePrdVersions, createPrdDocument, deletePrdVersion, listPrdDocuments, getPrdVersions, uploadPrdVersion, deletePrdDocument } from '../api/prd';
 import type { Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 
@@ -122,7 +122,7 @@ export default function RequirementsView({
   }
 
   async function refreshPrdVersions(documentId: number) {
-    const versions = await listPrdVersions(documentId);
+    const versions = await getPrdVersions(documentId);
     setPrdVersions(versions);
     setCompareResult(null);
     setComparePick({ leftId: null, rightId: null });
@@ -163,6 +163,24 @@ export default function RequirementsView({
     if (!comparePick.leftId || !comparePick.rightId) return;
     const result = await comparePrdVersions(comparePick.leftId, comparePick.rightId);
     setCompareResult(result);
+  }
+
+  async function handleDeletePrdVersion(versionId: number) {
+    if (!selectedPrdId) return;
+    const target = prdVersions.find((v) => v.id === versionId);
+    const label = target?.versionLabel || target?.fileName || String(versionId);
+    if (!confirm(`确定删除 PRD 版本「${label}」？此操作不可恢复。`)) return;
+    await deletePrdVersion(selectedPrdId, versionId);
+    await refreshPrdVersions(selectedPrdId);
+  }
+
+  async function handleDeletePrdDocument() {
+    if (!selectedPrdId) return;
+    const doc = prdDocs.find(d => d.id === selectedPrdId);
+    if (!confirm(`确定删除 PRD 库「${doc?.title || selectedPrdId}」及其包含的所有版本吗？此操作不可逆。`)) return;
+    await deletePrdDocument(selectedPrdId);
+    setSelectedPrdId(null);
+    await refreshPrdDocuments(selectedProjectId!);
   }
 
   function buildCompareMarkdown(result: PrdCompareResult) {
@@ -561,8 +579,9 @@ export default function RequirementsView({
                 </div>
               ) : (
                 <div style={{
-                  padding: '12px',
-                  background: 'rgba(0,0,0,0.3)',
+                  background: 'rgba(15, 15, 18, 0.9)',
+                  backdropFilter: 'blur(16px)',
+                  WebkitBackdropFilter: 'blur(16px)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 4,
                   color: '#e0e0e0',
@@ -757,6 +776,15 @@ export default function RequirementsView({
               <button className="btn" type="button" onClick={() => void handleCreatePrd()}>
                 新建 PRD
               </button>
+              {selectedPrdId && (
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => void handleDeletePrdDocument()}
+                >
+                  删除库
+                </button>
+              )}
             </div>
 
             <div className="row">
@@ -819,6 +847,28 @@ export default function RequirementsView({
                   下载摘要
                 </button>
               )}
+            </div>
+
+            <div className="card" style={{ marginTop: 12 }}>
+              <h3>版本列表</h3>
+              <table className="table">
+                <thead><tr><th>版本</th><th>文件</th><th>上传时间</th><th>操作</th></tr></thead>
+                <tbody>
+                  {prdVersions.map((v) => (
+                    <tr key={v.id}>
+                      <td>{v.versionLabel || '-'}</td>
+                      <td>{v.fileName}</td>
+                      <td>{new Date(v.createdAt).toLocaleString()}</td>
+                      <td>
+                        <button className="btn" type="button" onClick={() => void handleDeletePrdVersion(v.id)}>删除</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {prdVersions.length === 0 && (
+                    <tr><td colSpan={4} className="muted">暂无 PRD 版本</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
             {compareResult && (

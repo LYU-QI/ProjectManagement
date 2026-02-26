@@ -42,6 +42,7 @@ import AiView from './views/AiView';
 import SettingsView from './views/SettingsView';
 import FeishuUsersView from './views/FeishuUsersView';
 import PmAssistantView from './views/PmAssistantView';
+import AstraeaLayout from './components/AstraeaLayout';
 
 type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
@@ -1872,60 +1873,58 @@ function App() {
   );
 
   if (!token) {
-
     return (
-      <div className="app" style={{ gridTemplateColumns: '1fr' }}>
-        <main className="main" style={{ maxWidth: 480, margin: '80px auto', width: '100%' }}>
-          <h2><span style={{ color: 'var(--neon-blue)' }}>&lt;天枢系统&gt;</span> 统一认证网关</h2>
-          <div className="card" style={{ marginTop: '30px', borderTop: '2px solid var(--neon-blue)' }}>
-            <form className="form" style={{ gridTemplateColumns: '1fr' }} onSubmit={submitLogin}>
-              <div>
-                <label style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 5, display: 'block' }}>[ 账号.凭据 ]</label>
-                <input name="username" placeholder="pm / lead / viewer" required style={{ background: 'rgba(0,0,0,0.5)' }} />
-              </div>
-              <div style={{ marginTop: 5 }}>
-                <label style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 5, display: 'block' }}>[ 登录.密钥 ]</label>
-                <input name="password" type="password" placeholder="***" required style={{ background: 'rgba(0,0,0,0.5)' }} />
-              </div>
-              <button className="btn" type="submit" style={{ marginTop: '15px' }}>[ 初始化会话 ]</button>
-            </form>
-            {error && <p className="warn" style={{ marginTop: 15 }}>[错误]: {error}</p>}
-          </div>
-        </main>
+      <div className="login-screen">
+        <div className="login-card">
+          <h2>Astraea <span>Flow</span></h2>
+          <div style={{ textAlign: 'center', color: 'var(--glow-purple)', fontSize: 12, marginBottom: 20, fontFamily: 'Orbitron' }}>UNIFIED COMMAND CENTER</div>
+          <form className="form" style={{ gridTemplateColumns: '1fr', gap: 20 }} onSubmit={submitLogin}>
+            <div>
+              <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>NODE ACCESS KEY</label>
+              <input name="username" placeholder="pm / lead / viewer" required />
+            </div>
+            <div>
+              <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>SECURITY TOKEN</label>
+              <input name="password" type="password" placeholder="***" required />
+            </div>
+            <button className="btn" type="submit" style={{ marginTop: '10px', padding: 12, fontSize: 15, background: 'rgba(59, 130, 246, 0.2)' }}>
+              INITIALIZE CONNECTION
+            </button>
+          </form>
+          {error && <p className="warn" style={{ marginTop: 15, textAlign: 'center' }}>[ERROR]: {error}</p>}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <h1 style={{ fontSize: '22px', letterSpacing: '2px' }}>天枢·全局管控矩阵</h1>
-        <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>[ 系统看板 ]</button>
-        <button className={view === 'requirements' ? 'active' : ''} onClick={() => setView('requirements')}>[ 需求管理 ]</button>
-        <button className={view === 'costs' ? 'active' : ''} onClick={() => setView('costs')}>[ 成本监控 ]</button>
-        <button className={view === 'schedule' ? 'active' : ''} onClick={() => setView('schedule')}>[ 进度同步 ]</button>
-        <button className={view === 'resources' ? 'active' : ''} onClick={() => setView('resources')}>[ 资源负载 ]</button>
-        <button className={view === 'global' ? 'active' : ''} onClick={() => setView('global')}>[ 全局搜索 ]</button>
-        <button className={view === 'risks' ? 'active' : ''} onClick={() => setView('risks')}>[ 风险中心 ]</button>
-        <button className={view === 'notifications' ? 'active' : ''} onClick={() => setView('notifications')}>
-          [ 系统预警 ]{notifications.filter((n) => !n.readAt).length > 0 ? ` [${notifications.filter((n) => !n.readAt).length}]` : ''}
-        </button>
-        {canWrite && <button className={view === 'audit' ? 'active' : ''} onClick={() => { setView('audit'); void loadAuditLogs(); }}>[ 审计日志 ]</button>}
-        <button className={view === 'feishu' ? 'active' : ''} onClick={() => setView('feishu')}>[ 飞书同步 ]</button>
-        {canWrite && <button className={view === 'feishu-users' ? 'active' : ''} onClick={() => setView('feishu-users')}>[ 负责人管理 ]</button>}
-        {canWrite && <button className={view === 'pm-assistant' ? 'active' : ''} onClick={() => setView('pm-assistant')}>[ PM 助手 ]</button>}
-        <button className={view === 'ai' ? 'active' : ''} onClick={() => setView('ai')}>[ AI 驱动核心 ]</button>
-        {canWrite && <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}>[ 系统配置 ]</button>}
-      </aside>
-
-      <main className="main">
-        <div className="view-header" style={{ borderBottom: '1px solid var(--border-tech)', paddingBottom: '15px', marginBottom: '25px' }}>
-          <h2>核心系统_看板 <span style={{ fontSize: 12, color: 'var(--neon-green)', border: '1px solid var(--neon-green)', padding: '2px 6px', borderRadius: 2, marginLeft: 10 }}>在线运转</span></h2>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 13, fontFamily: 'Orbitron', letterSpacing: 1 }}>
-              &gt; 活动节点: {user?.name ?? 'UNKNOWN'}::{user?.role?.toUpperCase() ?? 'GUEST'}
-            </span>
-            <button className="btn" onClick={logout} style={{ padding: '6px 15px', fontSize: 11 }}>终止会话</button>
+    <AstraeaLayout
+      currentView={view}
+      onViewChange={(newView: ViewKey) => setView(newView)}
+      user={user}
+      onLogout={logout}
+      unreadCount={notifications.filter((n) => !n.readAt).length}
+    >
+      <div className="page-content">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+          <h2 style={{ margin: 0 }}>
+            {view === 'dashboard' ? '指挥中心' :
+              view === 'requirements' ? '需求流' :
+                view === 'costs' ? '成本池' :
+                  view === 'schedule' ? '进度轴' :
+                    view === 'resources' ? '资源阵列' :
+                      view === 'risks' ? '风险雷达' :
+                        view === 'feishu' ? '飞书神经元' :
+                          view === 'pm-assistant' ? 'PMO 大脑' :
+                            view === 'ai' ? 'AI 驱动核心' :
+                              view === 'audit' ? '审计轨迹' :
+                                view === 'feishu-users' ? '人员映射' :
+                                  view === 'global' ? '全局检索' :
+                                    view === 'settings' ? '系统配置' : ''}
+          </h2>
+          <div style={{ fontSize: 12, color: 'var(--glow-green)', padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: 20, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--glow-green)', marginRight: 6 }}></span>
+            SYSTEM.ONLINE
           </div>
         </div>
 
@@ -2337,8 +2336,8 @@ function App() {
         {view === 'settings' && canWrite && (
           <SettingsView onError={setError} onMessage={setMessage} />
         )}
-      </main>
-    </div>
+      </div>
+    </AstraeaLayout>
   );
 }
 

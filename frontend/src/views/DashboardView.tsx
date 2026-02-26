@@ -1,8 +1,10 @@
 import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { motion } from 'framer-motion';
 import { apiPost } from '../api/client';
 import type { DashboardOverview, ProjectItem } from '../types';
+import StatusBadge from '../components/StatusBadge';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -329,7 +331,7 @@ export default function DashboardView({
     <div>
       {/* 新增项目表单 */}
       {canWrite && (
-        <form className="form" onSubmit={onSubmitProject} style={{ marginBottom: 12 }}>
+        <form className="form new-project-form" onSubmit={onSubmitProject} style={{ marginBottom: 12 }}>
           <input name="name" placeholder="项目名称" required />
           <input name="budget" type="number" step="0.01" placeholder="预算" required />
           <input name="startDate" type="date" />
@@ -340,28 +342,36 @@ export default function DashboardView({
       )}
 
       {/* ===== 统计卡片行 ===== */}
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-        <div className="card" style={{ textAlign: 'center', borderTop: '2px solid var(--neon-blue)' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>项目总数</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: 'var(--neon-blue)', fontFamily: 'Orbitron' }}>{overview?.summary.projectCount ?? 0}</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center', borderTop: '2px solid #00ff88' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>需求总数</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#00ff88', fontFamily: 'Orbitron' }}>{overview?.summary.requirementCount ?? 0}</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center', borderTop: '2px solid #ff3366' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>高风险项目</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#ff3366', fontFamily: 'Orbitron' }}>{overview?.summary.riskProjectCount ?? 0}</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center', borderTop: '2px solid #ffcc00' }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>阻塞任务</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#ffcc00', fontFamily: 'Orbitron' }}>{stats?.totalBlocked ?? 0}</div>
-        </div>
-        <div className="card" style={{ textAlign: 'center', borderTop: `2px solid ${healthColor(stats?.avgHealth ?? 0)}` }}>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 6 }}>平均健康度</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: healthColor(stats?.avgHealth ?? 0), fontFamily: 'Orbitron' }}>{stats?.avgHealth ?? 0}</div>
-        </div>
-      </div>
+      <motion.div
+        className="grid"
+        style={{ gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}
+        initial="hidden" animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: { opacity: 1, transition: { staggerChildren: 0.08 } }
+        }}
+      >
+        <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="card" style={{ textAlign: 'center', borderColor: 'var(--glow-blue)', boxShadow: '0 4px 20px rgba(59, 130, 246, 0.1)' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 8 }}>项目总数</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--glow-blue)', fontFamily: 'Orbitron' }}>{overview?.summary.projectCount ?? 0}</div>
+        </motion.div>
+        <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="card" style={{ textAlign: 'center', borderColor: 'var(--glow-green)', boxShadow: '0 4px 20px rgba(16, 185, 129, 0.1)' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 8 }}>需求总数</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--glow-green)', fontFamily: 'Orbitron' }}>{overview?.summary.requirementCount ?? 0}</div>
+        </motion.div>
+        <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="card" style={{ textAlign: 'center', borderColor: 'var(--glow-red)', boxShadow: '0 4px 20px rgba(239, 68, 68, 0.1)' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 8 }}>高风险项目</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--glow-red)', fontFamily: 'Orbitron' }}>{overview?.summary.riskProjectCount ?? 0}</div>
+        </motion.div>
+        <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="card" style={{ textAlign: 'center', borderColor: 'var(--glow-alert)', boxShadow: '0 4px 20px rgba(245, 158, 11, 0.1)' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 8 }}>阻塞任务</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--glow-alert)', fontFamily: 'Orbitron' }}>{stats?.totalBlocked ?? 0}</div>
+        </motion.div>
+        <motion.div variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }} className="card" style={{ textAlign: 'center', borderColor: healthColor(stats?.avgHealth ?? 0), boxShadow: `0 4px 20px ${healthColor(stats?.avgHealth ?? 0)}22` }}>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'Orbitron', letterSpacing: 1, marginBottom: 8 }}>平均健康度</div>
+          <div style={{ fontSize: 32, fontWeight: 700, color: healthColor(stats?.avgHealth ?? 0), fontFamily: 'Orbitron' }}>{stats?.avgHealth ?? 0}</div>
+        </motion.div>
+      </motion.div>
 
       {/* ===== AI 智能洞察面板 (新特性) ===== */}
       <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12 }}>
@@ -476,11 +486,14 @@ export default function DashboardView({
       </div>
 
       {/* ===== 项目详情卡片（带图表） ===== */}
-      <div className="card" style={{ marginTop: 12 }}>
-        <h3 style={{ margin: '0 0 14px', fontSize: 13, letterSpacing: 1, borderBottom: '1px solid rgba(0,243,255,0.15)', paddingBottom: 8 }}>
-          🎯 项目健康度矩阵
+      <motion.div
+        className="card" style={{ marginTop: 16 }}
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+      >
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, letterSpacing: 1, borderBottom: '1px solid var(--border-glass)', paddingBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <StatusBadge label="LIVE" variant="info" pulse /> 项目健康度矩阵
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
           {overview?.projects.map((p) => (
             <div key={p.projectId} style={{
               padding: '14px 16px',
@@ -530,7 +543,7 @@ export default function DashboardView({
             </div>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* ===== 项目管理表格 ===== */}
       <div className="card" style={{ marginTop: 12 }}>
@@ -685,6 +698,6 @@ export default function DashboardView({
           </tbody>
         </table>
       </div>
-    </div>
+    </div >
   );
 }

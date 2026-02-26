@@ -434,6 +434,72 @@ ${detailBlocks}`;
     return content;
   }
 
+  /** 通用 AI 聊天对话 */
+  async chat(input: { message: string, history?: { role: 'user' | 'assistant', content: string }[] }) {
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      return {
+        content: '抱歉，系统尚未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL），请联系管理员。'
+      };
+    }
+
+    // 获取实时项目上下文数据 (RAG)
+    const [projects, tasks, requirements, costs] = await Promise.all([
+      this.prisma.project.findMany({
+        select: { id: true, name: true, budget: true, startDate: true, endDate: true }
+      }),
+      this.prisma.task.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.requirement.groupBy({ by: ['status'], _count: { _all: true } }),
+      this.prisma.costEntry.aggregate({ _sum: { amount: true } })
+    ]);
+
+    const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0);
+    const totalActualCost = costs._sum.amount || 0;
+    const taskSummary = tasks.map(t => `${t.status}: ${t._count._all}`).join(', ');
+    const reqSummary = requirements.map(r => `${r.status}: ${r._count._all}`).join(', ');
+    const projectList = projects.map(p => ` - ${p.name} (预算: ¥${p.budget.toLocaleString()}, 周期: ${p.startDate || '未设'} 至 ${p.endDate || '未设'})`).join('\n');
+
+    const dataContext = `
+当前系统实时数据摘要：
+1. 活跃项目清单：
+${projectList}
+2. 全局任务分布：${taskSummary || '暂无任务'}
+3. 全局需求分布：${reqSummary || '暂无需求'}
+4. 整体财务状况：总预算 ¥${totalBudget.toLocaleString()}，实际已支出 ¥${totalActualCost.toLocaleString()}。
+`;
+
+    const systemPrompt = `你是一个专业的项目管理助理 Astraea，集成在 AstraeaFlow 项目管理系统中。
+你的目标是协助用户高效管理项目、需求、成本和进度。
+请保持回复简洁、专业且具有行动导向。
+
+${dataContext}
+
+注意：
+- 如果用户询问特定项目的进展，请基于上述数据回答。
+- 如果数据中没有提到用户询问的具体细节（如某个任务的具体描述），请如实告知并引导用户前往相应页面查看相关模块。
+- 始终以专业助手身份回答。`;
+
+    const userPrompt = input.history && input.history.length > 0
+      ? `以下是之前的对话历史：
+${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.content}`).join('\n')}
+
+当前的提问：${input.message}`
+      : input.message;
+
+    try {
+      const content = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+      return { content };
+    } catch (err) {
+      console.error('AI Chat Error:', err);
+      return {
+        content: `AI 响应失败: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+
   /** AI 连通性测试 */
   async testConnection() {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');

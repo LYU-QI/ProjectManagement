@@ -43,7 +43,7 @@ function withNormalizedFileName<T extends { fileName: string }>(version: T) {
 
 @Injectable()
 export class PrdService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async listDocuments(projectId?: number) {
     return this.prisma.prdDocument.findMany({
@@ -59,6 +59,31 @@ export class PrdService {
       data: { projectId, title }
     });
   }
+
+  async deleteDocument(documentId: number) {
+    const doc = await this.prisma.prdDocument.findUnique({
+      where: { id: documentId },
+      include: { versions: true }
+    });
+    if (!doc) {
+      throw new BadRequestException('PRD 文档不存在');
+    }
+
+    for (const version of doc.versions) {
+      if (version.storagePath && existsSync(version.storagePath)) {
+        try {
+          unlinkSync(version.storagePath);
+        } catch {
+          // Ignore errors
+        }
+      }
+    }
+
+    await this.prisma.prdVersion.deleteMany({ where: { documentId } });
+    await this.prisma.prdDocument.delete({ where: { id: documentId } });
+    return { id: documentId };
+  }
+
 
   async listVersions(documentId: number) {
     const versions = await this.prisma.prdVersion.findMany({
@@ -219,7 +244,6 @@ export class PrdService {
       rightVersion: rightNormalized,
       summary,
       counts: { added, removed, changed, same },
-      blocks
     };
   }
 }

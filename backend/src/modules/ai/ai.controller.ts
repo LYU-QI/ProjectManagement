@@ -63,6 +63,17 @@ class RiskPredictDto {
   projectId?: number;
 }
 
+/** 通用聊天 DTO */
+class ChatDto {
+  @IsString()
+  @IsNotEmpty()
+  message!: string;
+
+  @IsArray()
+  @IsOptional()
+  history?: { role: 'user' | 'assistant'; content: string }[];
+}
+
 @Controller('api/v1/ai')
 export class AiController {
   constructor(private readonly aiService: AiService) { }
@@ -106,6 +117,13 @@ export class AiController {
   @Post('risks/predict')
   getRiskPredict(@Body() body: RiskPredictDto) {
     return this.aiService.predictRisks(body);
+  }
+
+  /** 通用 AI 聊天对话 */
+  @Post('chat')
+  @Public()
+  chat(@Body() body: ChatDto) {
+    return this.aiService.chat(body);
   }
 
   /** 需求文档/Excel导入 */

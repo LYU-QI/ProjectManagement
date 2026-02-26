@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -16,7 +17,7 @@ import { ComparePrdDto, CreatePrdDocumentDto, ListPrdDocumentsQueryDto } from '.
 
 @Controller('api/v1/prd')
 export class PrdController {
-  constructor(private readonly prdService: PrdService) {}
+  constructor(private readonly prdService: PrdService) { }
 
   @Get('documents')
   async listDocuments(@Query() query: ListPrdDocumentsQueryDto) {
@@ -27,6 +28,12 @@ export class PrdController {
   @Roles('pm', 'lead')
   async createDocument(@Body() body: CreatePrdDocumentDto) {
     return this.prdService.createDocument(Number(body.projectId), body.title);
+  }
+
+  @Delete('documents/:documentId')
+  @Roles('pm', 'lead')
+  async deleteDocument(@Param('documentId', ParseIntPipe) documentId: number) {
+    return this.prdService.deleteDocument(documentId);
   }
 
   @Get('documents/:documentId/versions')
@@ -43,6 +50,15 @@ export class PrdController {
     @Body('versionLabel') versionLabel?: string
   ) {
     return this.prdService.uploadVersion(documentId, file, versionLabel);
+  }
+
+  @Delete('documents/:documentId/versions/:versionId')
+  @Roles('pm', 'lead')
+  async deleteVersion(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Param('versionId', ParseIntPipe) versionId: number
+  ) {
+    return this.prdService.deleteVersion(documentId, versionId);
   }
 
   @Post('compare')
