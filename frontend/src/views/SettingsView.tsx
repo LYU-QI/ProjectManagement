@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getConfigItems, saveConfigItems, ConfigItem } from '../api/settings';
+import { apiGet } from '../api/client';
 
 /** 分组图标映射 */
 const GROUP_ICONS: Record<string, string> = {
@@ -24,6 +25,8 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [aiHealthLoading, setAiHealthLoading] = useState(false);
+    const [aiHealthResult, setAiHealthResult] = useState<{ ok: boolean; message: string; detail?: string } | null>(null);
 
     /** 加载配置项 */
     async function loadConfig() {
@@ -132,6 +135,34 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
             }));
     }
 
+    async function handleAiHealthCheck() {
+        setAiHealthLoading(true);
+        setAiHealthResult(null);
+        try {
+            const res = await apiGet<any>('/ai/health');
+            if (res?.ok) {
+                setAiHealthResult({
+                    ok: true,
+                    message: `连通成功（${res.model || 'unknown'}，${res.latencyMs ?? '-'}ms）`,
+                    detail: res.sample ? `示例回复：${res.sample}` : undefined,
+                });
+            } else {
+                setAiHealthResult({
+                    ok: false,
+                    message: res?.message || '连通失败',
+                    detail: res?.reason ? `原因：${res.reason}` : undefined,
+                });
+            }
+        } catch (err) {
+            setAiHealthResult({
+                ok: false,
+                message: err instanceof Error ? err.message : String(err),
+            });
+        } finally {
+            setAiHealthLoading(false);
+        }
+    }
+
     if (loading && items.length === 0) {
         return (
             <div className="card" style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
@@ -187,15 +218,50 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
             {/* 配置分组 */}
             {groups.map(({ group, groupLabel, icon, items: groupItems }) => (
                 <div key={group} className="card" style={{ marginBottom: 16 }}>
-                    <h4 style={{
-                        margin: '0 0 16px',
-                        fontSize: 14,
-                        letterSpacing: 1,
-                        borderBottom: '1px solid var(--border-tech, rgba(0,243,255,0.15))',
-                        paddingBottom: 10,
-                    }}>
-                        {icon} {groupLabel}
-                    </h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                        <h4 style={{
+                            margin: '0 0 16px',
+                            fontSize: 14,
+                            letterSpacing: 1,
+                            borderBottom: '1px solid var(--border-tech, rgba(0,243,255,0.15))',
+                            paddingBottom: 10,
+                            flex: 1,
+                        }}>
+                            {icon} {groupLabel}
+                        </h4>
+                        {group === 'ai' && (
+                            <button
+                                className="btn"
+                                type="button"
+                                onClick={() => void handleAiHealthCheck()}
+                                disabled={aiHealthLoading}
+                                style={{ padding: '6px 10px', fontSize: 11, marginBottom: 10 }}
+                            >
+                                {aiHealthLoading ? '检测中...' : 'AI 连通性测试'}
+                            </button>
+                        )}
+                    </div>
+
+                    {group === 'ai' && aiHealthResult && (
+                        <div
+                            style={{
+                                marginBottom: 12,
+                                padding: '8px 10px',
+                                borderRadius: 4,
+                                fontSize: 12,
+                                color: aiHealthResult.ok ? 'var(--neon-green)' : '#ff8080',
+                                background: aiHealthResult.ok ? 'rgba(0,255,136,0.08)' : 'rgba(255,80,80,0.08)',
+                                border: aiHealthResult.ok ? '1px solid rgba(0,255,136,0.2)' : '1px solid rgba(255,80,80,0.2)',
+                            }}
+                        >
+                            {aiHealthResult.message}
+                            {aiHealthResult.detail && (
+                                <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>
+                                    {aiHealthResult.detail}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                         {groupItems.map((item) => {

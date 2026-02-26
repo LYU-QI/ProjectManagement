@@ -1,7 +1,8 @@
-﻿import { Body, Controller, Post, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+﻿import { Body, Controller, Get, Post, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsArray, IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { AiService } from './ai.service';
+import { Public } from '../auth/public.decorator';
 
 class WeeklyReportDto {
   @IsArray()
@@ -115,5 +116,12 @@ export class AiController {
       throw new BadRequestException('请上传文件');
     }
     return this.aiService.importRequirementsFromFile(file.buffer, file.originalname);
+  }
+
+  /** AI 连通性测试 */
+  @Get('health')
+  @Public()
+  async healthCheck() {
+    return this.aiService.testConnection();
   }
 }

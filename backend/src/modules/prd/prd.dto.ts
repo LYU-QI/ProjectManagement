@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsNumberString } from 'class-validator';
 
 export class CreatePrdDocumentDto {
   @IsNumber()
@@ -19,6 +19,6 @@ export class ComparePrdDto {
 
 export class ListPrdDocumentsQueryDto {
   @IsOptional()
-  @IsNumber()
-  projectId?: number;
+  @IsNumberString()
+  projectId?: string;
 }

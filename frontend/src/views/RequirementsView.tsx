@@ -2,7 +2,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { apiPost, TOKEN_KEY } from '../api/client';
+import { apiPost, API_BASE, TOKEN_KEY } from '../api/client';
 import { comparePrdVersions, createPrdDocument, listPrdDocuments, listPrdVersions, uploadPrdVersion } from '../api/prd';
 import type { Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
@@ -211,7 +211,7 @@ export default function RequirementsView({
       const formData = new FormData();
       formData.append('file', importModal.file);
 
-      const res = await fetch('http://localhost:3000/api/v1/ai/requirements/import', {
+      const res = await fetch(`${API_BASE}/ai/requirements/import`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem(TOKEN_KEY)}`

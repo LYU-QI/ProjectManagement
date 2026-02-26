@@ -370,12 +370,23 @@ ${detailBlocks}`;
   }
 
   /** 调用 AI 模型（兼容 OpenAI Chat Completions API 格式）*/
-  private async callAiModel(apiUrl: string, apiKey: string, model: string, systemPrompt: string, userPrompt: string): Promise<string> {
+  private async callAiModel(
+    apiUrl: string,
+    apiKey: string,
+    model: string,
+    systemPrompt: string,
+    userPrompt: string,
+    opts?: { timeoutMs?: number }
+  ): Promise<string> {
     // 确保 URL 以 /chat/completions 结尾
     let endpoint = apiUrl.replace(/\/+$/, '');
     if (!endpoint.endsWith('/chat/completions')) {
       endpoint += '/chat/completions';
     }
+
+    const timeoutMs = opts?.timeoutMs ?? 60000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     const body = {
       model,
@@ -387,18 +398,31 @@ ${detailBlocks}`;
       max_tokens: 2000,
     };
 
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      if (isTimeout) {
+        throw new Error(`AI 请求失败 [reason=timeout] endpoint=${endpoint} timeoutMs=${timeoutMs}`);
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`AI 请求失败 [reason=network_error] endpoint=${endpoint} detail=${detail}`);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
-      throw new Error(`API 返回 ${response.status}：${errorText.slice(0, 200)}`);
+      throw new Error(`AI 请求失败 [reason=http_status] endpoint=${endpoint} status=${response.status} detail=${errorText.slice(0, 200)}`);
     }
 
     const data = await response.json() as { choices?: { message?: { content?: string } }[] };
@@ -408,6 +432,48 @@ ${detailBlocks}`;
     }
 
     return content;
+  }
+
+  /** AI 连通性测试 */
+  async testConnection() {
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (!aiApiUrl || !aiApiKey || !aiModel) {
+      return {
+        ok: false,
+        reason: 'missing_config',
+        message: '未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL）。',
+      };
+    }
+
+    const start = Date.now();
+    try {
+      const systemPrompt = '你是一个连通性测试助手，仅需回复 OK。';
+      const userPrompt = '请只回复 OK。';
+      const timeoutMs = 30000;
+      const content = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt, { timeoutMs });
+      return {
+        ok: true,
+        model: aiModel,
+        endpoint: aiApiUrl,
+        latencyMs: Date.now() - start,
+        timeoutMs,
+        sample: content?.slice(0, 80) || '',
+      };
+    } catch (err) {
+      const timeoutMs = 30000;
+      return {
+        ok: false,
+        reason: 'request_failed',
+        message: err instanceof Error ? err.message : String(err),
+        model: aiModel,
+        endpoint: aiApiUrl,
+        latencyMs: Date.now() - start,
+        timeoutMs,
+      };
+    }
   }
 
   /** 模板报告（AI 未配置或调用失败时的回退方案） */
@@ -676,7 +742,7 @@ ${detailBlocks}`;
 如果没有提取到任何行动项，返回 []。`;
 
       const userPrompt = `请从以下会议纪要中提取具体的 Action Items:\n====================\n${input.text}\n====================`;
-      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt, { timeoutMs: 60000 });
 
       try {
         const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
