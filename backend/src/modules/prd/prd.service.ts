@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { createHash, randomUUID } from 'crypto';
-import { mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { extname, resolve } from 'path';
 import * as mammoth from 'mammoth';
 import { diffArrays, diffWords } from 'diff';
@@ -27,6 +27,20 @@ async function parsePdfBuffer(buffer: Buffer) {
 type InlineToken = { type: 'added' | 'removed' | 'same'; text: string };
 type DiffBlock = { type: 'added' | 'removed' | 'same'; text: string } | { type: 'changed'; tokens: InlineToken[] };
 
+function normalizeFileName(name: string) {
+  if (!name) return name;
+  const decoded = Buffer.from(name, 'latin1').toString('utf8');
+  const roundTrip = Buffer.from(decoded, 'utf8').toString('latin1');
+  if (roundTrip === name) {
+    return decoded;
+  }
+  return name;
+}
+
+function withNormalizedFileName<T extends { fileName: string }>(version: T) {
+  return { ...version, fileName: normalizeFileName(version.fileName) };
+}
+
 @Injectable()
 export class PrdService {
   constructor(private readonly prisma: PrismaService) {}
@@ -47,10 +61,11 @@ export class PrdService {
   }
 
   async listVersions(documentId: number) {
-    return this.prisma.prdVersion.findMany({
+    const versions = await this.prisma.prdVersion.findMany({
       where: { documentId },
       orderBy: { createdAt: 'desc' }
     });
+    return versions.map((version) => withNormalizedFileName(version));
   }
 
   private getStorageDir() {
@@ -104,7 +119,7 @@ export class PrdService {
       data: {
         documentId,
         versionLabel: finalLabel,
-        fileName: file.originalname,
+        fileName: normalizeFileName(file.originalname),
         mimeType: file.mimetype || null,
         fileSize: file.size,
         storagePath: absPath,
@@ -112,6 +127,23 @@ export class PrdService {
         contentHash: hash
       }
     });
+  }
+
+  async deleteVersion(documentId: number, versionId: number) {
+    const version = await this.prisma.prdVersion.findUnique({ where: { id: versionId } });
+    if (!version || version.documentId !== documentId) {
+      throw new BadRequestException('PRD 版本不存在');
+    }
+
+    await this.prisma.prdVersion.delete({ where: { id: versionId } });
+    if (version.storagePath && existsSync(version.storagePath)) {
+      try {
+        unlinkSync(version.storagePath);
+      } catch {
+        // Ignore file deletion errors to keep data consistency
+      }
+    }
+    return { id: versionId };
   }
 
   async compareVersions(leftVersionId: number, rightVersionId: number) {
@@ -127,9 +159,11 @@ export class PrdService {
     if (!left || !right) {
       throw new BadRequestException('未找到待对比的 PRD 版本');
     }
+    const leftNormalized = withNormalizedFileName(left);
+    const rightNormalized = withNormalizedFileName(right);
 
-    const leftParas = this.splitParagraphs(left.contentText || '');
-    const rightParas = this.splitParagraphs(right.contentText || '');
+    const leftParas = this.splitParagraphs(leftNormalized.contentText || '');
+    const rightParas = this.splitParagraphs(rightNormalized.contentText || '');
     const diffs = diffArrays(leftParas, rightParas);
 
     const blocks: DiffBlock[] = [];
@@ -181,8 +215,8 @@ export class PrdService {
     const summary = `新增段落 ${added}，删除段落 ${removed}，修改段落 ${changed}，未变段落 ${same}`;
 
     return {
-      leftVersion: left,
-      rightVersion: right,
+      leftVersion: leftNormalized,
+      rightVersion: rightNormalized,
       summary,
       counts: { added, removed, changed, same },
       blocks
