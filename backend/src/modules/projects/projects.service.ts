@@ -59,13 +59,17 @@ export class ProjectsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await tx.prdVersion.deleteMany({ where: { document: { projectId: id } } });
+      await tx.prdDocument.deleteMany({ where: { projectId: id } });
       await tx.notification.deleteMany({ where: { projectId: id } });
       await tx.requirementReview.deleteMany({ where: { requirement: { projectId: id } } });
+      await tx.requirementChange.deleteMany({ where: { requirement: { projectId: id } } });
       await tx.requirement.deleteMany({ where: { projectId: id } });
       await tx.costEntry.deleteMany({ where: { projectId: id } });
       await tx.milestone.deleteMany({ where: { projectId: id } });
       await tx.task.deleteMany({ where: { projectId: id } });
       await tx.worklog.deleteMany({ where: { projectId: id } });
+      await tx.auditLog.deleteMany({ where: { projectId: id } });
       await tx.project.delete({ where: { id } });
     });
 
