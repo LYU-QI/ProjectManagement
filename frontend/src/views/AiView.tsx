@@ -294,12 +294,12 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   // 标签页按钮样式
   const tabStyle = (active: boolean): React.CSSProperties => ({
     padding: '8px 20px',
-    background: active ? 'rgba(0,243,255,0.15)' : 'transparent',
-    border: active ? '1px solid var(--neon-blue)' : '1px solid rgba(255,255,255,0.1)',
-    color: active ? 'var(--neon-blue)' : 'rgba(255,255,255,0.4)',
+    background: active ? 'var(--color-primary-soft)' : 'var(--color-bg-surface)',
+    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
+    color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
     cursor: 'pointer',
     fontSize: 12,
-    fontFamily: 'Orbitron, monospace',
+    fontFamily: 'inherit',
     transition: 'all 0.3s ease',
     borderRadius: 0,
   });
@@ -307,9 +307,9 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   // 模式切换按钮样式
   const modeBtnStyle = (active: boolean): React.CSSProperties => ({
     padding: '4px 12px',
-    background: active ? 'rgba(0, 255, 136, 0.15)' : 'transparent',
-    border: active ? '1px solid #00ff88' : '1px solid rgba(255,255,255,0.2)',
-    color: active ? '#00ff88' : 'var(--text-muted)',
+    background: active ? 'var(--color-success-soft)' : 'var(--color-bg-surface)',
+    border: active ? '1px solid var(--color-success)' : '1px solid var(--color-border)',
+    color: active ? 'var(--color-success)' : 'var(--color-text-secondary)',
     cursor: 'pointer',
     fontSize: 12,
     borderRadius: '4px',
@@ -319,10 +319,10 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   // 通用的 Markdown 渲染区域样式
   const markdownContainerStyle: React.CSSProperties = {
     padding: '16px',
-    background: 'rgba(0,0,0,0.3)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'var(--color-bg-surface)',
+    border: '1px solid var(--color-border)',
     borderRadius: 4,
-    color: '#e0e0e0',
+    color: 'var(--color-text-primary)',
     minHeight: '400px',
     maxHeight: '600px',
     overflowY: 'auto',
@@ -333,10 +333,10 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   return (
     <div>
       {/* 目标工作区选择器 */}
-      <div className="card" style={{ marginBottom: 16, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
+      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--color-primary)' }}>
         <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
           <div>
-            <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block', fontFamily: 'Orbitron' }}>
+            <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block' }}>
               目标工作区
             </label>
             <select
@@ -375,12 +375,12 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 周报草稿 Tab */}
       {activeTab === 'weekly' && (
-        <div className="card" style={{ borderTop: '2px solid var(--neon-blue)', borderRadius: '0 4px 4px 4px' }}>
+        <div className="card" style={{ borderTop: '2px solid var(--color-primary)', borderRadius: '0 4px 4px 4px' }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <button className="btn" onClick={onGenerate}>生成周报草稿</button>
             <button className="btn" type="button" onClick={() => copy(weeklyDraft, setCopiedWeekly)} disabled={!weeklyDraft}>复制全文</button>
             <button className="btn" type="button" onClick={() => download(weeklyDraft, 'weekly-report')} disabled={!weeklyDraft}>下载 TXT</button>
-            {copiedWeekly && <span style={{ color: 'var(--neon-green)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
+            {copiedWeekly && <span style={{ color: 'var(--color-success)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
 
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
               <button style={modeBtnStyle(weeklyViewMode === 'edit')} onClick={() => setWeeklyViewMode('edit')}>📝 编辑源码</button>
@@ -393,8 +393,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
             <div style={{
               marginBottom: 16,
               padding: '12px 16px',
-              background: 'rgba(255, 165, 0, 0.12)',
-              border: '1px solid rgba(255, 165, 0, 0.5)',
+              background: 'var(--color-warning-soft)',
+              border: '1px solid var(--color-warning)',
               borderRadius: 6,
               display: 'flex',
               alignItems: 'center',
@@ -402,11 +402,11 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
             }}>
               <span style={{ fontSize: 20 }}>⚠️</span>
               <div style={{ flex: 1 }}>
-                <div style={{ color: '#ffaa00', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
+                <div style={{ color: 'var(--color-warning)', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
                   当前为模板模式 — AI 智能分析未启用
                 </div>
-                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
-                  前往左侧菜单「⚙ 系统配置」填写 <strong style={{ color: '#fff' }}>AI_API_URL</strong>、<strong style={{ color: '#fff' }}>AI_API_KEY</strong> 和 <strong style={{ color: '#fff' }}>AI_MODEL</strong>，即可启用 AI 深度分析周报。
+                <div style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
+                  前往左侧菜单「⚙ 系统配置」填写 <strong style={{ color: 'var(--color-text-primary)' }}>AI_API_URL</strong>、<strong style={{ color: 'var(--color-text-primary)' }}>AI_API_KEY</strong> 和 <strong style={{ color: 'var(--color-text-primary)' }}>AI_MODEL</strong>，即可启用 AI 深度分析周报。
                 </div>
               </div>
             </div>
@@ -436,19 +436,19 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 项目进展报告 Tab */}
       {activeTab === 'progress' && (
-        <div className="card" style={{ borderTop: '2px solid #00ff88', borderRadius: '0 4px 4px 4px' }}>
+        <div className="card" style={{ borderTop: '2px solid var(--color-success)', borderRadius: '0 4px 4px 4px' }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
               className="btn"
               onClick={generateProgressReport}
               disabled={!selectedProjectId || generatingProgress}
-              style={selectedProjectId ? { borderColor: '#00ff88', color: '#00ff88' } : {}}
+              style={selectedProjectId ? { borderColor: 'var(--color-success)', color: 'var(--color-success)' } : {}}
             >
               {generatingProgress ? '⏳ 分析中...' : '🤖 AI 生成项目进展报告'}
             </button>
             <button className="btn" type="button" onClick={() => copy(progressDraft, setCopiedProgress)} disabled={!progressDraft}>复制全文</button>
             <button className="btn" type="button" onClick={() => download(progressDraft, 'progress-report')} disabled={!progressDraft}>下载 TXT</button>
-            {copiedProgress && <span style={{ color: 'var(--neon-green)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
+            {copiedProgress && <span style={{ color: 'var(--color-success)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
             {!selectedProjectId && (
               <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>请先选择目标工作区</span>
             )}
@@ -483,7 +483,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 自然语言录入任务 Tab */}
       {activeTab === 'nlp' && (
-        <div className="card" style={{ borderTop: '2px solid #b44dff', borderRadius: '0 4px 4px 4px' }}>
+        <div className="card" style={{ borderTop: '2px solid var(--color-primary)', borderRadius: '0 4px 4px 4px' }}>
           <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
             用自然语言描述任务，AI 自动解析为结构化字段。例如：「下周四前张三完成支付接口联调，大概 3 天，优先级很高」
           </div>
@@ -500,7 +500,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               className="btn"
               type="button"
               disabled={!nlpText.trim() || nlpLoading}
-              style={{ borderColor: '#b44dff', color: '#b44dff', alignSelf: 'stretch', minWidth: 100 }}
+              style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)', alignSelf: 'stretch', minWidth: 100 }}
               onClick={() => void handleNlpParse()}
             >
               {nlpLoading ? '⏳ 解析中...' : '🪄 AI 解析'}
@@ -511,10 +511,10 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           {nlpError && (
             <div style={{
               padding: '10px 14px',
-              background: 'rgba(255,80,80,0.1)',
-              border: '1px solid rgba(255,80,80,0.4)',
+              background: 'var(--color-danger-soft)',
+              border: '1px solid var(--color-danger)',
               borderRadius: 4,
-              color: '#ff8080',
+              color: 'var(--color-danger)',
               fontSize: 13,
               marginBottom: 12
             }}>
@@ -525,7 +525,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           {/* 解析结果预览 */}
           {nlpResult && (
             <div style={{ marginTop: 8 }}>
-              <div style={{ color: '#b44dff', fontFamily: 'Orbitron, monospace', fontSize: 12, marginBottom: 10 }}>
+              <div style={{ color: 'var(--color-primary)', fontSize: 12, marginBottom: 10 }}>
                 ✅ 解析成功 — 可编辑后确认，再一键创建到飞书
               </div>
               <table className="table" style={{ fontSize: 13 }}>
@@ -537,7 +537,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         type="text"
                         value={nlpResult.taskName}
                         onChange={(e) => updateNlpResult({ taskName: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                       />
                     </td>
                   </tr>
@@ -548,7 +548,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         type="text"
                         value={nlpResult.assignee || ''}
                         onChange={(e) => updateNlpResult({ assignee: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                         placeholder="未识别可手动填写"
                       />
                     </td>
@@ -560,7 +560,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         type="text"
                         value={nlpResult.projectName || ''}
                         onChange={(e) => updateNlpResult({ projectName: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                         placeholder="如飞书为单选，请填写已有选项"
                       />
                     </td>
@@ -572,7 +572,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         type="date"
                         value={nlpResult.startDate || ''}
                         onChange={(e) => updateNlpResult({ startDate: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                       />
                     </td>
                   </tr>
@@ -583,7 +583,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         type="date"
                         value={nlpResult.endDate || ''}
                         onChange={(e) => updateNlpResult({ endDate: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                       />
                     </td>
                   </tr>
@@ -593,7 +593,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                       <select
                         value={nlpResult.priority || 'medium'}
                         onChange={(e) => updateNlpResult({ priority: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                       >
                         <option value="high">高</option>
                         <option value="medium">中</option>
@@ -607,7 +607,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                       <select
                         value={nlpResult.status || 'todo'}
                         onChange={(e) => updateNlpResult({ status: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                       >
                         <option value="todo">待办</option>
                         <option value="in_progress">进行中</option>
@@ -622,7 +622,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         rows={2}
                         value={nlpResult.notes || ''}
                         onChange={(e) => updateNlpResult({ notes: e.target.value })}
-                        style={{ width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', padding: '4px 6px', borderRadius: 3 }}
+                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
                         placeholder="可选"
                       />
                     </td>
@@ -644,14 +644,14 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   disabled={creatingFeishu || !nlpConfirmed}
                   onClick={() => void handleCreateToFeishu()}
                   style={{
-                    background: 'linear-gradient(135deg, #00d2ff 0%, #3a7bd5 100%)',
+                    background: 'var(--color-primary)',
                     color: '#fff',
-                    border: 'none',
+                    border: '1px solid var(--color-primary)',
                     padding: '8px 16px',
                     width: '100%',
                     justifyContent: 'center',
                     fontWeight: 'bold',
-                    boxShadow: '0 4px 15px rgba(0, 210, 255, 0.3)'
+                    boxShadow: 'none'
                   }}
                 >
                   {creatingFeishu ? '🚀 正在同步创建至飞书...' : '⚡ 一键创建至飞书同步列表'}
@@ -659,7 +659,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 <button
                   className="btn"
                   type="button"
-                  style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)' }}
+                  style={{ padding: '8px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', color: 'var(--text-muted)' }}
                   onClick={() => {
                     setNlpResult(null);
                     setNlpText('');
@@ -683,7 +683,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 会议纪要转任务 Tab */}
       {activeTab === 'meeting' && (
-        <div className="card" style={{ borderTop: '2px solid #ffaa00', borderRadius: '0 4px 4px 4px' }}>
+        <div className="card" style={{ borderTop: '2px solid var(--color-warning)', borderRadius: '0 4px 4px 4px' }}>
           <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
             粘贴会议记录全文、纪要流水或群聊对话，AI 将自动提取 Action Items 并允许批量同步至系统。
           </div>
@@ -700,7 +700,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               className="btn"
               type="button"
               disabled={!meetingText.trim() || meetingLoading}
-              style={{ borderColor: '#ffaa00', color: '#ffaa00', alignSelf: 'stretch', minWidth: 100 }}
+              style={{ borderColor: 'var(--color-warning)', color: 'var(--color-warning)', alignSelf: 'stretch', minWidth: 100 }}
               onClick={() => void handleMeetingParse()}
             >
               {meetingLoading ? '⏳ 解析中...' : '🪄 提取任务'}
@@ -708,7 +708,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           </div>
 
           {meetingError && (
-            <div style={{ padding: '10px 14px', background: 'rgba(255,80,80,0.1)', border: '1px solid rgba(255,80,80,0.4)', borderRadius: 4, color: '#ff8080', fontSize: 13, marginBottom: 12 }}>
+            <div style={{ padding: '10px 14px', background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)', borderRadius: 4, color: 'var(--color-danger)', fontSize: 13, marginBottom: 12 }}>
               ⚠️ {meetingError}
             </div>
           )}
@@ -716,7 +716,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           {meetingTasks.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ color: '#ffaa00', fontFamily: 'Orbitron, monospace', fontSize: 12 }}>
+                <div style={{ color: 'var(--color-warning)', fontSize: 12 }}>
                   ✅ 识别到 {meetingTasks.length} 个 Action Item
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -734,11 +734,11 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   同步到飞书进度列表
                 </label>
                 {!selectedProjectId && (
-                  <span style={{ fontSize: 12, color: '#ff8080' }}>未选择工作区，无法创建系统任务</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-danger)' }}>未选择工作区，无法创建系统任务</span>
                 )}
               </div>
 
-              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 4, padding: 2 }}>
+              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 4, padding: 2 }}>
                 <table className="table" style={{ fontSize: 13 }}>
                   <thead>
                     <tr>
@@ -763,7 +763,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                     {meetingTasks.map((task, idx) => {
                       const { plannedStart, plannedEnd } = resolvePlannedDates(task);
                       return (
-                      <tr key={idx} style={{ background: selectedTaskIndices.includes(idx) ? 'rgba(255,170,0,0.05)' : 'transparent' }}>
+                      <tr key={idx} style={{ background: selectedTaskIndices.includes(idx) ? 'var(--color-warning-soft)' : 'transparent' }}>
                         <td>
                           <input
                             type="checkbox"
@@ -784,7 +784,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               setMeetingTasks(newTasks);
                             }}
                             style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
                             onBlur={(e) => e.target.style.borderColor = 'transparent'}
                           />
                         </td>
@@ -798,7 +798,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               setMeetingTasks(newTasks);
                             }}
                             style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
                             onBlur={(e) => e.target.style.borderColor = 'transparent'}
                           />
                         </td>
@@ -812,7 +812,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               setMeetingTasks(newTasks);
                             }}
                             style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
                             onBlur={(e) => e.target.style.borderColor = 'transparent'}
                           />
                         </td>
@@ -826,7 +826,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               setMeetingTasks(newTasks);
                             }}
                             style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(255,170,0,0.5)'}
+                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
                             onBlur={(e) => e.target.style.borderColor = 'transparent'}
                           />
                         </td>
@@ -834,7 +834,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                           <button
                             className="btn"
                             type="button"
-                            style={{ padding: '2px 8px', fontSize: 11, background: 'transparent', border: '1px solid rgba(255,80,80,0.4)', color: '#ff8080' }}
+                            style={{ padding: '2px 8px', fontSize: 11, background: 'var(--color-bg-surface)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)' }}
                             onClick={() => {
                               const newTasks = meetingTasks.filter((_, i) => i !== idx);
                               setMeetingTasks(newTasks);
@@ -855,7 +855,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
                   <button
                     className="btn"
-                    style={{ flex: 1, background: '#ffaa00', color: '#000', border: 'none', fontWeight: 600 }}
+                    style={{ flex: 1, background: 'var(--color-warning)', color: '#fff', border: '1px solid var(--color-warning)', fontWeight: 600 }}
                     disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
                     onClick={() => void handleBatchCreate()}
                   >
@@ -868,7 +868,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   <button
                     className="btn"
                     type="button"
-                    style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)' }}
+                    style={{ padding: '8px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', color: 'var(--text-muted)' }}
                     onClick={() => {
                       setMeetingTasks([]);
                       setSelectedTaskIndices([]);

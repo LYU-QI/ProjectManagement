@@ -121,7 +121,6 @@ export class AiController {
 
   /** 通用 AI 聊天对话 */
   @Post('chat')
-  @Public()
   chat(@Body() body: ChatDto) {
     return this.aiService.chat(body);
   }

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost } from '../api/client';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 const COLOR_MAP: Record<string, string> = {
-  red: '#ff3366',
-  orange: '#ff8800',
-  green: '#00ff88',
-  blue: '#00d2ff',
-  purple: '#b44dff'
+  red: 'var(--color-danger)',
+  orange: 'var(--color-warning)',
+  green: 'var(--color-success)',
+  blue: 'var(--color-primary)',
+  purple: 'var(--color-primary)'
 };
 
 type Job = {
@@ -85,6 +86,8 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
   const [logFilterTrigger, setLogFilterTrigger] = useState<'all' | 'manual' | 'schedule'>('all');
   const [logFilterJob, setLogFilterJob] = useState<'all' | string>('all');
   const [logFilterToday, setLogFilterToday] = useState(false);
+  const [logFiltersOpen, setLogFiltersOpen] = usePersistentBoolean('ui:pm-assistant:logFiltersOpen', true);
+  const [compactLogsTable, setCompactLogsTable] = usePersistentBoolean('ui:pm-assistant:compactLogsTable', false);
 
   const [schedules, setSchedules] = useState<ScheduleItem[]>([]);
   const [schedulesLoading, setSchedulesLoading] = useState(false);
@@ -221,7 +224,14 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
         .toLowerCase();
       return hay.includes(keyword);
     });
-  }, [logs, logSearch, logFilterStatus, logFilterTrigger, logFilterToday]);
+  }, [logs, logSearch, logFilterStatus, logFilterTrigger, logFilterToday, logFilterJob]);
+
+  function getLogStatusColor(status: LogEntry['status']): string {
+    if (status === 'failed') return 'var(--color-danger)';
+    if (status === 'dry-run') return 'var(--color-warning)';
+    if (status === 'skipped') return 'var(--color-text-muted)';
+    return 'var(--color-success)';
+  }
 
   async function runJob() {
     if (!selectedJobId) return;
@@ -352,7 +362,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid #00d2ff' }}>
+      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--color-primary)' }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
           PM Assistant 会根据飞书多维表格任务数据生成卡片，并按配置发送到飞书群。定时任务由后端自动触发，这里提供手动校验入口。
         </div>
@@ -370,14 +380,14 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
         </div>
         {aiConfigLoading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>正在加载 AI 配置...</div>}
         {aiConfigError && <div className="warn" style={{ marginTop: 6 }}>{aiConfigError}</div>}
-        <details style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '8px 12px' }}>
-          <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#00d2ff', listStyle: 'none' }}>
+        <details style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 12px' }}>
+          <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', listStyle: 'none' }}>
             展开按类型编辑 Prompt
           </summary>
           <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
             {jobs.map((job) => (
-              <div key={job.id} style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#00d2ff', marginBottom: 6 }}>{job.name}</div>
+              <div key={job.id} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', marginBottom: 6 }}>{job.name}</div>
                 <textarea
                   rows={3}
                   value={jobPromptDrafts[job.id] ?? ''}
@@ -401,8 +411,8 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>暂无默认提示词数据。</div>
             )}
             {defaultPrompts.map((item) => (
-              <div key={item.jobId} style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '10px 12px' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#00d2ff' }}>{item.name}</div>
+              <div key={item.jobId} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 12px' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)' }}>{item.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{item.prompt}</div>
               </div>
             ))}
@@ -452,13 +462,13 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '10px 12px',
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        border: '1px solid var(--color-border)',
                         borderRadius: 6,
-                        background: 'rgba(0,0,0,0.25)'
+                        background: 'var(--color-bg-surface)'
                       }}
                     >
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: enabled ? '#00ff88' : '#ff8080' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: enabled ? 'var(--color-success)' : 'var(--color-danger)' }}>
                           {job.name}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{job.description}</div>
@@ -557,7 +567,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
           </div>
           <div>
             <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>任务说明</label>
-            <div style={{ marginTop: 6, padding: '10px 12px', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4 }}>
+            <div style={{ marginTop: 6, padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg-surface)' }}>
               <div style={{ fontSize: 13, color: selectedJob ? COLOR_MAP[selectedJob.color] : 'var(--text-muted)', fontWeight: 600 }}>
                 {selectedJob?.name || '未选择任务'}
               </div>
@@ -595,7 +605,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       </div>
 
       {runResult && (
-        <div className="card" style={{ borderLeft: '3px solid #00ff88' }}>
+        <div className="card" style={{ borderLeft: '3px solid var(--color-success)' }}>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
             执行结果：{runResult.sent ? '已发送' : '仅预览'}
           </div>
@@ -604,7 +614,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
           </div>
           <details style={{ marginTop: 12 }}>
             <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>查看卡片 JSON</summary>
-            <pre style={{ marginTop: 8, fontSize: 12, background: 'rgba(0,0,0,0.3)', padding: 12, borderRadius: 6, overflowX: 'auto' }}>
+            <pre style={{ marginTop: 8, fontSize: 12, background: 'var(--color-bg-muted)', padding: 12, borderRadius: 6, overflowX: 'auto', border: '1px solid var(--color-border)' }}>
 {JSON.stringify(runResult.card, null, 2)}
             </pre>
           </details>
@@ -612,9 +622,15 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       )}
 
       <div className="card" style={{ marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div className="panel-header">
           <h3 style={{ margin: 0, fontSize: 13, letterSpacing: 1 }}>执行记录</h3>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="panel-actions">
+            <button className="btn" type="button" onClick={() => setCompactLogsTable((prev) => !prev)}>
+              {compactLogsTable ? '标准密度' : '紧凑密度'}
+            </button>
+            <button className="btn" type="button" onClick={() => setLogFiltersOpen((prev) => !prev)}>
+              {logFiltersOpen ? '收起筛选' : '展开筛选'}
+            </button>
             <button className="btn" onClick={() => void loadLogs()} disabled={logsLoading}>
               {logsLoading ? '刷新中...' : '刷新'}
             </button>
@@ -623,42 +639,46 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1.2fr) repeat(3, minmax(140px, 1fr)) auto', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-          <input
-            value={logSearch}
-            onChange={(e) => setLogSearch(e.target.value)}
-            placeholder="搜索日志..."
-          />
-          <select value={logFilterStatus} onChange={(e) => setLogFilterStatus(e.target.value as any)}>
-            <option value="all">全部状态</option>
-            <option value="success">成功</option>
-            <option value="failed">失败</option>
-            <option value="dry-run">预览</option>
-            <option value="skipped">已跳过</option>
-          </select>
-          <select value={logFilterTrigger} onChange={(e) => setLogFilterTrigger(e.target.value as any)}>
-            <option value="all">全部来源</option>
-            <option value="manual">手动</option>
-            <option value="schedule">定时</option>
-          </select>
-          <select value={logFilterJob} onChange={(e) => setLogFilterJob(e.target.value)}>
-            <option value="all">全部任务</option>
-            {jobs.map((job) => (
-              <option key={job.id} value={job.id}>{job.name}</option>
-            ))}
-          </select>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <input type="checkbox" checked={logFilterToday} onChange={(e) => setLogFilterToday(e.target.checked)} />
-            只看今天
-          </label>
-        </div>
+        {logFiltersOpen && (
+          <div className="filter-panel">
+            <div className="filters-grid">
+              <input
+                value={logSearch}
+                onChange={(e) => setLogSearch(e.target.value)}
+                placeholder="搜索日志..."
+              />
+              <select value={logFilterStatus} onChange={(e) => setLogFilterStatus(e.target.value as any)}>
+                <option value="all">全部状态</option>
+                <option value="success">成功</option>
+                <option value="failed">失败</option>
+                <option value="dry-run">预览</option>
+                <option value="skipped">已跳过</option>
+              </select>
+              <select value={logFilterTrigger} onChange={(e) => setLogFilterTrigger(e.target.value as any)}>
+                <option value="all">全部来源</option>
+                <option value="manual">手动</option>
+                <option value="schedule">定时</option>
+              </select>
+              <select value={logFilterJob} onChange={(e) => setLogFilterJob(e.target.value)}>
+                <option value="all">全部任务</option>
+                {jobs.map((job) => (
+                  <option key={job.id} value={job.id}>{job.name}</option>
+                ))}
+              </select>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                <input type="checkbox" checked={logFilterToday} onChange={(e) => setLogFilterToday(e.target.checked)} />
+                只看今天
+              </label>
+            </div>
+          </div>
+        )}
         {logsError && <div className="warn" style={{ marginBottom: 8 }}>{logsError}</div>}
         {filteredLogs.length === 0 && !logsLoading && (
           <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>暂无执行记录</div>
         )}
         {filteredLogs.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ fontSize: 12 }}>
+          <div className="table-wrap">
+            <table className={`table ${compactLogsTable ? 'table-compact' : ''}`} style={{ fontSize: 12 }}>
               <thead>
                 <tr>
                   <th>时间</th>
@@ -674,7 +694,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                     <td>{new Date(log.createdAt).toLocaleString()}</td>
                     <td>{log.jobId}</td>
                     <td>{log.triggeredBy === 'manual' ? '手动' : '定时'}</td>
-                    <td style={{ color: log.status === 'failed' ? '#ff8080' : log.status === 'dry-run' ? '#ffaa00' : log.status === 'skipped' ? '#c0c0c0' : '#00ff88' }}>
+                    <td style={{ color: getLogStatusColor(log.status) }}>
                       {log.status}
                     </td>
                     <td>
@@ -687,7 +707,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                           </div>
                         </details>
                       )}
-                      {log.error && <div style={{ color: '#ff8080', marginTop: 4 }}>{log.error}</div>}
+                      {log.error && <div style={{ color: 'var(--color-danger)', marginTop: 4 }}>{log.error}</div>}
                     </td>
                   </tr>
                 ))}

@@ -4,6 +4,7 @@ import type { FeishuFormState } from '../types';
 import { FEISHU_FIELDS } from '../feishuConfig';
 import TableToolbar from '../components/TableToolbar';
 import PaginationBar from '../components/PaginationBar';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 type Props = {
   canWrite: boolean;
@@ -118,6 +119,8 @@ export default function FeishuView({
   formatProgressValue,
   getAssigneeName
 }: Props) {
+  const [filtersOpen, setFiltersOpen] = usePersistentBoolean('ui:feishu:filtersOpen', true);
+  const [compactTable, setCompactTable] = usePersistentBoolean('ui:feishu:compactTable', false);
   const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
   return (
     <div>
@@ -214,88 +217,106 @@ export default function FeishuView({
       </div>
 
       <div className="card">
-        <TableToolbar>
-          <input
-            placeholder="搜索关键词"
-            value={feishuSearch}
-            onChange={(e) => onSetFeishuSearch(e.target.value)}
-          />
-          <input
-            placeholder="搜索字段(逗号分隔)"
-            value={feishuSearchFields}
-            onChange={(e) => onSetFeishuSearchFields(e.target.value)}
-          />
-          <select value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
-            <option value="">所属项目(全部)</option>
-            {feishuProjectOptions.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <select value={feishuFilterStatus} onChange={(e) => onSetFeishuFilterStatus(e.target.value)}>
-            <option value="">状态(全部)</option>
-            {['待办', '进行中', '已完成'].map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <input
-            placeholder="负责人(包含匹配)"
-            value={feishuFilterAssignee}
-            onChange={(e) => onSetFeishuFilterAssignee(e.target.value)}
-          />
-          <select value={feishuFilterRisk} onChange={(e) => onSetFeishuFilterRisk(e.target.value)}>
-            <option value="">风险等级(全部)</option>
-            {['低', '中', '高'].map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-          <select value={feishuPageSize} onChange={(e) => onSetFeishuPageSize(Number(e.target.value))}>
-            {[10, 20, 50, 100].map((size) => (
-              <option key={size} value={size}>每页 {size}</option>
-            ))}
-          </select>
-          <button className="btn" type="button" onClick={onLoadFeishu}>查询/刷新</button>
-          <button className="btn" type="button" onClick={onExportFeishu}>导出CSV</button>
-          <label className="btn" style={{ display: 'inline-flex', alignItems: 'center' }}>
-            导入CSV
-            <input
-              type="file"
-              accept=".csv"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) onImportFeishu(file);
-                e.currentTarget.value = '';
-              }}
-            />
-          </label>
-          {canWrite && (
-            <button className="btn" type="button" disabled={selectedFeishuIds.length === 0} onClick={onDeleteSelectedFeishu}>
-              批量删除 ({selectedFeishuIds.length})
+        <div className="section-title-row">
+          <h3>飞书记录列表</h3>
+          <div className="panel-actions">
+            <span className="muted">当前 {filteredFeishuRecords.length} / {feishuRecords.length}</span>
+            <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              {compactTable ? '标准密度' : '紧凑密度'}
             </button>
-          )}
-        </TableToolbar>
+            <button className="btn" type="button" onClick={() => setFiltersOpen((prev) => !prev)}>
+              {filtersOpen ? '收起筛选' : '展开筛选'}
+            </button>
+          </div>
+        </div>
+
+        {filtersOpen && (
+          <div className="filter-panel">
+            <TableToolbar>
+              <input
+                placeholder="搜索关键词"
+                value={feishuSearch}
+                onChange={(e) => onSetFeishuSearch(e.target.value)}
+              />
+              <input
+                placeholder="搜索字段(逗号分隔)"
+                value={feishuSearchFields}
+                onChange={(e) => onSetFeishuSearchFields(e.target.value)}
+              />
+              <select value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
+                <option value="">所属项目(全部)</option>
+                {feishuProjectOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <select value={feishuFilterStatus} onChange={(e) => onSetFeishuFilterStatus(e.target.value)}>
+                <option value="">状态(全部)</option>
+                {['待办', '进行中', '已完成'].map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <input
+                placeholder="负责人(包含匹配)"
+                value={feishuFilterAssignee}
+                onChange={(e) => onSetFeishuFilterAssignee(e.target.value)}
+              />
+              <select value={feishuFilterRisk} onChange={(e) => onSetFeishuFilterRisk(e.target.value)}>
+                <option value="">风险等级(全部)</option>
+                {['低', '中', '高'].map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+              <select value={feishuPageSize} onChange={(e) => onSetFeishuPageSize(Number(e.target.value))}>
+                {[10, 20, 50, 100].map((size) => (
+                  <option key={size} value={size}>每页 {size}</option>
+                ))}
+              </select>
+              <button className="btn" type="button" onClick={onLoadFeishu}>查询/刷新</button>
+              <button className="btn" type="button" onClick={onExportFeishu}>导出CSV</button>
+              <label className="btn" style={{ display: 'inline-flex', alignItems: 'center' }}>
+                导入CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) onImportFeishu(file);
+                    e.currentTarget.value = '';
+                  }}
+                />
+              </label>
+              {canWrite && (
+                <button className="btn" type="button" disabled={selectedFeishuIds.length === 0} onClick={onDeleteSelectedFeishu}>
+                  批量删除 ({selectedFeishuIds.length})
+                </button>
+              )}
+            </TableToolbar>
+          </div>
+        )}
 
         {feishuLoading && <p>Loading...</p>}
-        <table className="table table-wrap">
-          <thead>
-            <tr>
-              {canWrite && (
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={filteredFeishuRecords.length > 0 && selectedFeishuIds.length === filteredFeishuRecords.length}
-                    onChange={(e) => onSelectAllFeishu(filteredFeishuRecords.map((r) => r.record_id), e.target.checked)}
-                  />
-                </th>
-              )}
-              {visibleFields.map((field) => (
-                <th key={String(field.key)}>{field.label}</th>
-              ))}
-              {canWrite && <th>操作</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredFeishuRecords.map((record) => {
+        <div className="table-wrap">
+          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+            <thead>
+              <tr>
+                {canWrite && (
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={filteredFeishuRecords.length > 0 && selectedFeishuIds.length === filteredFeishuRecords.length}
+                      onChange={(e) => onSelectAllFeishu(filteredFeishuRecords.map((r) => r.record_id), e.target.checked)}
+                    />
+                  </th>
+                )}
+                {visibleFields.map((field) => (
+                  <th key={String(field.key)}>{field.label}</th>
+                ))}
+                {canWrite && <th>操作</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredFeishuRecords.map((record) => {
               const fields = (record.fields || {}) as Record<string, unknown>;
               const originalForm = onMapRecordToForm(record);
               const isEditing = feishuEditingId === record.record_id;
@@ -392,8 +413,9 @@ export default function FeishuView({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
 
         <PaginationBar
           onPrev={onPrevPage}

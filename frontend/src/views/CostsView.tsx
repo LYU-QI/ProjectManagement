@@ -1,5 +1,7 @@
 import type { FormEvent, KeyboardEvent } from 'react';
+import { useMemo } from 'react';
 import type { CostEntryItem, CostSummary, Worklog } from '../types';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -53,17 +55,48 @@ export default function CostsView({
   onInlineKeyDown,
   feishuUserOptions
 }: Props) {
+  const [compactTable, setCompactTable] = usePersistentBoolean('ui:costs:compactTable', false);
   const formatCostType = (value: string) => {
     if (value === 'labor') return '人力';
     if (value === 'outsource') return '外包';
     if (value === 'cloud') return '云资源';
     return value;
   };
+  const metrics = useMemo(() => {
+    const budget = costSummary?.budget ?? 0;
+    const actual = costSummary?.actual ?? 0;
+    const varianceRate = costSummary?.varianceRate ?? 0;
+    const worklogCost = worklogs.reduce((sum, item) => sum + Number(item.hours || 0) * Number(item.hourlyRate || 0), 0);
+    return { budget, actual, varianceRate, worklogCost };
+  }, [costSummary, worklogs]);
 
   return (
     <div>
+      <section className="metrics-grid">
+        <article className="metric-card">
+          <p className="metric-label">预算</p>
+          <p className="metric-value">¥{metrics.budget.toLocaleString()}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">实际支出</p>
+          <p className="metric-value">¥{metrics.actual.toLocaleString()}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">偏差率</p>
+          <p className={`metric-value ${metrics.varianceRate > 10 ? 'danger' : 'good'}`}>{metrics.varianceRate}%</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">工时成本</p>
+          <p className="metric-value">¥{metrics.worklogCost.toLocaleString()}</p>
+        </article>
+      </section>
+
       {canWrite && (
-        <>
+        <div className="card compact-card" style={{ marginTop: 12 }}>
+          <div className="section-title-row">
+            <h3>新增数据</h3>
+            <span className="muted">支持成本条目与工时录入</span>
+          </div>
           <form className="form" onSubmit={onSubmitCost}>
             <select name="type" defaultValue="labor">
               <option value="labor">人力</option>
@@ -73,7 +106,7 @@ export default function CostsView({
             <input name="amount" type="number" step="0.01" placeholder="金额" required />
             <input name="occurredOn" type="date" required />
             <input name="note" placeholder="备注" />
-            <button className="btn" type="submit">新增成本</button>
+            <button className="btn btn-primary" type="submit">新增成本</button>
           </form>
           <form className="form" onSubmit={onSubmitWorklog} style={{ marginTop: 10 }}>
             <input name="taskTitle" placeholder="工时任务" required />
@@ -87,41 +120,45 @@ export default function CostsView({
             <input name="weekEnd" type="date" required />
             <input name="totalDays" type="number" min="0" step="0.5" placeholder="总人天" required />
             <input name="dailyRate" type="number" step="0.01" placeholder="人天单价" required />
-            <button className="btn" type="submit">新增工时</button>
+            <button className="btn btn-primary" type="submit">新增工时</button>
           </form>
-        </>
+        </div>
       )}
-      <div className="grid" style={{ marginTop: 12 }}>
-        <div className="card"><h3>预算</h3><p>{costSummary?.budget ?? 0}</p></div>
-        <div className="card"><h3>实际</h3><p>{costSummary?.actual ?? 0}</p></div>
-        <div className="card"><h3>偏差%</h3><p className={costSummary && costSummary.varianceRate > 10 ? 'warn' : ''}>{costSummary?.varianceRate ?? 0}</p></div>
-      </div>
       <div className="card" style={{ marginTop: 12 }}>
-        <h3>成本条目</h3>
+        <div className="section-title-row">
+          <h3>成本条目</h3>
+          <div className="panel-actions">
+            <span className="muted">双击单元格可行内编辑</span>
+            <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              {compactTable ? '标准密度' : '紧凑密度'}
+            </button>
+          </div>
+        </div>
         {canWrite && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <div className="panel-actions" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
             <button className="btn" type="button" disabled={selectedCostEntryIds.length === 0} onClick={onDeleteSelectedCostEntries}>
               批量删除 ({selectedCostEntryIds.length})
             </button>
           </div>
         )}
-        <table className="table">
-          <thead>
-            <tr>
-              {canWrite && (
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={costEntries.length > 0 && selectedCostEntryIds.length === costEntries.length}
-                    onChange={(e) => onSelectAllCostEntries(costEntries.map((c) => c.id), e.target.checked)}
-                  />
-                </th>
-              )}
-              <th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {costEntries.map((entry) => {
+        <div className="table-wrap">
+          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+            <thead>
+              <tr>
+                {canWrite && (
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={costEntries.length > 0 && selectedCostEntryIds.length === costEntries.length}
+                      onChange={(e) => onSelectAllCostEntries(costEntries.map((c) => c.id), e.target.checked)}
+                    />
+                  </th>
+                )}
+                <th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {costEntries.map((entry) => {
               const isEditing = costEdit.editingId === entry.id;
               const rowDraft = isEditing ? (costEdit.draft ?? entry) : entry;
               const isDirty = isEditing && costEdit.hasDirty(entry);
@@ -223,15 +260,20 @@ export default function CostsView({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
       <div className="card" style={{ marginTop: 12 }}>
-        <h3>工时明细</h3>
-        <table className="table">
-          <thead><tr><th>周期</th><th>任务</th><th>负责人</th><th>人天</th><th>人天单价</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
-          <tbody>
-            {worklogs.map((w) => {
+        <div className="section-title-row">
+          <h3>工时明细</h3>
+          <span className="muted">周期、任务、负责人与成本联动</span>
+        </div>
+        <div className="table-wrap">
+          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+            <thead><tr><th>周期</th><th>任务</th><th>负责人</th><th>人天</th><th>人天单价</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
+            <tbody>
+              {worklogs.map((w) => {
               const isEditing = worklogEdit.editingId === w.id;
               const rowDraft = isEditing ? (worklogEdit.draft ?? w) : w;
               const isDirty = isEditing && worklogEdit.hasDirty(w);
@@ -364,8 +406,9 @@ export default function CostsView({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

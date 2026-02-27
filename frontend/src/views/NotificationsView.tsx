@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { NotificationItem } from '../types';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 type Props = {
   notifications: NotificationItem[];
@@ -12,6 +13,8 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
   const [filterLevel, setFilterLevel] = useState('');
   const [filterRead, setFilterRead] = useState('all');
   const [keyword, setKeyword] = useState('');
+  const [filtersOpen, setFiltersOpen] = usePersistentBoolean('ui:notifications:filtersOpen', true);
+  const [compactTable, setCompactTable] = usePersistentBoolean('ui:notifications:compactTable', false);
 
   const filtered = useMemo(() => {
     return notifications.filter((n) => {
@@ -29,8 +32,11 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
   return (
     <div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <h3>通知规则配置</h3>
-        <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+        <div className="section-title-row">
+          <h3>通知规则配置</h3>
+          <span className="muted">预警阈值可按团队偏好调整</span>
+        </div>
+        <div className="filters-grid">
           <div>
             <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>风险等级阈值</label>
             <input
@@ -64,51 +70,58 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
         </div>
       </div>
       <div className="card">
-        <h3>通知中心</h3>
-        <div
-          className="filter-panel"
-          style={{
-            marginBottom: 12,
-            padding: '10px 12px',
-            border: '1px solid var(--border-tech)',
-            background: 'rgba(3, 10, 24, 0.65)',
-          }}
-        >
-          <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 6 }}>筛选</div>
-          <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-            <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}>
-              <option value="">全部级别</option>
-              <option value="info">info</option>
-              <option value="warning">warning</option>
-              <option value="error">error</option>
-            </select>
-            <select value={filterRead} onChange={(e) => setFilterRead(e.target.value)}>
-              <option value="all">全部状态</option>
-              <option value="unread">未读</option>
-              <option value="read">已读</option>
-            </select>
-            <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+        <div className="section-title-row">
+          <h3>通知中心</h3>
+          <div className="panel-actions">
+            <span className="muted">当前 {filtered.length} 条</span>
+            <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              {compactTable ? '标准密度' : '紧凑密度'}
+            </button>
+            <button className="btn" type="button" onClick={() => setFiltersOpen((prev) => !prev)}>
+              {filtersOpen ? '收起筛选' : '展开筛选'}
+            </button>
           </div>
         </div>
-        <table className="table">
-          <thead><tr><th>级别</th><th>标题</th><th>内容</th><th>时间</th><th>状态</th></tr></thead>
-          <tbody>
-            {filtered.map((n) => (
-              <tr key={n.id}>
-                <td>{n.level}</td>
-                <td>{n.title}</td>
-                <td>{n.message}</td>
-                <td>{new Date(n.createdAt).toLocaleString()}</td>
-                <td>
-                  {n.readAt ? '已读' : <button className="btn" type="button" onClick={() => onMarkRead(n.id)}>标记已读</button>}
-                </td>
-              </tr>
-            ))}
-            {filtered.length === 0 && (
-              <tr><td colSpan={5} style={{ color: 'var(--text-muted)' }}>暂无通知</td></tr>
-            )}
-          </tbody>
-        </table>
+        {filtersOpen && (
+          <div className="filter-panel">
+            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 6 }}>筛选</div>
+            <div className="filters-grid">
+              <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}>
+                <option value="">全部级别</option>
+                <option value="info">info</option>
+                <option value="warning">warning</option>
+                <option value="error">error</option>
+              </select>
+              <select value={filterRead} onChange={(e) => setFilterRead(e.target.value)}>
+                <option value="all">全部状态</option>
+                <option value="unread">未读</option>
+                <option value="read">已读</option>
+              </select>
+              <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
+            </div>
+          </div>
+        )}
+        <div className="table-wrap">
+          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+            <thead><tr><th>级别</th><th>标题</th><th>内容</th><th>时间</th><th>状态</th></tr></thead>
+            <tbody>
+              {filtered.map((n) => (
+                <tr key={n.id}>
+                  <td>{n.level}</td>
+                  <td>{n.title}</td>
+                  <td>{n.message}</td>
+                  <td>{new Date(n.createdAt).toLocaleString()}</td>
+                  <td>
+                    {n.readAt ? '已读' : <button className="btn" type="button" onClick={() => onMarkRead(n.id)}>标记已读</button>}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan={5} style={{ color: 'var(--text-muted)' }}>暂无通知</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

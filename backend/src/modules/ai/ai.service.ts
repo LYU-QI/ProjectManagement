@@ -4,6 +4,7 @@ import * as xlsx from 'xlsx';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
+import { FeishuService } from '../feishu/feishu.service';
 const pdfParseModule = require('pdf-parse');
 async function parsePdfBuffer(buffer: Buffer) {
   if (typeof pdfParseModule === 'function') {
@@ -35,11 +36,27 @@ interface ProgressReportInput {
   projectId: number;
 }
 
+type ChatRole = 'system' | 'user' | 'assistant';
+
+interface ChatCompletionMessage {
+  role: ChatRole;
+  content: string;
+}
+
+type ReActActionName = 'create_task' | 'update_task_status' | 'create_requirement' | 'query_tasks';
+
+interface ReActStep {
+  action?: ReActActionName;
+  actionInput?: Record<string, unknown> | null;
+  finalAnswer?: string;
+}
+
 @Injectable()
 export class AiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly feishuService: FeishuService,
   ) { }
 
   async weeklyReport(input: WeeklyReportInput) {
@@ -378,22 +395,41 @@ ${detailBlocks}`;
     userPrompt: string,
     opts?: { timeoutMs?: number }
   ): Promise<string> {
-    // 确保 URL 以 /chat/completions 结尾
+    return this.callAiModelWithMessages(
+      apiUrl,
+      apiKey,
+      model,
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      opts
+    );
+  }
+
+  private buildChatCompletionEndpoint(apiUrl: string): string {
     let endpoint = apiUrl.replace(/\/+$/, '');
     if (!endpoint.endsWith('/chat/completions')) {
       endpoint += '/chat/completions';
     }
+    return endpoint;
+  }
 
+  private async callAiModelWithMessages(
+    apiUrl: string,
+    apiKey: string,
+    model: string,
+    messages: ChatCompletionMessage[],
+    opts?: { timeoutMs?: number }
+  ): Promise<string> {
+    const endpoint = this.buildChatCompletionEndpoint(apiUrl);
     const timeoutMs = opts?.timeoutMs ?? 60000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     const body = {
       model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
+      messages,
       temperature: 0.7,
       max_tokens: 2000,
     };
@@ -434,6 +470,507 @@ ${detailBlocks}`;
     return content;
   }
 
+  private isOperationIntent(message: string): boolean {
+    const normalized = message.toLowerCase();
+    const intentKeywords = [
+      '新增任务',
+      '创建任务',
+      '生成任务',
+      '添加任务',
+      '更新任务',
+      '修改任务',
+      '任务状态',
+      '新增需求',
+      '创建需求',
+      '添加需求',
+      'create task',
+      'add task',
+      'update task',
+      'change task',
+      'create requirement',
+      'add requirement',
+      '执行',
+      '帮我操作'
+    ];
+    return intentKeywords.some((keyword) => normalized.includes(keyword));
+  }
+
+  private isMutationIntent(message: string): boolean {
+    const normalized = message.toLowerCase();
+    const mutationKeywords = [
+      '新增',
+      '创建',
+      '添加',
+      '生成',
+      '更新',
+      '修改',
+      '改为',
+      '改成',
+      'create',
+      'add',
+      'update',
+      'change',
+      'set'
+    ];
+    return mutationKeywords.some((keyword) => normalized.includes(keyword));
+  }
+
+  private normalizeFuzzyText(value: unknown): string {
+    return String(value ?? '')
+      .toLowerCase()
+      .replace(/[\s\p{P}\p{S}]+/gu, '');
+  }
+
+  private fuzzyIncludes(left: unknown, right: unknown): boolean {
+    const a = this.normalizeFuzzyText(left);
+    const b = this.normalizeFuzzyText(right);
+    if (!a || !b) return false;
+    return a.includes(b) || b.includes(a);
+  }
+
+  private tryParseDirectTaskStatusUpdate(message: string): { projectName?: string; title?: string; status?: TaskStatus } | null {
+    const text = message.trim();
+    const patterns = [
+      /把(.+?)项目的(.+?)任务状态改为(.+)/,
+      /将(.+?)项目的(.+?)任务状态改为(.+)/,
+      /把(.+?)的(.+?)任务状态改为(.+)/,
+      /将(.+?)的(.+?)任务状态改为(.+)/,
+      /把任务(.+?)状态改为(.+)/,
+      /将任务(.+?)状态改为(.+)/
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (!match) continue;
+
+      if (match.length === 4) {
+        const projectName = match[1]?.trim();
+        const title = match[2]?.trim();
+        const status = this.normalizeTaskStatus(match[3]);
+        if (title && status) {
+          return { projectName, title, status };
+        }
+      }
+
+      if (match.length === 3) {
+        const title = match[1]?.trim();
+        const status = this.normalizeTaskStatus(match[2]);
+        if (title && status) {
+          return { title, status };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private formatMutationObservation(observation: string): string {
+    try {
+      const parsed = JSON.parse(observation) as {
+        ok?: boolean;
+        source?: string;
+        task?: { id?: number; recordId?: string; project?: string; title?: string; status?: string };
+        feishuSync?: { ok?: boolean; recordId?: string; status?: string; error?: string };
+        requirement?: { id?: number; project?: string; title?: string; status?: string; priority?: string };
+      };
+      if (parsed?.ok && parsed.task) {
+        const taskRef = parsed.task.id ? `任务#${parsed.task.id}` : `飞书记录#${parsed.task.recordId || '-'}`;
+        const sourceText =
+          parsed.source === 'feishu_progress'
+            ? '飞书进度记录'
+            : parsed.source === 'system_task_and_feishu'
+              ? '系统任务表 + 飞书进度记录'
+              : '系统任务表';
+        const syncText = parsed.feishuSync
+          ? parsed.feishuSync.ok
+            ? ` 飞书同步成功（记录#${parsed.feishuSync.recordId || '-'}，状态「${parsed.feishuSync.status || '-'}」）。`
+            : ` 飞书同步未完成：${parsed.feishuSync.error || '未知原因'}`
+          : '';
+        return `已执行成功：${taskRef}（${parsed.task.title || '-'}）状态已更新为「${parsed.task.status || '-'}」，项目「${parsed.task.project || '-'}」，数据源：${sourceText}。${syncText}`;
+      }
+      if (parsed?.ok && parsed.requirement) {
+        return `已执行成功：已创建需求#${parsed.requirement.id || '-'}「${parsed.requirement.title || '-'}」，项目「${parsed.requirement.project || '-'}」，优先级「${parsed.requirement.priority || '-'}」，状态「${parsed.requirement.status || '-'}」。`;
+      }
+      return `执行结果：${observation}`;
+    } catch {
+      return `执行结果：${observation}`;
+    }
+  }
+
+  private parseReActStep(content: string): ReActStep {
+    const finalMatch = content.match(/Final Answer\s*[:：]\s*([\s\S]*)$/i);
+    if (finalMatch?.[1]?.trim()) {
+      return { finalAnswer: finalMatch[1].trim() };
+    }
+
+    const actionMatch = content.match(/Action\s*[:：]\s*([a-z_]+)/i);
+    if (!actionMatch?.[1]) {
+      return {};
+    }
+
+    const rawAction = actionMatch[1].trim().toLowerCase();
+    const allowedActions: ReActActionName[] = ['create_task', 'update_task_status', 'create_requirement', 'query_tasks'];
+    if (!allowedActions.includes(rawAction as ReActActionName)) {
+      return {};
+    }
+
+    const inputMatch = content.match(/Action Input\s*[:：]\s*([\s\S]*?)(?:\n(?:Observation|Thought|Action|Final Answer)\s*[:：]|$)/i);
+    return {
+      action: rawAction as ReActActionName,
+      actionInput: this.tryParseActionInput(inputMatch?.[1])
+    };
+  }
+
+  private tryParseActionInput(raw: string | undefined): Record<string, unknown> | null {
+    if (!raw) return null;
+
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const withoutFence = trimmed
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    const parseObject = (value: string): Record<string, unknown> | null => {
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        return null;
+      }
+      return null;
+    };
+
+    const direct = parseObject(withoutFence);
+    if (direct) return direct;
+
+    const objectChunk = withoutFence.match(/\{[\s\S]*\}/)?.[0];
+    if (objectChunk) {
+      return parseObject(objectChunk);
+    }
+    return null;
+  }
+
+  private normalizeTaskStatus(value: unknown): TaskStatus | null {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === 'todo' || normalized === '待办') return TaskStatus.todo;
+    if (normalized === 'in_progress' || normalized === 'in progress' || normalized === '进行中') return TaskStatus.in_progress;
+    if (normalized === 'blocked' || normalized === '阻塞') return TaskStatus.blocked;
+    if (normalized === 'done' || normalized === '已完成' || normalized === '完成') return TaskStatus.done;
+    return null;
+  }
+
+  private toFeishuStatusCandidates(status: TaskStatus): string[] {
+    if (status === TaskStatus.done) return ['已完成', '完成', 'Done'];
+    if (status === TaskStatus.in_progress) return ['进行中', '处理中', 'In Progress'];
+    if (status === TaskStatus.blocked) return ['阻塞', '受阻', 'Blocked'];
+    return ['未开始', '待开始', '待办', 'Todo'];
+  }
+
+  private async updateFeishuTaskStatusByTitle(input: {
+    title: string;
+    projectName?: string;
+    status: TaskStatus;
+  }): Promise<{ ok: true; recordId: string; projectName: string; taskName: string; status: string } | null> {
+    const title = input.title.trim();
+    if (!title) return null;
+
+    const projectName = input.projectName?.trim();
+    const feishuRes = await this.feishuService.listRecords({
+      pageSize: 200,
+      fieldNames: '任务ID,任务名称,状态,所属项目,里程碑'
+    }) as { items?: Array<{ record_id?: string; fields?: Record<string, unknown> }> };
+
+    const records = feishuRes.items || [];
+    const target = records.find((record) => {
+      const fields = record.fields || {};
+      const milestone = String(fields['里程碑'] ?? '否');
+      if (milestone === '是') return false;
+      const taskName = String(fields['任务名称'] ?? fields['任务ID'] ?? '').trim();
+      if (!taskName) return false;
+      const scopedProjectName = String(fields['所属项目'] ?? '').trim();
+      if (projectName && scopedProjectName && !this.fuzzyIncludes(scopedProjectName, projectName)) return false;
+      return this.fuzzyIncludes(taskName, title);
+    });
+
+    if (!target?.record_id) return null;
+
+    const fields = target.fields || {};
+    const resolvedProjectName = String(fields['所属项目'] ?? projectName ?? '-');
+    const taskName = String(fields['任务名称'] ?? fields['任务ID'] ?? '').trim();
+    const statusCandidates = this.toFeishuStatusCandidates(input.status);
+
+    for (const candidate of statusCandidates) {
+      try {
+        await this.feishuService.updateRecord(target.record_id, { 状态: candidate });
+        const verifyRes = await this.feishuService.listRecords({
+          pageSize: 200,
+          fieldNames: '任务ID,任务名称,状态,所属项目,里程碑'
+        }) as { items?: Array<{ record_id?: string; fields?: Record<string, unknown> }> };
+        const verified = (verifyRes.items || []).find((item) => item.record_id === target.record_id);
+        const verifiedStatus = String(verified?.fields?.['状态'] ?? '').trim();
+        if (!verifiedStatus || verifiedStatus !== candidate) {
+          continue;
+        }
+        return {
+          ok: true,
+          recordId: target.record_id,
+          projectName: resolvedProjectName,
+          taskName,
+          status: candidate
+        };
+      } catch {
+        // 尝试下一个状态候选值，兼容飞书单选字段不同枚举命名
+      }
+    }
+
+    throw new Error(`飞书状态更新失败：无法匹配可用状态值（候选：${statusCandidates.join(' / ')}）`);
+  }
+
+  private normalizeRequirementPriority(value: unknown): 'low' | 'medium' | 'high' | null {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    if (!normalized) return null;
+    if (normalized === 'low' || normalized === '低') return 'low';
+    if (normalized === 'medium' || normalized === '中' || normalized === 'normal') return 'medium';
+    if (normalized === 'high' || normalized === '高') return 'high';
+    return null;
+  }
+
+  private resolveProjectId(actionInput: Record<string, unknown>, projectNameToId: Map<string, number>): number | null {
+    const idRaw = actionInput.projectId;
+    if (typeof idRaw === 'number' && Number.isInteger(idRaw)) {
+      return idRaw;
+    }
+    if (typeof idRaw === 'string' && /^\d+$/.test(idRaw.trim())) {
+      return Number(idRaw.trim());
+    }
+    const nameRaw = actionInput.projectName;
+    if (typeof nameRaw === 'string') {
+      const exact = projectNameToId.get(nameRaw.trim().toLowerCase());
+      if (exact) return exact;
+      for (const [projectName, id] of projectNameToId.entries()) {
+        if (this.fuzzyIncludes(projectName, nameRaw)) {
+          return id;
+        }
+      }
+    }
+    return null;
+  }
+
+  private toDateString(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
+
+  private addDays(base: Date, days: number): Date {
+    const next = new Date(base);
+    next.setDate(next.getDate() + days);
+    return next;
+  }
+
+  private normalizeDateString(value: unknown, fallback: string): string {
+    const raw = String(value ?? '').trim();
+    if (!raw) return fallback;
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return fallback;
+    return this.toDateString(parsed);
+  }
+
+  private async executeReActTool(
+    action: ReActActionName,
+    actionInput: Record<string, unknown> | null,
+    projectNameToId: Map<string, number>
+  ): Promise<string> {
+    if (!actionInput) {
+      return '执行失败：Action Input 不是合法 JSON 对象。';
+    }
+
+    if (action === 'create_task') {
+      const projectId = this.resolveProjectId(actionInput, projectNameToId);
+      if (!projectId) return '执行失败：缺少 projectId 或无法通过 projectName 匹配到项目。';
+      const title = String(actionInput.title ?? '').trim();
+      if (!title) return '执行失败：缺少 title。';
+      const assignee = String(actionInput.assignee ?? '待分配').trim() || '待分配';
+      const status = this.normalizeTaskStatus(actionInput.status) ?? TaskStatus.todo;
+      const today = this.toDateString(new Date());
+      const plannedStart = this.normalizeDateString(actionInput.plannedStart, today);
+      const endFallback = this.toDateString(this.addDays(new Date(`${plannedStart}T00:00:00`), 7));
+      const plannedEnd = this.normalizeDateString(actionInput.plannedEnd, endFallback);
+
+      const created = await this.prisma.task.create({
+        data: { projectId, title, assignee, status, plannedStart, plannedEnd },
+        include: { project: { select: { name: true } } }
+      });
+      return JSON.stringify({
+        ok: true,
+        action,
+        task: {
+          id: created.id,
+          project: created.project.name,
+          title: created.title,
+          assignee: created.assignee,
+          status: created.status,
+          plannedStart: created.plannedStart,
+          plannedEnd: created.plannedEnd
+        }
+      });
+    }
+
+    if (action === 'update_task_status') {
+      const targetStatus = this.normalizeTaskStatus(actionInput.status);
+      if (!targetStatus) return '执行失败：status 非法，可选 todo/in_progress/blocked/done。';
+
+      let targetTaskId: number | null = null;
+      const taskIdRaw = actionInput.taskId;
+      if (typeof taskIdRaw === 'number' && Number.isInteger(taskIdRaw)) {
+        targetTaskId = taskIdRaw;
+      } else if (typeof taskIdRaw === 'string' && /^\d+$/.test(taskIdRaw.trim())) {
+        targetTaskId = Number(taskIdRaw.trim());
+      }
+
+      if (!targetTaskId) {
+        const title = String(actionInput.title ?? '').trim();
+        if (!title) return '执行失败：缺少 taskId，且未提供 title 用于定位任务。';
+        const projectId = this.resolveProjectId(actionInput, projectNameToId) ?? undefined;
+        const projectName = typeof actionInput.projectName === 'string' ? actionInput.projectName.trim() : undefined;
+        const candidates = await this.prisma.task.findMany({
+          where: {
+            ...(projectId ? { projectId } : {})
+          },
+          orderBy: { id: 'desc' },
+          take: 200
+        });
+        const matched = candidates.find((item) => this.fuzzyIncludes(item.title, title))
+          || candidates.find((item) => item.title.toLowerCase().includes(title.toLowerCase()));
+        if (!matched) {
+          try {
+            const feishuUpdated = await this.updateFeishuTaskStatusByTitle({
+              title,
+              projectName,
+              status: targetStatus
+            });
+            if (feishuUpdated) {
+              return JSON.stringify({
+                ok: true,
+                action,
+                source: 'feishu_progress',
+                task: {
+                  recordId: feishuUpdated.recordId,
+                  project: feishuUpdated.projectName,
+                  title: feishuUpdated.taskName,
+                  status: feishuUpdated.status
+                }
+              });
+            }
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            return `执行失败：本地未找到匹配任务（title=${title}），且飞书更新失败（${message}）。`;
+          }
+          return `执行失败：未找到匹配任务（title=${title}），飞书进度记录中也未匹配到可更新项。`;
+        }
+        targetTaskId = matched.id;
+      }
+
+      const updated = await this.prisma.task.update({
+        where: { id: targetTaskId },
+        data: { status: targetStatus },
+        include: { project: { select: { name: true } } }
+      });
+
+      let feishuSync: { ok: boolean; recordId?: string; status?: string; error?: string } | null = null;
+      try {
+        const feishuUpdated = await this.updateFeishuTaskStatusByTitle({
+          title: updated.title,
+          projectName: updated.project.name,
+          status: targetStatus
+        });
+        if (feishuUpdated) {
+          feishuSync = { ok: true, recordId: feishuUpdated.recordId, status: feishuUpdated.status };
+        } else {
+          feishuSync = { ok: false, error: '未命中飞书对应任务，未同步。' };
+        }
+      } catch (err) {
+        feishuSync = { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+
+      return JSON.stringify({
+        ok: true,
+        action,
+        source: feishuSync?.ok ? 'system_task_and_feishu' : 'system_task',
+        task: {
+          id: updated.id,
+          project: updated.project.name,
+          title: updated.title,
+          status: updated.status
+        },
+        feishuSync
+      });
+    }
+
+    if (action === 'create_requirement') {
+      const projectId = this.resolveProjectId(actionInput, projectNameToId);
+      if (!projectId) return '执行失败：缺少 projectId 或无法通过 projectName 匹配到项目。';
+      const title = String(actionInput.title ?? '').trim();
+      const description = String(actionInput.description ?? '').trim();
+      if (!title) return '执行失败：缺少 title。';
+      if (!description) return '执行失败：缺少 description。';
+      const priority = this.normalizeRequirementPriority(actionInput.priority) ?? 'medium';
+      const versionRaw = String(actionInput.version ?? '').trim();
+      const version = versionRaw || undefined;
+
+      const created = await this.prisma.requirement.create({
+        data: { projectId, title, description, priority, version },
+        include: { project: { select: { name: true } } }
+      });
+      return JSON.stringify({
+        ok: true,
+        action,
+        requirement: {
+          id: created.id,
+          project: created.project.name,
+          title: created.title,
+          priority: created.priority,
+          status: created.status
+        }
+      });
+    }
+
+    const projectId = this.resolveProjectId(actionInput, projectNameToId) ?? undefined;
+    const status = this.normalizeTaskStatus(actionInput.status) ?? undefined;
+    const keyword = String(actionInput.keyword ?? '').trim();
+    const limitRaw = Number(actionInput.limit ?? 10);
+    const limit = Number.isFinite(limitRaw) ? Math.min(20, Math.max(1, Math.trunc(limitRaw))) : 10;
+
+    const tasks = await this.prisma.task.findMany({
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(status ? { status } : {}),
+        ...(keyword ? { title: { contains: keyword, mode: 'insensitive' } } : {})
+      },
+      orderBy: { id: 'desc' },
+      take: limit,
+      include: { project: { select: { name: true } } }
+    });
+    return JSON.stringify({
+      ok: true,
+      action: 'query_tasks',
+      total: tasks.length,
+      tasks: tasks.map((task) => ({
+        id: task.id,
+        project: task.project.name,
+        title: task.title,
+        assignee: task.assignee,
+        status: task.status,
+        plannedStart: task.plannedStart,
+        plannedEnd: task.plannedEnd
+      }))
+    });
+  }
+
   /** 通用 AI 聊天对话 */
   async chat(input: { message: string, history?: { role: 'user' | 'assistant', content: string }[] }) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
@@ -447,28 +984,172 @@ ${detailBlocks}`;
     }
 
     // 获取实时项目上下文数据 (RAG)
-    const [projects, tasks, requirements, costs] = await Promise.all([
-      this.prisma.project.findMany({
-        select: { id: true, name: true, budget: true, startDate: true, endDate: true }
-      }),
-      this.prisma.task.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.requirement.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.costEntry.aggregate({ _sum: { amount: true } })
-    ]);
+    const projects = await this.prisma.project.findMany({
+      select: { id: true, name: true, budget: true, startDate: true, endDate: true }
+    });
 
-    const totalBudget = projects.reduce((sum, p) => sum + p.budget, 0);
-    const totalActualCost = costs._sum.amount || 0;
-    const taskSummary = tasks.map(t => `${t.status}: ${t._count._all}`).join(', ');
-    const reqSummary = requirements.map(r => `${r.status}: ${r._count._all}`).join(', ');
-    const projectList = projects.map(p => ` - ${p.name} (预算: ¥${p.budget.toLocaleString()}, 周期: ${p.startDate || '未设'} 至 ${p.endDate || '未设'})`).join('\n');
+    // 根据用户提问里的项目名优先做项目范围过滤；未命中则回退全局。
+    const normalizedMessage = input.message.toLowerCase();
+    const scopedProjectIds = projects
+      .filter((project) => this.fuzzyIncludes(normalizedMessage, project.name))
+      .map((project) => project.id);
+    const scopedWhere = scopedProjectIds.length > 0 ? { projectId: { in: scopedProjectIds } } : {};
+
+    const [taskStats, requirementStats, costAgg, taskDetails, requirementDetails, costDetails] = await Promise.all([
+      this.prisma.task.groupBy({ by: ['status'], _count: { _all: true }, where: scopedWhere }),
+      this.prisma.requirement.groupBy({ by: ['status'], _count: { _all: true }, where: scopedWhere }),
+      this.prisma.costEntry.aggregate({ _sum: { amount: true }, where: scopedWhere }),
+      this.prisma.task.findMany({
+        where: scopedWhere,
+        orderBy: [{ projectId: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          title: true,
+          assignee: true,
+          status: true,
+          plannedStart: true,
+          plannedEnd: true,
+          project: { select: { name: true } }
+        }
+      }),
+      this.prisma.requirement.findMany({
+        where: scopedWhere,
+        orderBy: [{ projectId: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          priority: true,
+          status: true,
+          changeCount: true,
+          version: true,
+          project: { select: { name: true } }
+        }
+      }),
+      this.prisma.costEntry.findMany({
+        where: scopedWhere,
+        orderBy: [{ projectId: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          type: true,
+          amount: true,
+          occurredOn: true,
+          note: true,
+          project: { select: { name: true } }
+        }
+      })
+    ]);
+    const scopedProjects = scopedProjectIds.length > 0 ? projects.filter((p) => scopedProjectIds.includes(p.id)) : projects;
+    const totalBudget = scopedProjects.reduce((sum, p) => sum + p.budget, 0);
+    const totalActualCost = costAgg._sum.amount || 0;
+    const taskSummary = taskStats.map(t => `${t.status}: ${t._count._all}`).join(', ');
+    const reqSummary = requirementStats.map(r => `${r.status}: ${r._count._all}`).join(', ');
+    const projectList = scopedProjects.map(p => ` - ${p.name} (预算: ¥${p.budget.toLocaleString()}, 周期: ${p.startDate || '未设'} 至 ${p.endDate || '未设'})`).join('\n');
+
+    const DETAIL_LIMIT = 200;
+    const clippedTaskDetails = taskDetails.slice(0, DETAIL_LIMIT);
+    const clippedRequirementDetails = requirementDetails.slice(0, DETAIL_LIMIT);
+    const clippedCostDetails = costDetails.slice(0, DETAIL_LIMIT);
+    const scopedProjectNames = new Set(scopedProjects.map((project) => project.name));
+
+    let feishuTaskDetails: Array<{
+      recordId: string;
+      projectName: string;
+      taskName: string;
+      assignee: string;
+      status: string;
+      start: string;
+      end: string;
+    }> = [];
+    try {
+      const feishuRes = await this.feishuService.listRecords({
+        pageSize: 200,
+        fieldNames: '任务ID,任务名称,负责人,状态,开始时间,截止时间,所属项目,里程碑'
+      }) as { items?: Array<{ record_id?: string; fields?: Record<string, unknown> }> };
+      const records = feishuRes.items || [];
+      feishuTaskDetails = records
+        .map((record) => {
+          const fields = record.fields || {};
+          const projectName = String(fields['所属项目'] ?? '');
+          const milestone = String(fields['里程碑'] ?? '否');
+          if (milestone === '是') return null;
+          if (scopedProjectNames.size > 0 && projectName && !scopedProjectNames.has(projectName)) return null;
+          const taskName = String(fields['任务名称'] ?? fields['任务ID'] ?? '').trim();
+          if (!taskName) return null;
+          return {
+            recordId: String(record.record_id ?? ''),
+            projectName,
+            taskName,
+            assignee: String(fields['负责人'] ?? '-'),
+            status: String(fields['状态'] ?? '-'),
+            start: String(fields['开始时间'] ?? '-'),
+            end: String(fields['截止时间'] ?? '-')
+          };
+        })
+        .filter((item): item is {
+          recordId: string;
+          projectName: string;
+          taskName: string;
+          assignee: string;
+          status: string;
+          start: string;
+          end: string;
+        } => Boolean(item));
+    } catch {
+      // 忽略飞书读取失败，避免影响聊天主流程。
+      feishuTaskDetails = [];
+    }
+    const clippedFeishuTaskDetails = feishuTaskDetails.slice(0, DETAIL_LIMIT);
+
+    const detailScope = scopedProjectIds.length > 0
+      ? `已按问题命中项目范围过滤（${scopedProjects.map((p) => p.name).join('、')}）。`
+      : '未命中具体项目名，使用全项目范围。';
+
+    const taskDetailLines = clippedTaskDetails.length > 0
+      ? clippedTaskDetails.map((item) => (
+        `- [任务#${item.id}] 项目=${item.project.name} | 标题=${item.title} | 负责人=${item.assignee} | 状态=${item.status} | 开始=${item.plannedStart} | 截止=${item.plannedEnd}`
+      )).join('\n')
+      : '- 暂无任务数据';
+
+    const requirementDetailLines = clippedRequirementDetails.length > 0
+      ? clippedRequirementDetails.map((item) => {
+        const desc = (item.description || '').replace(/\s+/g, ' ').slice(0, 180);
+        return `- [需求#${item.id}] 项目=${item.project.name} | 标题=${item.title} | 优先级=${item.priority} | 状态=${item.status} | 变更=${item.changeCount} | 版本=${item.version || '-'} | 描述=${desc || '-'}`;
+      }).join('\n')
+      : '- 暂无需求数据';
+
+    const costDetailLines = clippedCostDetails.length > 0
+      ? clippedCostDetails.map((item) => (
+        `- [成本#${item.id}] 项目=${item.project.name} | 类型=${item.type} | 金额=¥${item.amount.toLocaleString()} | 日期=${item.occurredOn} | 备注=${item.note || '-'}`
+      )).join('\n')
+      : '- 暂无成本数据';
+
+    const feishuTaskDetailLines = clippedFeishuTaskDetails.length > 0
+      ? clippedFeishuTaskDetails.map((item) => (
+        `- [飞书记录#${item.recordId || '-'}] 项目=${item.projectName || '-'} | 任务=${item.taskName} | 负责人=${item.assignee} | 状态=${item.status} | 开始=${item.start} | 截止=${item.end}`
+      )).join('\n')
+      : '- 暂无飞书进度任务';
 
     const dataContext = `
 当前系统实时数据摘要：
+范围：${detailScope}
 1. 活跃项目清单：
 ${projectList}
 2. 全局任务分布：${taskSummary || '暂无任务'}
 3. 全局需求分布：${reqSummary || '暂无需求'}
 4. 整体财务状况：总预算 ¥${totalBudget.toLocaleString()}，实际已支出 ¥${totalActualCost.toLocaleString()}。
+
+5. 任务逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedTaskDetails.length}/${taskDetails.length}）：
+${taskDetailLines}
+
+6. 需求逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedRequirementDetails.length}/${requirementDetails.length}）：
+${requirementDetailLines}
+
+7. 成本逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedCostDetails.length}/${costDetails.length}）：
+${costDetailLines}
+
+8. 飞书进度任务明细（与进度计划页面同源，最多 ${DETAIL_LIMIT} 条，当前 ${clippedFeishuTaskDetails.length}/${feishuTaskDetails.length}）：
+${feishuTaskDetailLines}
 `;
 
     const systemPrompt = `你是一个专业的项目管理助理 Astraea，集成在 AstraeaFlow 项目管理系统中。
@@ -479,7 +1160,8 @@ ${dataContext}
 
 注意：
 - 如果用户询问特定项目的进展，请基于上述数据回答。
-- 如果数据中没有提到用户询问的具体细节（如某个任务的具体描述），请如实告知并引导用户前往相应页面查看相关模块。
+- 如果系统 Task 明细为空但飞书进度明细存在，优先使用飞书进度明细回答任务问题，并明确标注数据来源为“飞书进度记录”。
+- 如果数据中没有提到用户询问的具体细节，请如实告知并引导用户前往相应页面查看相关模块。
 - 始终以专业助手身份回答。`;
 
     const userPrompt = input.history && input.history.length > 0
@@ -490,6 +1172,98 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
       : input.message;
 
     try {
+      const projectNameToId = new Map<string, number>();
+      for (const project of projects) {
+        projectNameToId.set(project.name.trim().toLowerCase(), project.id);
+      }
+
+      // 对“修改任务状态”这种高频命令走确定性写入路径，避免模型未触发 action。
+      const directTaskStatus = this.tryParseDirectTaskStatusUpdate(input.message);
+      if (directTaskStatus?.title && directTaskStatus.status) {
+        const observation = await this.executeReActTool(
+          'update_task_status',
+          {
+            projectName: directTaskStatus.projectName,
+            title: directTaskStatus.title,
+            status: directTaskStatus.status
+          },
+          projectNameToId
+        );
+        return { content: this.formatMutationObservation(observation) };
+      }
+
+      if (this.isOperationIntent(input.message)) {
+        const reactSystemPrompt = `你是项目管理系统中的执行型智能体 Astraea，使用 ReAct（Thought -> Action -> Observation）模式。
+
+你的可用工具（只允许以下 4 个 action）：
+1) create_task
+输入 JSON 字段：projectId 或 projectName，title，assignee，可选 status/plannedStart/plannedEnd
+2) update_task_status
+输入 JSON 字段：status，且提供 taskId；若没有 taskId 可提供 title，并可选 projectId/projectName
+3) create_requirement
+输入 JSON 字段：projectId 或 projectName，title，description，可选 priority/version
+4) query_tasks
+输入 JSON 字段：可选 projectId/projectName/status/keyword/limit
+
+输出规则（必须严格遵循其一）：
+- 若需要调用工具：
+Thought: <一句话>
+Action: <create_task|update_task_status|create_requirement|query_tasks>
+Action Input: <JSON对象>
+- 若已可直接回复用户：
+Final Answer: <最终答复>
+
+你不能编造执行结果。只有收到 Observation 后，才能宣称已完成操作。
+
+${dataContext}`;
+
+        const reactMessages: ChatCompletionMessage[] = [{ role: 'system', content: reactSystemPrompt }];
+        if (input.history && input.history.length > 0) {
+          reactMessages.push(...input.history.slice(-10).map((item) => ({
+            role: item.role,
+            content: item.content
+          })));
+        }
+        reactMessages.push({ role: 'user', content: input.message });
+
+        const MAX_STEPS = 4;
+        const isMutation = this.isMutationIntent(input.message);
+        let toolExecuted = false;
+        let writeExecuted = false;
+        const writeActions: ReActActionName[] = ['create_task', 'update_task_status', 'create_requirement'];
+        for (let i = 0; i < MAX_STEPS; i += 1) {
+          const modelOutput = await this.callAiModelWithMessages(aiApiUrl, aiApiKey, aiModel, reactMessages);
+          reactMessages.push({ role: 'assistant', content: modelOutput });
+          const step = this.parseReActStep(modelOutput);
+
+          if (step.finalAnswer) {
+            if (isMutation && !writeExecuted) {
+              return { content: '本次请求尚未执行任何系统写入操作。请提供更明确的目标（项目名、任务名/ID、目标状态）后重试。' };
+            }
+            return { content: step.finalAnswer };
+          }
+
+          if (!step.action) {
+            return { content: modelOutput };
+          }
+
+          const observation = await this.executeReActTool(step.action, step.actionInput ?? null, projectNameToId);
+          toolExecuted = true;
+          if (writeActions.includes(step.action)) {
+            writeExecuted = true;
+          }
+          if (isMutation && writeActions.includes(step.action)) {
+            return { content: this.formatMutationObservation(observation) };
+          }
+          reactMessages.push({ role: 'user', content: `Observation: ${observation}` });
+        }
+
+        if (isMutation && !writeExecuted) {
+          return { content: '未执行成功：本次仅完成了查询，未发生写入操作。请重试并明确“更新/新增”的目标。' };
+        }
+        return { content: '已尝试执行操作，但未在限定步数内得到最终结论。请补充更具体的任务信息后重试。' };
+      }
+
       const content = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
       return { content };
     } catch (err) {

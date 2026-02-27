@@ -167,7 +167,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           height: 56px;
           border-radius: 50%;
           background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
-          box-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+          box-shadow: 0 8px 20px rgba(21, 94, 239, 0.28);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -186,12 +186,10 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           width: 380px;
           height: 600px;
           max-height: calc(100vh - 48px);
-          background: rgba(15, 15, 18, 0.9);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-          border: 1px solid rgba(255,255,255,0.1);
+          background: var(--color-bg-surface);
+          border: 1px solid var(--color-border);
           border-radius: 16px;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+          box-shadow: 0 16px 36px rgba(16, 24, 40, 0.16);
           z-index: 9999;
           display: flex;
           flex-direction: column;
@@ -204,37 +202,35 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           align-items: center;
           justify-content: space-between;
           padding: 16px 20px;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          background: rgba(0,0,0,0.2);
+          border-bottom: 1px solid var(--color-border);
+          background: var(--color-bg-muted);
         }
 
         .chatbot-title {
           display: flex;
           align-items: center;
           gap: 8px;
-          color: #fff;
+          color: var(--color-text-primary);
           font-weight: 600;
-          font-family: 'Orbitron', sans-serif;
-          letter-spacing: 0.5px;
+          letter-spacing: 0;
         }
 
         .glow-icon {
-          color: var(--glow-purple);
-          text-shadow: 0 0 8px var(--glow-purple);
+          color: var(--color-primary);
         }
 
         .icon-btn {
           background: none;
           border: none;
-          color: var(--text-muted);
+          color: var(--color-text-secondary);
           cursor: pointer;
           padding: 4px;
           border-radius: 4px;
           transition: all 0.2s;
         }
         .icon-btn:hover {
-          color: #fff;
-          background: rgba(255,255,255,0.1);
+          color: var(--color-text-primary);
+          background: var(--color-bg-surface);
         }
 
         .chatbot-chips {
@@ -242,8 +238,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           gap: 8px;
           padding: 12px 20px;
           overflow-x: auto;
-          border-bottom: 1px solid rgba(255,255,255,0.03);
-          background: rgba(255,255,255,0.01);
+          border-bottom: 1px solid var(--color-border);
+          background: var(--color-bg-muted);
         }
         .chatbot-chips::-webkit-scrollbar {
           display: none;
@@ -254,9 +250,9 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           align-items: center;
           gap: 6px;
           white-space: nowrap;
-          background: rgba(59, 130, 246, 0.1);
-          border: 1px solid rgba(59, 130, 246, 0.2);
-          color: var(--glow-blue);
+          background: var(--color-primary-soft);
+          border: 1px solid #bfd1ff;
+          color: var(--color-primary);
           padding: 6px 12px;
           border-radius: 100px;
           font-size: 12px;
@@ -264,7 +260,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           transition: all 0.2s;
         }
         .chatbot-chips button:hover {
-          background: rgba(59, 130, 246, 0.2);
+          background: #dbe7ff;
         }
 
         .chatbot-messages {
@@ -287,10 +283,10 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
         .chat-ai {
           align-self: flex-start;
-          background: rgba(255,255,255,0.05);
-          color: var(--text-main);
+          background: var(--color-bg-muted);
+          color: var(--color-text-primary);
           border-bottom-left-radius: 2px;
-          border: 1px solid rgba(255,255,255,0.05);
+          border: 1px solid var(--color-border);
         }
 
         .chat-user {
@@ -307,7 +303,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           gap: 8px;
           font-style: italic;
           color: var(--text-muted);
-          background: rgba(255,255,255,0.02);
+          background: var(--color-bg-muted);
         }
 
         .animate-spin {
@@ -321,25 +317,25 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
         .chatbot-input-area {
           padding: 16px;
-          background: rgba(0,0,0,0.3);
-          border-top: 1px solid rgba(255,255,255,0.05);
+          background: var(--color-bg-muted);
+          border-top: 1px solid var(--color-border);
           display: flex;
           gap: 12px;
         }
 
         .chatbot-input-area input {
           flex: 1;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.1);
+          background: var(--color-bg-surface);
+          border: 1px solid var(--color-border);
           border-radius: 8px;
           padding: 10px 16px;
-          color: #fff;
+          color: var(--color-text-primary);
           font-size: 14px;
           outline: none;
           transition: border-color 0.2s;
         }
         .chatbot-input-area input:focus {
-          border-color: var(--glow-blue);
+          border-color: var(--color-primary);
         }
 
         .send-btn {
@@ -356,8 +352,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           transition: all 0.2s;
         }
         .send-btn:disabled {
-          background: rgba(255,255,255,0.1);
-          color: rgba(255,255,255,0.3);
+          background: var(--color-bg-muted);
+          color: var(--color-text-muted);
           cursor: not-allowed;
         }
         .send-btn:not(:disabled):hover {

@@ -46,6 +46,7 @@ import AstraeaLayout from './components/AstraeaLayout';
 
 type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
+type ThemeMode = 'light' | 'dark';
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -133,6 +134,10 @@ function App() {
     if (!raw) return 'dashboard';
     const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
+  });
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const raw = localStorage.getItem('ui:theme');
+    return raw === 'dark' ? 'dark' : 'light';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -264,6 +269,11 @@ function App() {
   useEffect(() => {
     localStorage.setItem('pm_view', view);
   }, [view]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('ui:theme', theme);
+  }, [theme]);
 
   async function submitRequirement(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -2334,7 +2344,7 @@ function App() {
         )}
 
         {view === 'settings' && canWrite && (
-          <SettingsView onError={setError} onMessage={setMessage} />
+          <SettingsView onError={setError} onMessage={setMessage} theme={theme} onThemeChange={setTheme} />
         )}
       </div>
     </AstraeaLayout>

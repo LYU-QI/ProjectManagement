@@ -126,19 +126,21 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
             </p>
 
             {error && <div className="warn" style={{ marginBottom: 16 }}>{error}</div>}
-            {message && <div style={{ color: 'var(--neon-accent)', marginBottom: 16 }}>{message}</div>}
+            {message && <div style={{ color: 'var(--color-success)', marginBottom: 16 }}>{message}</div>}
 
             {canWrite && (
-                <form onSubmit={(e) => void handleSubmit(e)} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginBottom: 24, padding: 16, background: 'rgba(0,0,0,0.1)', borderRadius: 8 }}>
-                    <div style={{ flex: 1 }}>
+                <form onSubmit={(e) => void handleSubmit(e)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 24, padding: 16, background: 'var(--color-bg-muted)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                    <div>
                         <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-muted)' }}>显示名称 (表格显示)</label>
                         <input type="text" name="name" className="input" placeholder="例如：李四" required />
                     </div>
-                    <div style={{ flex: 1 }}>
+                    <div>
                         <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-muted)' }}>飞书 Open ID</label>
                         <input type="text" name="openId" className="input" placeholder="例如：ou_1234abcd5678..." required />
                     </div>
-                    <button type="submit" className="btn btn-primary">新增</button>
+                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button type="submit" className="btn btn-primary">新增</button>
+                    </div>
                 </form>
             )}
 
@@ -206,7 +208,7 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                                             ) : (
                                                 <div style={{ display: 'flex', gap: 6 }}>
                                                     <button className="btn" onClick={() => startEdit(u)} style={{ fontSize: 12, padding: '2px 8px' }}>编辑</button>
-                                                    <button className="btn" style={{ fontSize: 12, padding: '2px 8px', color: 'var(--neon-alert)' }} onClick={() => void handleDelete(u.id, u.name)}>删除</button>
+                                                    <button className="btn" style={{ fontSize: 12, padding: '2px 8px', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }} onClick={() => void handleDelete(u.id, u.name)}>删除</button>
                                                 </div>
                                             )}
                                         </td>

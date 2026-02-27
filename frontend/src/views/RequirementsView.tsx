@@ -1,11 +1,12 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { apiPost, API_BASE, TOKEN_KEY } from '../api/client';
 import { comparePrdVersions, createPrdDocument, deletePrdVersion, listPrdDocuments, getPrdVersions, uploadPrdVersion, deletePrdDocument } from '../api/prd';
 import type { Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -62,6 +63,8 @@ export default function RequirementsView({
   const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
   const [changeForm, setChangeForm] = useState({ reason: '', version: '' });
   const [changeFilters, setChangeFilters] = useState({ keyword: '', author: '', version: '' });
+  const [changeFiltersOpen, setChangeFiltersOpen] = usePersistentBoolean('ui:requirements:changeFiltersOpen', true);
+  const [compactTable, setCompactTable] = usePersistentBoolean('ui:requirements:compactTable', false);
 
   // AI 评审状态
   const [aiReviewDrawer, setAiReviewDrawer] = useState<{ open: boolean; req: Requirement | null; loading: boolean; result: string }>({
@@ -89,6 +92,13 @@ export default function RequirementsView({
     }
     return true;
   });
+  const requirementMetrics = useMemo(() => {
+    const total = requirements.length;
+    const highPriority = requirements.filter((item) => item.priority === 'high').length;
+    const inReview = requirements.filter((item) => item.status === 'in_review').length;
+    const changed = requirements.filter((item) => item.changeCount > 0).length;
+    return { total, highPriority, inReview, changed };
+  }, [requirements]);
 
   // 需求导入状态
   type ParsedReq = { title: string; description: string; priority: string };
@@ -271,18 +281,42 @@ export default function RequirementsView({
 
   return (
     <div>
+      <section className="metrics-grid">
+        <article className="metric-card">
+          <p className="metric-label">需求总数</p>
+          <p className="metric-value">{requirementMetrics.total}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">高优先级</p>
+          <p className="metric-value warning">{requirementMetrics.highPriority}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">评审中</p>
+          <p className="metric-value">{requirementMetrics.inReview}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">有变更记录</p>
+          <p className="metric-value">{requirementMetrics.changed}</p>
+        </article>
+      </section>
+
       {canWrite && (
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div className="card compact-card" style={{ marginTop: 12 }}>
+          <div className="section-title-row">
+            <h3>新增与导入</h3>
+            <span className="muted">支持手动新增和 AI 智能导入</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
           <form className="form" onSubmit={onSubmitRequirement} style={{ flex: 1 }}>
             <input name="title" placeholder="需求标题" required />
             <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
             <input name="description" placeholder="需求描述" required />
-            <button className="btn" type="submit">新增需求</button>
+            <button className="btn btn-primary" type="submit">新增需求</button>
           </form>
           <button
             className="btn"
             type="button"
-            style={{ padding: '8px 16px', background: 'var(--color-bg-elevated)', borderColor: 'var(--color-border)' }}
+            style={{ padding: '8px 16px' }}
             onClick={() => {
               if (!selectedProjectId) return alert('请先在顶部选择项目！');
               setImportModal({ open: true, file: null, loading: false, error: '', result: null });
@@ -291,33 +325,41 @@ export default function RequirementsView({
             📄 智能导入
           </button>
         </div>
+        </div>
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        {canWrite && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <h3 style={{ margin: 0 }}>需求列表</h3>
-            <button className="btn" type="button" disabled={selectedRequirementIds.length === 0} onClick={onDeleteSelectedRequirements}>
-              批量删除 ({selectedRequirementIds.length})
+        <div className="panel-header">
+          <h3 style={{ margin: 0 }}>需求列表</h3>
+          <div className="panel-actions">
+            <span className="muted">共 {requirements.length} 条</span>
+            <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              {compactTable ? '标准密度' : '紧凑密度'}
             </button>
+            {canWrite && (
+              <button className="btn" type="button" disabled={selectedRequirementIds.length === 0} onClick={onDeleteSelectedRequirements}>
+                批量删除 ({selectedRequirementIds.length})
+              </button>
+            )}
           </div>
-        )}
-        <table className="table">
-          <thead>
-            <tr>
-              {canWrite && (
-                <th>
-                  <input
-                    type="checkbox"
-                    checked={requirements.length > 0 && selectedRequirementIds.length === requirements.length}
-                    onChange={(e) => onSelectAllRequirements(requirements.map((r) => r.id), e.target.checked)}
-                  />
-                </th>
-              )}
-              <th>ID</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {requirements.map((r) => {
+        </div>
+        <div className="table-wrap">
+          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+            <thead>
+              <tr>
+                {canWrite && (
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={requirements.length > 0 && selectedRequirementIds.length === requirements.length}
+                      onChange={(e) => onSelectAllRequirements(requirements.map((r) => r.id), e.target.checked)}
+                    />
+                  </th>
+                )}
+                <th>ID</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th>操作</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {requirements.map((r) => {
               const isEditing = requirementEdit.editingId === r.id;
               const rowDraft = isEditing ? (requirementEdit.draft ?? r) : r;
               const isDirty = isEditing && requirementEdit.hasDirty(r);
@@ -420,7 +462,6 @@ export default function RequirementsView({
                           <button
                             className="btn"
                             type="button"
-                            style={{ borderColor: '#00ff88', color: '#00ff88' }}
                             onClick={() => void triggerAiReview(r)}
                           >
                             🤖 AI 评审
@@ -446,62 +487,75 @@ export default function RequirementsView({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {selectedRequirementForChanges && (
         <div className="card" style={{ marginTop: 12 }}>
-          <h3>变更时间线 - {selectedRequirementForChanges.title}</h3>
-          <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginBottom: 10 }}>
-            <input
-              placeholder="关键词（原因/说明）"
-              value={changeFilters.keyword}
-              onChange={(e) => setChangeFilters((prev) => ({ ...prev, keyword: e.target.value }))}
-            />
-            <input
-              placeholder="变更人"
-              value={changeFilters.author}
-              onChange={(e) => setChangeFilters((prev) => ({ ...prev, author: e.target.value }))}
-            />
-            <input
-              placeholder="版本号"
-              value={changeFilters.version}
-              onChange={(e) => setChangeFilters((prev) => ({ ...prev, version: e.target.value }))}
-            />
+          <div className="section-title-row">
+            <h3>变更时间线 - {selectedRequirementForChanges.title}</h3>
+            <div className="panel-actions">
+              <span className="muted">最近 {filteredChanges.length} 条</span>
+              <button className="btn" type="button" onClick={() => setChangeFiltersOpen((prev) => !prev)}>
+                {changeFiltersOpen ? '收起筛选' : '展开筛选'}
+              </button>
+            </div>
           </div>
-          <table className="table">
-            <thead><tr><th>时间</th><th>版本</th><th>变更人</th><th>原因</th><th>变更字段</th><th>说明</th></tr></thead>
-            <tbody>
-              {filteredChanges.map((change) => (
-                <tr key={change.id}>
-                  <td>{new Date(change.createdAt).toLocaleString()}</td>
-                  <td>{change.version || '-'}</td>
-                  <td>{change.changedBy || '-'}</td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>{change.reason || '-'}</td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>
-                    {['title', 'description', 'priority', 'status', 'version'].map((key) => {
-                      const before = (change.before as any)?.[key];
-                      const after = (change.after as any)?.[key];
-                      if (before === after) return null;
-                      return (
-                        <div key={key} className="change-field">
-                          <span className="change-key">{key}</span>
-                          <span className="change-before">{String(before ?? '-')}</span>
-                          <span className="change-arrow">→</span>
-                          <span className="change-after">{String(after ?? '-')}</span>
-                        </div>
-                      );
-                    })}
-                  </td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>{(change.after as any)?.description ?? (change.before as any)?.description ?? '-'}</td>
-                </tr>
-              ))}
-              {filteredChanges.length === 0 && (
-                <tr><td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无变更记录</td></tr>
-              )}
-            </tbody>
-          </table>
+          {changeFiltersOpen && (
+            <div className="filters-grid" style={{ marginBottom: 10 }}>
+              <input
+                placeholder="关键词（原因/说明）"
+                value={changeFilters.keyword}
+                onChange={(e) => setChangeFilters((prev) => ({ ...prev, keyword: e.target.value }))}
+              />
+              <input
+                placeholder="变更人"
+                value={changeFilters.author}
+                onChange={(e) => setChangeFilters((prev) => ({ ...prev, author: e.target.value }))}
+              />
+              <input
+                placeholder="版本号"
+                value={changeFilters.version}
+                onChange={(e) => setChangeFilters((prev) => ({ ...prev, version: e.target.value }))}
+              />
+            </div>
+          )}
+          <div className="table-wrap">
+            <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+              <thead><tr><th>时间</th><th>版本</th><th>变更人</th><th>原因</th><th>变更字段</th><th>说明</th></tr></thead>
+              <tbody>
+                {filteredChanges.map((change) => (
+                  <tr key={change.id}>
+                    <td>{new Date(change.createdAt).toLocaleString()}</td>
+                    <td>{change.version || '-'}</td>
+                    <td>{change.changedBy || '-'}</td>
+                    <td style={{ whiteSpace: 'pre-wrap' }}>{change.reason || '-'}</td>
+                    <td style={{ whiteSpace: 'pre-wrap' }}>
+                      {['title', 'description', 'priority', 'status', 'version'].map((key) => {
+                        const before = (change.before as any)?.[key];
+                        const after = (change.after as any)?.[key];
+                        if (before === after) return null;
+                        return (
+                          <div key={key} className="change-field">
+                            <span className="change-key">{key}</span>
+                            <span className="change-before">{String(before ?? '-')}</span>
+                            <span className="change-arrow">→</span>
+                            <span className="change-after">{String(after ?? '-')}</span>
+                          </div>
+                        );
+                      })}
+                    </td>
+                    <td style={{ whiteSpace: 'pre-wrap' }}>{(change.after as any)?.description ?? (change.before as any)?.description ?? '-'}</td>
+                  </tr>
+                ))}
+                {filteredChanges.length === 0 && (
+                  <tr><td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无变更记录</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -579,12 +633,10 @@ export default function RequirementsView({
                 </div>
               ) : (
                 <div style={{
-                  background: 'rgba(15, 15, 18, 0.9)',
-                  backdropFilter: 'blur(16px)',
-                  WebkitBackdropFilter: 'blur(16px)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'var(--color-bg-surface)',
+                  border: '1px solid var(--color-border)',
                   borderRadius: 4,
-                  color: '#e0e0e0',
+                  color: 'var(--color-text-primary)',
                   lineHeight: '1.6',
                   fontFamily: 'system-ui, -apple-system, sans-serif',
                 }} className="markdown-body">
@@ -623,13 +675,13 @@ export default function RequirementsView({
                 <button className="btn" type="button" onClick={() => fileInputRef.current?.click()}>
                   选择文件
                 </button>
-                <span style={{ fontSize: 13, flex: 1, color: importModal.file ? 'var(--text)' : 'var(--text-muted)' }}>
+                <span style={{ fontSize: 13, flex: 1, color: importModal.file ? 'var(--color-text-primary)' : 'var(--text-muted)' }}>
                   {importModal.file ? importModal.file.name : '未选择任何文件'}
                 </span>
                 <button
                   className="btn"
                   type="button"
-                  style={{ borderColor: '#b44dff', color: '#b44dff' }}
+                  style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
                   disabled={!importModal.file || importModal.loading}
                   onClick={() => void handleImportUpload()}
                 >
@@ -637,7 +689,7 @@ export default function RequirementsView({
                 </button>
               </div>
               {importModal.error && (
-                <div style={{ color: '#ff8080', fontSize: 13, marginTop: 10, padding: 8, background: 'rgba(255,80,80,0.1)', borderRadius: 4 }}>
+                <div style={{ color: 'var(--color-danger)', fontSize: 13, marginTop: 10, padding: 8, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)', borderRadius: 4 }}>
                   ⚠️ {importModal.error}
                 </div>
               )}
@@ -645,10 +697,10 @@ export default function RequirementsView({
 
             {importModal.result && (
               <div style={{ flex: 1, overflow: 'auto', padding: '20px 0' }}>
-                <div style={{ marginBottom: 10, fontSize: 13, color: '#00ff88' }}>
+                <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--color-success)' }}>
                   ✅ 成功识别到 {importModal.result.length} 条需求，请检查或修改确认：
                 </div>
-                <table className="table" style={{ background: 'var(--color-bg-base)' }}>
+                <table className="table">
                   <thead>
                     <tr>
                       <th style={{ width: '25%' }}>需求标题</th>
@@ -733,9 +785,8 @@ export default function RequirementsView({
               </button>
               {importModal.result && importModal.result.length > 0 && (
                 <button
-                  className="btn"
+                  className="btn btn-primary"
                   type="button"
-                  style={{ background: '#b44dff', color: '#fff', borderColor: '#b44dff' }}
                   disabled={importModal.loading}
                   onClick={() => void handleConfirmImport()}
                 >

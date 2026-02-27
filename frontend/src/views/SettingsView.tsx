@@ -16,9 +16,11 @@ const GROUP_ORDER = ['database', 'security', 'feishu', 'ai'];
 interface SettingsViewProps {
     onError: (msg: string) => void;
     onMessage: (msg: string) => void;
+    theme: 'light' | 'dark';
+    onThemeChange: (theme: 'light' | 'dark') => void;
 }
 
-export default function SettingsView({ onError, onMessage }: SettingsViewProps) {
+export default function SettingsView({ onError, onMessage, theme, onThemeChange }: SettingsViewProps) {
     const [items, setItems] = useState<ConfigItem[]>([]);
     const [editValues, setEditValues] = useState<Record<string, string>>({});
     const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
@@ -115,6 +117,23 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
         setRevealedKeys(new Set());
     }
 
+    function handleResetUiPreferences() {
+        if (!confirm('确定重置所有界面偏好设置吗？这会清除表格密度和筛选面板展开状态等本地偏好。')) return;
+        try {
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < window.localStorage.length; i++) {
+                const key = window.localStorage.key(i);
+                if (key && key.startsWith('ui:')) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+            onMessage('界面偏好已重置。刷新页面后将按默认布局显示。');
+        } catch {
+            onError('重置界面偏好失败，请重试。');
+        }
+    }
+
     /** 按分组组织配置项 */
     function getGroups(): { group: string; groupLabel: string; icon: string; items: ConfigItem[] }[] {
         const groupMap = new Map<string, { groupLabel: string; items: ConfigItem[] }>();
@@ -177,7 +196,7 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
     return (
         <div>
             {/* 页面头部 */}
-            <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--neon-cyan, var(--neon-blue))', background: 'rgba(0,15,30,0.6)' }}>
+            <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--color-primary)', background: 'var(--color-bg-surface)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                         <h3 style={{ margin: 0, fontSize: 16, letterSpacing: 1 }}>
@@ -188,6 +207,22 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
+                        <select
+                            value={theme}
+                            onChange={(e) => onThemeChange(e.target.value as 'light' | 'dark')}
+                            style={{ width: 130, fontSize: 12 }}
+                        >
+                            <option value="light">Light Theme</option>
+                            <option value="dark">Dark Theme</option>
+                        </select>
+                        <button
+                            className="btn"
+                            type="button"
+                            onClick={handleResetUiPreferences}
+                            style={{ padding: '6px 14px', fontSize: 11 }}
+                        >
+                            [ 重置界面偏好 ]
+                        </button>
                         <button
                             className="btn"
                             onClick={handleReset}
@@ -203,9 +238,9 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                             style={{
                                 padding: '6px 14px',
                                 fontSize: 11,
-                                background: hasChanges ? 'rgba(0,255,136,0.15)' : undefined,
-                                borderColor: hasChanges ? 'var(--neon-green)' : undefined,
-                                color: hasChanges ? 'var(--neon-green)' : undefined,
+                                background: hasChanges ? 'var(--color-success-soft)' : undefined,
+                                borderColor: hasChanges ? 'var(--color-success)' : undefined,
+                                color: hasChanges ? 'var(--color-success)' : undefined,
                                 opacity: hasChanges ? 1 : 0.4,
                             }}
                         >
@@ -223,7 +258,7 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                             margin: '0 0 16px',
                             fontSize: 14,
                             letterSpacing: 1,
-                            borderBottom: '1px solid var(--border-tech, rgba(0,243,255,0.15))',
+                            borderBottom: '1px solid var(--color-border)',
                             paddingBottom: 10,
                             flex: 1,
                         }}>
@@ -249,9 +284,9 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                                 padding: '8px 10px',
                                 borderRadius: 4,
                                 fontSize: 12,
-                                color: aiHealthResult.ok ? 'var(--neon-green)' : '#ff8080',
-                                background: aiHealthResult.ok ? 'rgba(0,255,136,0.08)' : 'rgba(255,80,80,0.08)',
-                                border: aiHealthResult.ok ? '1px solid rgba(0,255,136,0.2)' : '1px solid rgba(255,80,80,0.2)',
+                                color: aiHealthResult.ok ? 'var(--color-success)' : 'var(--color-danger)',
+                                background: aiHealthResult.ok ? 'var(--color-success-soft)' : 'var(--color-danger-soft)',
+                                border: aiHealthResult.ok ? '1px solid var(--color-success)' : '1px solid var(--color-danger)',
                             }}
                         >
                             {aiHealthResult.message}
@@ -280,8 +315,8 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                                         gap: 12,
                                         padding: '10px 12px',
                                         borderRadius: 4,
-                                        background: isModified ? 'rgba(0,255,136,0.05)' : 'rgba(0,0,0,0.2)',
-                                        border: isModified ? '1px solid rgba(0,255,136,0.2)' : '1px solid transparent',
+                                        background: isModified ? 'var(--color-success-soft)' : 'var(--color-bg-surface)',
+                                        border: isModified ? '1px solid var(--color-success)' : '1px solid var(--color-border)',
                                         transition: 'all 0.2s ease',
                                     }}
                                 >
@@ -290,7 +325,7 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                                         <div style={{
                                             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                                             fontSize: 12,
-                                            color: 'var(--neon-blue)',
+                                            color: 'var(--color-primary)',
                                             fontWeight: 600,
                                             letterSpacing: 0.5,
                                         }}>
@@ -308,7 +343,8 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                                         onChange={(e) => handleChange(item.key, e.target.value)}
                                         style={{
                                             width: '100%',
-                                            background: 'rgba(0,0,0,0.4)',
+                                            background: 'var(--color-bg-surface)',
+                                            border: '1px solid var(--color-border)',
                                             fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                                             fontSize: 12,
                                             letterSpacing: 0.3,
@@ -334,8 +370,7 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
                                         {isModified && (
                                             <span style={{
                                                 fontSize: 10,
-                                                color: 'var(--neon-green)',
-                                                fontFamily: 'Orbitron, monospace',
+                                                color: 'var(--color-success)',
                                                 whiteSpace: 'nowrap',
                                             }}>
                                                 已修改
@@ -352,8 +387,8 @@ export default function SettingsView({ onError, onMessage }: SettingsViewProps) 
             {/* 底部提示 */}
             <div className="card" style={{
                 marginTop: 8,
-                background: 'rgba(255,200,0,0.05)',
-                borderLeft: '3px solid rgba(255,200,0,0.4)',
+                background: 'var(--color-warning-soft)',
+                borderLeft: '3px solid var(--color-warning)',
                 fontSize: 12,
                 color: 'var(--text-muted)',
             }}>

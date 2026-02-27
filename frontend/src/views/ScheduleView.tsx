@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import type { FeishuFormState, FeishuDependency } from '../types';
+import usePersistentBoolean from '../hooks/usePersistentBoolean';
 
 type ScheduleRow = FeishuFormState & { recordId: string };
 
@@ -84,6 +85,7 @@ export default function ScheduleView({
   onInlineKeyDown
 }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar'>('list');
+  const [compactTable, setCompactTable] = usePersistentBoolean('ui:schedule:compactTable', false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [dependencyForm, setDependencyForm] = useState({ taskRecordId: '', dependsOnRecordId: '', type: 'FS' as 'FS' | 'SS' | 'FF' });
   const ganttWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -320,19 +322,53 @@ export default function ScheduleView({
     }
     return grouped;
   }, [tasks, milestones]);
+  const scheduleMetrics = useMemo(() => {
+    const taskCount = tasks.length;
+    const milestoneCount = milestones.length;
+    const dependencyCount = scheduleDependencies.length;
+    const blockedCount = tasks.filter((item) => (item.状态 || '').includes('阻塞')).length;
+    return { taskCount, milestoneCount, dependencyCount, blockedCount };
+  }, [tasks, milestones, scheduleDependencies]);
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <h3>进度同步视图</h3>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <section className="metrics-grid">
+        <article className="metric-card">
+          <p className="metric-label">任务总数</p>
+          <p className="metric-value">{scheduleMetrics.taskCount}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">里程碑</p>
+          <p className="metric-value">{scheduleMetrics.milestoneCount}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">依赖关系</p>
+          <p className="metric-value">{scheduleMetrics.dependencyCount}</p>
+        </article>
+        <article className="metric-card">
+          <p className="metric-label">阻塞任务</p>
+          <p className="metric-value warning">{scheduleMetrics.blockedCount}</p>
+        </article>
+      </section>
+
+      <div className="card compact-card" style={{ marginTop: 12 }}>
+        <div className="section-title-row">
+          <h3>进度视图</h3>
+          <span className="muted">风险等级：{riskText}</span>
+        </div>
+        <div className="panel-header" style={{ marginBottom: 0 }}>
+          <div className="muted">切换不同展示方式查看任务状态</div>
+          <div className="panel-actions">
+            {viewMode === 'list' && (
+              <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+                {compactTable ? '标准密度' : '紧凑密度'}
+              </button>
+            )}
             <button className={viewMode === 'list' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
             <button className={viewMode === 'gantt' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
             <button className={viewMode === 'calendar' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
           </div>
         </div>
-        <p style={{ marginTop: 6, color: 'var(--text-muted)' }}>风险等级: {riskText}</p>
         {scheduleLoading && <p>Loading...</p>}
         {scheduleError && <p className="warn">{scheduleError}</p>}
       </div>
@@ -342,49 +378,62 @@ export default function ScheduleView({
           <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>进度同步仅展示飞书数据，请在飞书记录模块新增或编辑。</p>
 
           <div className="card" style={{ marginTop: 12 }}>
-            <h3>任务列表</h3>
-            <table className="table">
-              <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
-              <tbody>
-                {tasks.map((t) => {
-                  return (
-                    <tr key={t.recordId}>
-                      <td>{t.任务名称}</td>
-                      <td>{formatAssignee(t.负责人)}</td>
-                      <td>{t.状态}</td>
-                      <td>{t.开始时间}</td>
-                      <td>{t.截止时间}</td>
-                      <td>{formatProgress(t.进度)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="section-title-row">
+              <h3>任务列表</h3>
+              <span className="muted">来自飞书记录同步</span>
+            </div>
+            <div className="table-wrap">
+              <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+                <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
+                <tbody>
+                  {tasks.map((t) => {
+                    return (
+                      <tr key={t.recordId}>
+                        <td>{t.任务名称}</td>
+                        <td>{formatAssignee(t.负责人)}</td>
+                        <td>{t.状态}</td>
+                        <td>{t.开始时间}</td>
+                        <td>{t.截止时间}</td>
+                        <td>{formatProgress(t.进度)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>
-            <h3>里程碑</h3>
-            <table className="table">
-              <thead><tr><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
-              <tbody>
-                {milestones.map((m) => {
-                  return (
-                    <tr key={m.recordId}>
-                      <td>{m.任务名称}</td>
-                      <td>{formatAssignee(m.负责人)}</td>
-                      <td>{m.开始时间}</td>
-                      <td>{m.截止时间 || '-'}</td>
-                      <td>{m.状态}</td>
-                      <td>{formatProgress(m.进度)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="section-title-row">
+              <h3>里程碑</h3>
+              <span className="muted">按计划与实际日期追踪</span>
+            </div>
+            <div className="table-wrap">
+              <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+                <thead><tr><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
+                <tbody>
+                  {milestones.map((m) => {
+                    return (
+                      <tr key={m.recordId}>
+                        <td>{m.任务名称}</td>
+                        <td>{formatAssignee(m.负责人)}</td>
+                        <td>{m.开始时间}</td>
+                        <td>{m.截止时间 || '-'}</td>
+                        <td>{m.状态}</td>
+                        <td>{formatProgress(m.进度)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="card" style={{ marginTop: 12 }}>
-            <h3>任务依赖（WBS）</h3>
+            <div className="section-title-row">
+              <h3>任务依赖（WBS）</h3>
+              <span className="muted">支持 FS / SS / FF 关系</span>
+            </div>
             {scheduleDependenciesError && <p className="warn">{scheduleDependenciesError}</p>}
             <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', alignItems: 'end' }}>
               <div>
@@ -442,7 +491,7 @@ export default function ScheduleView({
               </div>
             </div>
 
-            <table className="table" style={{ marginTop: 10 }}>
+            <table className={`table ${compactTable ? 'table-compact' : ''}`} style={{ marginTop: 10 }}>
               <thead><tr><th>任务</th><th>关系</th><th>前置任务</th><th>操作</th></tr></thead>
               <tbody>
                 {scheduleDependencies.map((dep) => {
@@ -474,6 +523,10 @@ export default function ScheduleView({
 
       {viewMode === 'gantt' && (
         <div className="card">
+          <div className="section-title-row">
+            <h3>甘特图</h3>
+            <span className="muted">关键路径高亮展示</span>
+          </div>
           {ganttData.days.length === 0 ? (
             <p className="warn">暂无可用日期数据，无法生成甘特图。</p>
           ) : (
@@ -481,14 +534,14 @@ export default function ScheduleView({
               <svg className="gantt-deps" width={svgSize.width} height={svgSize.height}>
                 <defs>
                   <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
-                    <path d="M0,0 L8,4 L0,8 Z" fill="rgba(255,255,255,0.7)" />
+                    <path d="M0,0 L8,4 L0,8 Z" fill="var(--color-text-muted)" />
                   </marker>
                 </defs>
                 {depPaths.map((path) => (
                   <path
                     key={path.id}
                     d={path.d}
-                    stroke={path.critical ? 'rgba(255,120,40,0.9)' : 'rgba(255,255,255,0.55)'}
+                    stroke={path.critical ? 'var(--color-warning)' : 'var(--color-text-muted)'}
                     strokeWidth={1}
                     fill="none"
                     markerEnd="url(#arrow)"
@@ -555,6 +608,10 @@ export default function ScheduleView({
 
       {viewMode === 'calendar' && (
         <div className="card">
+          <div className="section-title-row">
+            <h3>日历视图</h3>
+            <span className="muted">任务与里程碑按日分布</span>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
             <strong>{calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月</strong>
