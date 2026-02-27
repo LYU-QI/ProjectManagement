@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { TaskStatus } from '@prisma/client';
+import { Prisma, TaskStatus } from '@prisma/client';
 import * as xlsx from 'xlsx';
 import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
@@ -49,6 +49,12 @@ interface ReActStep {
   action?: ReActActionName;
   actionInput?: Record<string, unknown> | null;
   finalAnswer?: string;
+}
+
+interface ChatActor {
+  sub?: number;
+  name?: string;
+  role?: string;
 }
 
 @Injectable()
@@ -656,12 +662,15 @@ ${detailBlocks}`;
   }
 
   private normalizeTaskStatus(value: unknown): TaskStatus | null {
-    const normalized = String(value ?? '').trim().toLowerCase();
-    if (!normalized) return null;
-    if (normalized === 'todo' || normalized === '待办') return TaskStatus.todo;
-    if (normalized === 'in_progress' || normalized === 'in progress' || normalized === '进行中') return TaskStatus.in_progress;
-    if (normalized === 'blocked' || normalized === '阻塞') return TaskStatus.blocked;
-    if (normalized === 'done' || normalized === '已完成' || normalized === '完成') return TaskStatus.done;
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (!raw) return null;
+    const compact = raw.replace(/[\s\p{P}\p{S}]+/gu, '');
+    if (!compact) return null;
+
+    if (['todo', '待办', '未开始', '待开始'].some((k) => compact.includes(k))) return TaskStatus.todo;
+    if (['inprogress', 'in_progress', '进行中', '处理中', '开发中'].some((k) => compact.includes(k))) return TaskStatus.in_progress;
+    if (['blocked', '阻塞', '受阻', '卡住'].some((k) => compact.includes(k))) return TaskStatus.blocked;
+    if (['done', '已完成', '完成', '完成了', '已结束', 'closed', 'resolved'].some((k) => compact.includes(k))) return TaskStatus.done;
     return null;
   }
 
@@ -766,6 +775,21 @@ ${detailBlocks}`;
     return date.toISOString().slice(0, 10);
   }
 
+  private resolveRelativeDateText(text: string): string | null {
+    const value = text.trim().toLowerCase();
+    const base = new Date();
+    const shift = (days: number) => this.toDateString(this.addDays(base, days));
+
+    if (value.includes('今天') || value === 'today') return shift(0);
+    if (value.includes('明天') || value === 'tomorrow') return shift(1);
+    if (value.includes('后天')) return shift(2);
+    if (value.includes('昨天') || value === 'yesterday') return shift(-1);
+    if (value.includes('前天')) return shift(-2);
+    if (value.includes('下周')) return shift(7);
+    if (value.includes('本周')) return shift(0);
+    return null;
+  }
+
   private addDays(base: Date, days: number): Date {
     const next = new Date(base);
     next.setDate(next.getDate() + days);
@@ -775,6 +799,8 @@ ${detailBlocks}`;
   private normalizeDateString(value: unknown, fallback: string): string {
     const raw = String(value ?? '').trim();
     if (!raw) return fallback;
+    const relativeDate = this.resolveRelativeDateText(raw);
+    if (relativeDate) return relativeDate;
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) return fallback;
     return this.toDateString(parsed);
@@ -971,13 +997,81 @@ ${detailBlocks}`;
     });
   }
 
+  private async createChatAuditLog(input: {
+    actor?: ChatActor;
+    projectId?: number;
+    message: string;
+    history?: { role: 'user' | 'assistant'; content: string }[];
+    mode: 'direct' | 'react' | 'qa' | 'error';
+    scopedProjectIds: number[];
+    scopedProjectNames: string[];
+    detailScope: string;
+    resultContent?: string;
+    error?: string;
+    trace: Array<Record<string, unknown>>;
+    toolCalls: Array<Record<string, unknown>>;
+  }) {
+    const payload = {
+      source: 'ai_chatbot',
+      mode: input.mode,
+      message: input.message,
+      history: input.history || [],
+      scopedProjectIds: input.scopedProjectIds,
+      scopedProjectNames: input.scopedProjectNames,
+      detailScope: input.detailScope,
+      trace: input.trace,
+      toolCalls: input.toolCalls,
+      resultContent: input.resultContent || '',
+      error: input.error || ''
+    };
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: input.actor?.sub,
+          userName: input.actor?.name,
+          userRole: input.actor?.role,
+          method: 'AI_CHAT',
+          path: '/api/v1/ai/chat',
+          projectId: input.projectId,
+          requestBody: payload as unknown as Prisma.InputJsonValue
+        }
+      });
+    } catch (error) {
+      console.error('createChatAuditLog error', error);
+    }
+  }
+
+  private buildTraceStep(step: string, data: Record<string, unknown>) {
+    return {
+      step,
+      at: new Date().toISOString(),
+      ...data
+    };
+  }
+
   /** 通用 AI 聊天对话 */
-  async chat(input: { message: string, history?: { role: 'user' | 'assistant', content: string }[] }) {
+  async chat(
+    input: { message: string, history?: { role: 'user' | 'assistant', content: string }[] },
+    actor?: ChatActor
+  ) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
     const aiApiKey = this.configService.getRawValue('AI_API_KEY');
     const aiModel = this.configService.getRawValue('AI_MODEL');
 
     if (!aiApiUrl || !aiApiKey || !aiModel) {
+      await this.createChatAuditLog({
+        actor,
+        mode: 'error',
+        message: input.message,
+        history: input.history,
+        scopedProjectIds: [],
+        scopedProjectNames: [],
+        detailScope: 'AI 模型未配置',
+        error: 'missing_ai_config',
+        trace: [this.buildTraceStep('config_check', { ok: false, reason: 'missing_ai_config' })],
+        toolCalls: []
+      });
       return {
         content: '抱歉，系统尚未配置 AI 模型（AI_API_URL / AI_API_KEY / AI_MODEL），请联系管理员。'
       };
@@ -1104,6 +1198,34 @@ ${detailBlocks}`;
     const detailScope = scopedProjectIds.length > 0
       ? `已按问题命中项目范围过滤（${scopedProjects.map((p) => p.name).join('、')}）。`
       : '未命中具体项目名，使用全项目范围。';
+    const now = new Date();
+    const localDate = new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'long'
+    }).format(now);
+    const localDateTime = new Intl.DateTimeFormat('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(now);
+    const isoDate = this.toDateString(now);
+    const traceSteps: Array<Record<string, unknown>> = [
+      this.buildTraceStep('context_scope', {
+        scopedProjectIds,
+        scopedProjectNames: scopedProjects.map((p) => p.name),
+        detailScope,
+        localDate,
+        localDateTime,
+        isoDate
+      })
+    ];
+    const toolCalls: Array<Record<string, unknown>> = [];
 
     const taskDetailLines = clippedTaskDetails.length > 0
       ? clippedTaskDetails.map((item) => (
@@ -1132,6 +1254,7 @@ ${detailBlocks}`;
 
     const dataContext = `
 当前系统实时数据摘要：
+0. 当前时间锚点：今天是 ${localDate}，当前本地时间 ${localDateTime}（ISO 日期 ${isoDate}）。
 范围：${detailScope}
 1. 活跃项目清单：
 ${projectList}
@@ -1160,6 +1283,7 @@ ${dataContext}
 
 注意：
 - 如果用户询问特定项目的进展，请基于上述数据回答。
+- 当用户提到“今天/明天/昨天”时，请以上述“当前时间锚点”为准进行换算后回答，并在答案中带上具体日期（YYYY-MM-DD）。
 - 如果系统 Task 明细为空但飞书进度明细存在，优先使用飞书进度明细回答任务问题，并明确标注数据来源为“飞书进度记录”。
 - 如果数据中没有提到用户询问的具体细节，请如实告知并引导用户前往相应页面查看相关模块。
 - 始终以专业助手身份回答。`;
@@ -1170,6 +1294,7 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
 
 当前的提问：${input.message}`
       : input.message;
+    let auditProjectId: number | undefined = scopedProjectIds[0];
 
     try {
       const projectNameToId = new Map<string, number>();
@@ -1180,6 +1305,14 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
       // 对“修改任务状态”这种高频命令走确定性写入路径，避免模型未触发 action。
       const directTaskStatus = this.tryParseDirectTaskStatusUpdate(input.message);
       if (directTaskStatus?.title && directTaskStatus.status) {
+        if (!auditProjectId && directTaskStatus.projectName) {
+          auditProjectId = this.resolveProjectId({ projectName: directTaskStatus.projectName }, projectNameToId) ?? undefined;
+        }
+        traceSteps.push(this.buildTraceStep('direct_intent_parse', {
+          projectName: directTaskStatus.projectName || '',
+          title: directTaskStatus.title,
+          status: directTaskStatus.status
+        }));
         const observation = await this.executeReActTool(
           'update_task_status',
           {
@@ -1189,7 +1322,30 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
           },
           projectNameToId
         );
-        return { content: this.formatMutationObservation(observation) };
+        toolCalls.push(this.buildTraceStep('tool_call', {
+          action: 'update_task_status',
+          actionInput: {
+            projectName: directTaskStatus.projectName,
+            title: directTaskStatus.title,
+            status: directTaskStatus.status
+          },
+          observation
+        }));
+        const content = this.formatMutationObservation(observation);
+        await this.createChatAuditLog({
+          actor,
+          projectId: auditProjectId,
+          mode: 'direct',
+          message: input.message,
+          history: input.history,
+          scopedProjectIds,
+          scopedProjectNames: scopedProjects.map((p) => p.name),
+          detailScope,
+          resultContent: content,
+          trace: traceSteps,
+          toolCalls
+        });
+        return { content };
       }
 
       if (this.isOperationIntent(input.message)) {
@@ -1228,46 +1384,163 @@ ${dataContext}`;
 
         const MAX_STEPS = 4;
         const isMutation = this.isMutationIntent(input.message);
-        let toolExecuted = false;
         let writeExecuted = false;
         const writeActions: ReActActionName[] = ['create_task', 'update_task_status', 'create_requirement'];
         for (let i = 0; i < MAX_STEPS; i += 1) {
           const modelOutput = await this.callAiModelWithMessages(aiApiUrl, aiApiKey, aiModel, reactMessages);
           reactMessages.push({ role: 'assistant', content: modelOutput });
+          traceSteps.push(this.buildTraceStep('react_model_output', {
+            iteration: i + 1,
+            output: modelOutput
+          }));
           const step = this.parseReActStep(modelOutput);
 
           if (step.finalAnswer) {
             if (isMutation && !writeExecuted) {
-              return { content: '本次请求尚未执行任何系统写入操作。请提供更明确的目标（项目名、任务名/ID、目标状态）后重试。' };
+              const content = '本次请求尚未执行任何系统写入操作。请提供更明确的目标（项目名、任务名/ID、目标状态）后重试。';
+              await this.createChatAuditLog({
+                actor,
+                projectId: auditProjectId,
+                mode: 'react',
+                message: input.message,
+                history: input.history,
+                scopedProjectIds,
+                scopedProjectNames: scopedProjects.map((p) => p.name),
+                detailScope,
+                resultContent: content,
+                trace: traceSteps,
+                toolCalls
+              });
+              return { content };
             }
+            await this.createChatAuditLog({
+              actor,
+              projectId: auditProjectId,
+              mode: 'react',
+              message: input.message,
+              history: input.history,
+              scopedProjectIds,
+              scopedProjectNames: scopedProjects.map((p) => p.name),
+              detailScope,
+              resultContent: step.finalAnswer,
+              trace: traceSteps,
+              toolCalls
+            });
             return { content: step.finalAnswer };
           }
 
           if (!step.action) {
+            await this.createChatAuditLog({
+              actor,
+              projectId: auditProjectId,
+              mode: 'react',
+              message: input.message,
+              history: input.history,
+              scopedProjectIds,
+              scopedProjectNames: scopedProjects.map((p) => p.name),
+              detailScope,
+              resultContent: modelOutput,
+              trace: traceSteps,
+              toolCalls
+            });
             return { content: modelOutput };
           }
 
           const observation = await this.executeReActTool(step.action, step.actionInput ?? null, projectNameToId);
-          toolExecuted = true;
+          toolCalls.push(this.buildTraceStep('tool_call', {
+            iteration: i + 1,
+            action: step.action,
+            actionInput: step.actionInput || {},
+            observation
+          }));
           if (writeActions.includes(step.action)) {
             writeExecuted = true;
           }
           if (isMutation && writeActions.includes(step.action)) {
-            return { content: this.formatMutationObservation(observation) };
+            const content = this.formatMutationObservation(observation);
+            await this.createChatAuditLog({
+              actor,
+              projectId: auditProjectId,
+              mode: 'react',
+              message: input.message,
+              history: input.history,
+              scopedProjectIds,
+              scopedProjectNames: scopedProjects.map((p) => p.name),
+              detailScope,
+              resultContent: content,
+              trace: traceSteps,
+              toolCalls
+            });
+            return { content };
           }
           reactMessages.push({ role: 'user', content: `Observation: ${observation}` });
         }
 
         if (isMutation && !writeExecuted) {
-          return { content: '未执行成功：本次仅完成了查询，未发生写入操作。请重试并明确“更新/新增”的目标。' };
+          const content = '未执行成功：本次仅完成了查询，未发生写入操作。请重试并明确“更新/新增”的目标。';
+          await this.createChatAuditLog({
+            actor,
+            projectId: auditProjectId,
+            mode: 'react',
+            message: input.message,
+            history: input.history,
+            scopedProjectIds,
+            scopedProjectNames: scopedProjects.map((p) => p.name),
+            detailScope,
+            resultContent: content,
+            trace: traceSteps,
+            toolCalls
+          });
+          return { content };
         }
-        return { content: '已尝试执行操作，但未在限定步数内得到最终结论。请补充更具体的任务信息后重试。' };
+        const content = '已尝试执行操作，但未在限定步数内得到最终结论。请补充更具体的任务信息后重试。';
+        await this.createChatAuditLog({
+          actor,
+          projectId: auditProjectId,
+          mode: 'react',
+          message: input.message,
+          history: input.history,
+          scopedProjectIds,
+          scopedProjectNames: scopedProjects.map((p) => p.name),
+          detailScope,
+          resultContent: content,
+          trace: traceSteps,
+          toolCalls
+        });
+        return { content };
       }
 
       const content = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+      traceSteps.push(this.buildTraceStep('qa_response', { content }));
+      await this.createChatAuditLog({
+        actor,
+        projectId: auditProjectId,
+        mode: 'qa',
+        message: input.message,
+        history: input.history,
+        scopedProjectIds,
+        scopedProjectNames: scopedProjects.map((p) => p.name),
+        detailScope,
+        resultContent: content,
+        trace: traceSteps,
+        toolCalls
+      });
       return { content };
     } catch (err) {
       console.error('AI Chat Error:', err);
+      await this.createChatAuditLog({
+        actor,
+        projectId: auditProjectId,
+        mode: 'error',
+        message: input.message,
+        history: input.history,
+        scopedProjectIds,
+        scopedProjectNames: scopedProjects.map((p) => p.name),
+        detailScope,
+        error: err instanceof Error ? err.message : String(err),
+        trace: traceSteps,
+        toolCalls
+      });
       return {
         content: `AI 响应失败: ${err instanceof Error ? err.message : String(err)}`
       };

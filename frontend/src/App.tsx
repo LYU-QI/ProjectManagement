@@ -14,6 +14,7 @@ import { FEISHU_DEFAULT_FORM, FEISHU_FIELD_NAMES, FEISHU_FIELDS } from './feishu
 import type {
   AuthUser,
   AuditLogItem,
+  ChatbotAuditItem,
   CostEntryItem,
   CostSummary,
   DashboardOverview,
@@ -155,6 +156,7 @@ function App() {
   const [aiReportSource, setAiReportSource] = useState<string>('');
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [chatbotAuditLogs, setChatbotAuditLogs] = useState<ChatbotAuditItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
@@ -237,6 +239,7 @@ function App() {
     setAiReport('');
     setNotifications([]);
     setAuditLogs([]);
+    setChatbotAuditLogs([]);
   }
 
   async function submitLogin(e: FormEvent<HTMLFormElement>) {
@@ -925,11 +928,16 @@ function App() {
   }
 
   async function loadAuditLogs() {
-    if (!selectedProjectId || !canWrite) return;
+    if (!canWrite) return;
+    const qs = selectedProjectId ? `?projectId=${selectedProjectId}` : '';
     try {
       await runWithRetry('加载审计日志', async () => {
-        const rows = await apiGet<AuditLogItem[]>(`/audit-logs?projectId=${selectedProjectId}`);
+        const [rows, chatRows] = await Promise.all([
+          apiGet<AuditLogItem[]>(`/audit-logs${qs}`),
+          apiGet<ChatbotAuditItem[]>('/audit-logs/chatbot')
+        ]);
         setAuditLogs(rows);
+        setChatbotAuditLogs(chatRows);
       });
     } catch {
       // error already tracked via retry
@@ -948,6 +956,12 @@ function App() {
     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
   }, [projects, selectedProjectId]);
   const canWrite = user?.role === 'pm' || user?.role === 'lead';
+
+  useEffect(() => {
+    if (view === 'audit' && canWrite) {
+      void loadAuditLogs();
+    }
+  }, [view, selectedProjectId, canWrite]);
 
   const [feishuRecords, setFeishuRecords] = useState<FeishuRecord[]>([]);
   const [feishuLoading, setFeishuLoading] = useState(false);
@@ -1910,7 +1924,9 @@ function App() {
   return (
     <AstraeaLayout
       currentView={view}
-      onViewChange={(newView: ViewKey) => setView(newView)}
+      onViewChange={(newView: ViewKey) => {
+        setView(newView);
+      }}
       user={user}
       onLogout={logout}
       unreadCount={notifications.filter((n) => !n.readAt).length}
@@ -2340,7 +2356,11 @@ function App() {
         )}
 
         {view === 'audit' && canWrite && (
-          <AuditView auditLogs={auditLogs} />
+          <AuditView
+            auditLogs={auditLogs}
+            chatbotAuditLogs={chatbotAuditLogs}
+            onRefresh={() => { void loadAuditLogs(); }}
+          />
         )}
 
         {view === 'settings' && canWrite && (

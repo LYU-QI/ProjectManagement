@@ -11,4 +11,10 @@ export class AuditLogsController {
   list(@Query('projectId') projectId?: string) {
     return this.auditLogsService.list(projectId ? Number(projectId) : undefined);
   }
+
+  @Roles('pm', 'lead')
+  @Get('chatbot')
+  listChatbot(@Query('projectId') projectId?: string) {
+    return this.auditLogsService.listChatbot(projectId ? Number(projectId) : undefined);
+  }
 }

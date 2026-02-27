@@ -212,6 +212,28 @@ export interface AuditLogItem {
   createdAt: string;
 }
 
+export interface ChatbotAuditNode {
+  step: string;
+  at: string;
+  [key: string]: unknown;
+}
+
+export interface ChatbotAuditItem {
+  id: number;
+  userName?: string;
+  userRole?: string;
+  projectId?: number;
+  createdAt: string;
+  mode: string;
+  message: string;
+  resultContent: string;
+  error?: string;
+  detailScope?: string;
+  scopedProjectNames: string[];
+  trace: ChatbotAuditNode[];
+  toolCalls: ChatbotAuditNode[];
+}
+
 export interface AuthUser {
   id: number;
   name: string;

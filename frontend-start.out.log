@@ -106,3 +106,17 @@ Port 5176 is in use, trying another one...
 11:21:14 [vite] (client) hmr update /src/views/SettingsView.tsx
 11:21:40 [vite] (client) hmr update /src/styles.css
 11:29:14 [vite] (client) hmr update /src/styles.css
+13:13:27 [vite] (client) hmr update /src/views/AuditView.tsx
+13:13:37 [vite] (client) hmr update /src/App.tsx
+13:13:47 [vite] (client) hmr update /src/App.tsx
+13:20:19 [vite] (client) hmr update /src/views/AuditView.tsx
+13:20:44 [vite] (client) hmr update /src/styles.css
+13:21:33 [vite] (client) hmr update /src/views/AuditView.tsx
+13:21:40 [vite] (client) hmr update /src/styles.css
+13:25:02 [vite] (client) hmr update /src/App.tsx
+13:25:11 [vite] (client) hmr update /src/App.tsx
+13:25:18 [vite] (client) hmr update /src/views/AuditView.tsx
+13:25:24 [vite] (client) hmr update /src/App.tsx
+13:35:39 [vite] (client) hmr update /src/App.tsx
+13:39:15 [vite] (client) hmr update /src/views/AuditView.tsx
+13:39:25 [vite] (client) hmr update /src/views/AuditView.tsx

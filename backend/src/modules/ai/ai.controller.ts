@@ -1,4 +1,4 @@
-﻿import { Body, Controller, Get, Post, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+﻿import { Body, Controller, Get, Post, UploadedFile, UseInterceptors, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsArray, IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { AiService } from './ai.service';
@@ -121,8 +121,11 @@ export class AiController {
 
   /** 通用 AI 聊天对话 */
   @Post('chat')
-  chat(@Body() body: ChatDto) {
-    return this.aiService.chat(body);
+  chat(
+    @Body() body: ChatDto,
+    @Req() req: { user?: { sub?: number; name?: string; role?: string } }
+  ) {
+    return this.aiService.chat(body, req.user);
   }
 
   /** 需求文档/Excel导入 */
