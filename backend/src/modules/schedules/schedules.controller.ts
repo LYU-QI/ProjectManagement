@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
 import { IsIn, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 import { SchedulesService } from './schedules.service';
 import { Roles } from '../auth/roles.decorator';
@@ -74,48 +74,56 @@ export class SchedulesController {
   constructor(private readonly schedulesService: SchedulesService) {}
 
   @Get(':id/schedule')
-  schedule(@Param('id', ParseIntPipe) id: number) {
-    return this.schedulesService.getProjectSchedule(id);
+  schedule(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.getProjectSchedule(req.user, id);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post('tasks')
-  createTask(@Body() body: CreateTaskDto) {
-    return this.schedulesService.createTask(body);
+  createTask(@Body() body: CreateTaskDto, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.createTask(req.user, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Patch('tasks/:id')
-  updateTask(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateTaskDto) {
-    return this.schedulesService.updateTask(id, body);
+  updateTask(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateTaskDto,
+    @Req() req: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.schedulesService.updateTask(req.user, id, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Delete('tasks/:id')
-  removeTask(@Param('id', ParseIntPipe) id: number) {
-    return this.schedulesService.removeTask(id);
+  removeTask(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.removeTask(req.user, id);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post('milestones')
-  createMilestone(@Body() body: CreateMilestoneDto) {
-    return this.schedulesService.createMilestone(body);
+  createMilestone(@Body() body: CreateMilestoneDto, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.createMilestone(req.user, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Patch('milestones/:id')
-  updateMilestone(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateMilestoneDto) {
-    return this.schedulesService.updateMilestone(id, body);
+  updateMilestone(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateMilestoneDto,
+    @Req() req: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.schedulesService.updateMilestone(req.user, id, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Delete('milestones/:id')
-  removeMilestone(@Param('id', ParseIntPipe) id: number) {
-    return this.schedulesService.removeMilestone(id);
+  removeMilestone(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.removeMilestone(req.user, id);
   }
 
   @Get(':id/risks')
-  risk(@Param('id', ParseIntPipe) id: number) {
-    return this.schedulesService.risk(id);
+  risk(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.schedulesService.risk(req.user, id);
   }
 }

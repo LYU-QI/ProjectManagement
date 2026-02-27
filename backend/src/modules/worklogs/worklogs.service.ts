@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateWorklogInput {
   projectId: number;
@@ -27,16 +28,27 @@ interface UpdateWorklogInput {
 
 @Injectable()
 export class WorklogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessService: AccessService
+  ) {}
 
-  list(projectId?: number) {
+  async list(actor: AuthActor | undefined, projectId?: number) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.worklog.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null ? {} : { projectId: { in: accessible } })
+      },
       orderBy: { id: 'desc' }
     });
   }
 
-  async create(input: CreateWorklogInput) {
+  async create(actor: AuthActor | undefined, input: CreateWorklogInput) {
+    await this.accessService.assertProjectAccess(actor, input.projectId);
     const project = await this.prisma.project.findUnique({
       where: { id: input.projectId },
       select: { id: true }
@@ -60,13 +72,14 @@ export class WorklogsService {
     });
   }
 
-  async update(id: number, input: UpdateWorklogInput) {
+  async update(actor: AuthActor | undefined, id: number, input: UpdateWorklogInput) {
     const target = await this.prisma.worklog.findUnique({
       where: { id }
     });
     if (!target) {
       throw new NotFoundException('Worklog not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     return this.prisma.worklog.update({
       where: { id },
@@ -74,13 +87,14 @@ export class WorklogsService {
     });
   }
 
-  async remove(id: number) {
+  async remove(actor: AuthActor | undefined, id: number) {
     const target = await this.prisma.worklog.findUnique({
       where: { id }
     });
     if (!target) {
       throw new NotFoundException('Worklog not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     await this.prisma.worklog.delete({ where: { id } });
     return { id };

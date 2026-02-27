@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
 import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { ProjectsService } from './projects.service';
 import { Roles } from '../auth/roles.decorator';
@@ -53,25 +53,32 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  list() {
-    return this.projectsService.list();
+  list(@Req() req: { user?: { sub?: number; role?: string } }) {
+    return this.projectsService.list(req.user);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post()
   create(@Body() body: CreateProjectDto) {
     return this.projectsService.create(body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateProjectDto) {
-    return this.projectsService.update(id, body);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateProjectDto,
+    @Req() req: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.projectsService.update(id, body, req.user);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.projectsService.remove(id);
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.projectsService.remove(id, req.user);
   }
 }

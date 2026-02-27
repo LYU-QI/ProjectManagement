@@ -1,23 +1,53 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 @Injectable()
 export class AuditLogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessService: AccessService
+  ) {}
 
-  list(projectId?: number) {
+  async list(actor: AuthActor | undefined, projectId?: number) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.auditLog.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null
+          ? {}
+          : {
+            OR: [
+              { projectId: null },
+              { projectId: { in: accessible } }
+            ]
+          })
+      },
       orderBy: { id: 'desc' },
       take: 200
     });
   }
 
-  async listChatbot(projectId?: number) {
+  async listChatbot(actor: AuthActor | undefined, projectId?: number) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     const rows = await this.prisma.auditLog.findMany({
       where: {
         method: 'AI_CHAT',
-        ...(projectId ? { projectId } : {})
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null
+          ? {}
+          : {
+            OR: [
+              { projectId: null },
+              { projectId: { in: accessible } }
+            ]
+          })
       },
       orderBy: { id: 'desc' },
       take: 200

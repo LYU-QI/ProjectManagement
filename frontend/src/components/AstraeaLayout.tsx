@@ -11,7 +11,8 @@ import {
   Settings,
   MessageSquare,
   Users,
-  CalendarDays
+  CalendarDays,
+  ShieldCheck
 } from 'lucide-react';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
 
@@ -29,39 +30,53 @@ export type ViewKey =
   | 'feishu-users'
   | 'pm-assistant'
   | 'global'
-  | 'settings';
+  | 'settings'
+  | 'project-access';
+export type PlatformMode = 'workspace' | 'admin';
 
 interface AstraeaLayoutProps {
   currentView: ViewKey;
   onViewChange: (view: ViewKey) => void;
+  platform: PlatformMode;
+  onPlatformChange: (mode: PlatformMode) => void;
+  canAccessAdmin: boolean;
   children: ReactNode;
   user: any;
   onLogout: () => void;
   unreadCount?: number;
 }
 
-const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode }> = [
-  { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} /> },
-  { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} /> },
-  { id: 'schedule', label: '进度计划', icon: <CalendarDays size={18} /> },
-  { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} /> },
-  { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} /> },
-  { id: 'resources', label: '资源视图', icon: <Users size={18} /> },
-  { id: 'ai', label: 'AI 分析', icon: <Bot size={18} /> },
-  { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} /> },
-  { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} /> },
-  { id: 'audit', label: '审计日志', icon: <Activity size={18} /> },
-  { id: 'settings', label: '系统设置', icon: <Settings size={18} /> }
+const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; adminOnly?: boolean }> = [
+  { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
+  { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
+  { id: 'schedule', label: '进度计划', icon: <CalendarDays size={18} />, platform: 'workspace' },
+  { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
+  { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
+  { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
+  { id: 'ai', label: 'AI 分析', icon: <Bot size={18} />, platform: 'workspace' },
+  { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
+  { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
+  { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', adminOnly: true },
+  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin' },
+  { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', adminOnly: true },
+  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin' }
 ];
 
 export default function AstraeaLayout({
   currentView,
   onViewChange,
+  platform,
+  onPlatformChange,
+  canAccessAdmin,
   children,
   user,
   onLogout,
   unreadCount = 0
 }: AstraeaLayoutProps) {
+  const role = String(user?.role || '');
+  const canManageAdmin = canAccessAdmin || ['super_admin', 'project_director', 'lead'].includes(role);
+  const visibleNavItems = navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true));
+
   return (
     <div className="astraea-root">
       <GlobalAiChatbot onViewChange={onViewChange} />
@@ -72,9 +87,26 @@ export default function AstraeaLayout({
           <h1>ProjectLVQI</h1>
           <div className="astraea-version">PM Console</div>
         </div>
+        <div className="astraea-platform-switch">
+          <button
+            className={`astraea-platform-btn ${platform === 'workspace' ? 'active' : ''}`}
+            type="button"
+            onClick={() => onPlatformChange('workspace')}
+          >
+            用户平台
+          </button>
+          <button
+            className={`astraea-platform-btn ${platform === 'admin' ? 'active' : ''}`}
+            type="button"
+            disabled={!canManageAdmin}
+            onClick={() => onPlatformChange('admin')}
+          >
+            管理平台
+          </button>
+        </div>
 
         <div className="astraea-nav-list">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = currentView === item.id;
             return (
               <button

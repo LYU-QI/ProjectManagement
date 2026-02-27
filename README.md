@@ -9,6 +9,8 @@
 - `backend/` 后端服务（默认 3000）
 - `frontend/` 前端应用（默认 5173）
 - `docs/api.md` 接口速查
+- `docs/permission-architecture.md` 多项目权限架构方案
+- `docs/permission-dev-plan.md` 权限控制开发计划
 - `spec.md` 技术规格说明书
 - `development-plan.md` 开发计划
 - `development-plan-estimate.md` 人天估算
@@ -49,7 +51,7 @@ npm run dev:frontend
 - 当前已接入 JWT 鉴权，除 `/health` 与 `/api/v1/auth/login` 外接口默认需要 `Bearer Token`。
 - 默认登录账号：`pm`，密码：`123456`（由 seed 写入，可在数据库中修改）。
 - 默认测试账号：`pm / 123456`、`lead / 123456`、`viewer / 123456`。
-- 角色策略：`viewer` 只读，`pm` 与 `lead` 可以执行新增/修改类接口。
+- 角色策略：支持 `super_admin / project_director / project_manager / viewer`（兼容 `lead/pm`），并引入项目级授权关系（ProjectMembership）进行数据隔离。
 - 新增能力：通知中心（未读/已读）、审计日志查询（pm/lead）、工时录入并纳入成本汇总。
 
 ## 对应计划映射

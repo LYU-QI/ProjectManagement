@@ -22,6 +22,7 @@ import { ConfigModule } from './modules/config/config.module';
 import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
 import { PmAssistantModule } from './modules/pm-assistant/pm-assistant.module';
 import { PrdModule } from './modules/prd/prd.module';
+import { ProjectMembershipsModule } from './modules/project-memberships/project-memberships.module';
 
 @Module({
   imports: [
@@ -43,7 +44,8 @@ import { PrdModule } from './modules/prd/prd.module';
     ConfigModule,
     FeishuUsersModule,
     PmAssistantModule,
-    PrdModule
+    PrdModule,
+    ProjectMembershipsModule
   ],
   controllers: [AppController],
   providers: [

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationLevel } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateCostInput {
   projectId: number;
@@ -22,17 +23,26 @@ interface UpdateCostInput {
 export class CostsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly accessService: AccessService
   ) {}
 
-  list(projectId?: number) {
+  async list(actor: AuthActor | undefined, projectId?: number) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.costEntry.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null ? {} : { projectId: { in: accessible } })
+      },
       orderBy: { id: 'asc' }
     });
   }
 
-  async create(input: CreateCostInput) {
+  async create(actor: AuthActor | undefined, input: CreateCostInput) {
+    await this.accessService.assertProjectAccess(actor, input.projectId);
     const project = await this.prisma.project.findUnique({
       where: { id: input.projectId },
       select: { id: true }
@@ -45,7 +55,7 @@ export class CostsService {
       data: input
     });
 
-    const summary = await this.summary(input.projectId);
+    const summary = await this.summary(actor, input.projectId);
     if (summary.varianceRate > 10) {
       await this.notificationsService.createSystemNotification({
         projectId: input.projectId,
@@ -58,7 +68,8 @@ export class CostsService {
     return created;
   }
 
-  async summary(projectId: number) {
+  async summary(actor: AuthActor | undefined, projectId: number) {
+    await this.accessService.assertProjectAccess(actor, projectId);
     const [project, rows, worklogs] = await Promise.all([
       this.prisma.project.findUnique({ where: { id: projectId } }),
       this.prisma.costEntry.findMany({ where: { projectId } }),
@@ -84,11 +95,12 @@ export class CostsService {
     return { projectId, budget, actual, varianceRate, byType };
   }
 
-  async update(id: number, input: UpdateCostInput) {
+  async update(actor: AuthActor | undefined, id: number, input: UpdateCostInput) {
     const target = await this.prisma.costEntry.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Cost entry not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     return this.prisma.costEntry.update({
       where: { id },
@@ -96,11 +108,12 @@ export class CostsService {
     });
   }
 
-  async remove(id: number) {
+  async remove(actor: AuthActor | undefined, id: number) {
     const target = await this.prisma.costEntry.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Cost entry not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     await this.prisma.costEntry.delete({ where: { id } });
     return { id };

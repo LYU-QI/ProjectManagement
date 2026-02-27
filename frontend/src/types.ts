@@ -198,7 +198,7 @@ export interface NotificationItem {
 export interface UserItem {
   id: number;
   name: string;
-  role: 'pm' | 'lead' | 'viewer';
+  role: 'super_admin' | 'project_director' | 'project_manager' | 'pm' | 'lead' | 'viewer';
   username: string;
 }
 
@@ -238,4 +238,22 @@ export interface AuthUser {
   id: number;
   name: string;
   role: string;
+}
+
+export interface ProjectMembershipItem {
+  id: number;
+  userId: number;
+  projectId: number;
+  role: 'director' | 'manager' | 'member' | 'viewer';
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: number;
+    name: string;
+    role: string;
+  };
+  project: {
+    id: number;
+    name: string;
+  };
 }

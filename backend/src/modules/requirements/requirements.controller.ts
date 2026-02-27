@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { IsIn, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 import { RequirementsService } from './requirements.service';
 import { Roles } from '../auth/roles.decorator';
@@ -70,42 +70,54 @@ export class RequirementsController {
   constructor(private readonly requirementsService: RequirementsService) {}
 
   @Get()
-  list(@Query('projectId') projectId?: string) {
-    return this.requirementsService.list(projectId ? Number(projectId) : undefined);
+  list(@Query('projectId') projectId?: string, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.requirementsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post()
-  create(@Body() body: CreateRequirementDto) {
-    return this.requirementsService.create(body);
+  create(@Body() body: CreateRequirementDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.requirementsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post(':id/review')
-  review(@Param('id', ParseIntPipe) id: number, @Body() body: ReviewRequirementDto) {
-    return this.requirementsService.review(id, body.reviewer, body.decision, body.comment);
+  review(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ReviewRequirementDto,
+    @Req() req?: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.requirementsService.review(req?.user, id, body.reviewer, body.decision, body.comment);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post(':id/change')
-  change(@Param('id', ParseIntPipe) id: number, @Body() body: ChangeRequirementDto) {
-    return this.requirementsService.change(id, body.description, body.version, body.reason, body.changedBy);
+  change(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ChangeRequirementDto,
+    @Req() req?: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.requirementsService.change(req?.user, id, body.description, body.version, body.reason, body.changedBy);
   }
 
   @Get(':id/changes')
-  changes(@Param('id', ParseIntPipe) id: number) {
-    return this.requirementsService.listChanges(id);
+  changes(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.requirementsService.listChanges(req?.user, id);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateRequirementDto) {
-    return this.requirementsService.update(id, body);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateRequirementDto,
+    @Req() req?: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.requirementsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.requirementsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.requirementsService.remove(req?.user, id);
   }
 }

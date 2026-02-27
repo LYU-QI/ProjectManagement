@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 import { Roles } from '../auth/roles.decorator';
 import { WorklogsService } from './worklogs.service';
@@ -73,25 +73,29 @@ export class WorklogsController {
   constructor(private readonly worklogsService: WorklogsService) {}
 
   @Get()
-  list(@Query('projectId') projectId?: string) {
-    return this.worklogsService.list(projectId ? Number(projectId) : undefined);
+  list(@Query('projectId') projectId?: string, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.worklogsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post()
-  create(@Body() body: CreateWorklogDto) {
-    return this.worklogsService.create(body);
+  create(@Body() body: CreateWorklogDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.worklogsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateWorklogDto) {
-    return this.worklogsService.update(id, body);
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateWorklogDto,
+    @Req() req?: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.worklogsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead')
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.worklogsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
+    return this.worklogsService.remove(req?.user, id);
   }
 }

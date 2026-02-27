@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationLevel, RequirementStatus } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateRequirementInput {
   projectId: number;
@@ -23,17 +24,26 @@ interface UpdateRequirementInput {
 export class RequirementsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly accessService: AccessService
   ) { }
 
-  async list(projectId?: number) {
+  async list(actor: AuthActor | undefined, projectId?: number) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.requirement.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null ? {} : { projectId: { in: accessible } })
+      },
       orderBy: { id: 'asc' }
     });
   }
 
-  async create(input: CreateRequirementInput) {
+  async create(actor: AuthActor | undefined, input: CreateRequirementInput) {
+    await this.accessService.assertProjectAccess(actor, input.projectId);
     const project = await this.prisma.project.findUnique({
       where: { id: input.projectId },
       select: { id: true }
@@ -50,13 +60,14 @@ export class RequirementsService {
     });
   }
 
-  async review(id: number, reviewer: string, decision: 'approved' | 'rejected', comment?: string) {
+  async review(actor: AuthActor | undefined, id: number, reviewer: string, decision: 'approved' | 'rejected', comment?: string) {
     const target = await this.prisma.requirement.findUnique({
       where: { id }
     });
     if (!target) {
       throw new NotFoundException('Requirement not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     const result = await this.prisma.$transaction(async (tx) => {
       const requirement = await tx.requirement.update({
@@ -84,11 +95,12 @@ export class RequirementsService {
     return result;
   }
 
-  async change(id: number, description: string, version?: string, reason?: string, changedBy?: string) {
+  async change(actor: AuthActor | undefined, id: number, description: string, version?: string, reason?: string, changedBy?: string) {
     const target = await this.prisma.requirement.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Requirement not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     const before = {
       title: target.title,
@@ -137,11 +149,12 @@ export class RequirementsService {
     return result;
   }
 
-  async update(id: number, input: UpdateRequirementInput) {
+  async update(actor: AuthActor | undefined, id: number, input: UpdateRequirementInput) {
     const target = await this.prisma.requirement.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Requirement not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     return this.prisma.requirement.update({
       where: { id },
@@ -149,11 +162,12 @@ export class RequirementsService {
     });
   }
 
-  async remove(id: number) {
+  async remove(actor: AuthActor | undefined, id: number) {
     const target = await this.prisma.requirement.findUnique({ where: { id } });
     if (!target) {
       throw new NotFoundException('Requirement not found');
     }
+    await this.accessService.assertProjectAccess(actor, target.projectId);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.requirementReview.deleteMany({ where: { requirementId: id } });
@@ -164,7 +178,15 @@ export class RequirementsService {
     return { id };
   }
 
-  async listChanges(requirementId: number) {
+  async listChanges(actor: AuthActor | undefined, requirementId: number) {
+    const requirement = await this.prisma.requirement.findUnique({
+      where: { id: requirementId },
+      select: { projectId: true }
+    });
+    if (!requirement) {
+      throw new NotFoundException('Requirement not found');
+    }
+    await this.accessService.assertProjectAccess(actor, requirement.projectId);
     return this.prisma.requirementChange.findMany({
       where: { requirementId },
       orderBy: { id: 'desc' }

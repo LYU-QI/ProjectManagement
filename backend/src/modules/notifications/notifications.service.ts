@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { FeishuService } from '../feishu/feishu.service';
 import { ConfigService } from '../config/config.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 @Injectable()
 export class NotificationsService {
@@ -10,20 +11,43 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly feishuService: FeishuService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly accessService: AccessService
   ) {}
 
-  list(projectId?: number, unread?: boolean) {
+  async list(actor: AuthActor | undefined, projectId?: number, unread?: boolean) {
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.notification.findMany({
       where: {
-        projectId: projectId ?? undefined,
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null
+          ? {}
+          : {
+            OR: [
+              { projectId: null },
+              { projectId: { in: accessible } }
+            ]
+          }),
         readAt: unread ? null : undefined
       },
       orderBy: { id: 'desc' }
     });
   }
 
-  async markRead(id: number) {
+  async markRead(actor: AuthActor | undefined, id: number) {
+    const target = await this.prisma.notification.findUnique({
+      where: { id },
+      select: { id: true, projectId: true }
+    });
+    if (!target) {
+      throw new NotFoundException('Notification not found');
+    }
+    if (target.projectId) {
+      await this.accessService.assertProjectAccess(actor, target.projectId);
+    }
     return this.prisma.notification.update({
       where: { id },
       data: { readAt: new Date() }

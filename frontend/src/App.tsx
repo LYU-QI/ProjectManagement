@@ -43,11 +43,14 @@ import AiView from './views/AiView';
 import SettingsView from './views/SettingsView';
 import FeishuUsersView from './views/FeishuUsersView';
 import PmAssistantView from './views/PmAssistantView';
-import AstraeaLayout from './components/AstraeaLayout';
+import ProjectAccessView from './views/ProjectAccessView';
+import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark';
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global'];
+const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users'];
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -133,8 +136,12 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
+  });
+  const [platform, setPlatform] = useState<PlatformMode>(() => {
+    const raw = localStorage.getItem('pm_platform');
+    return raw === 'admin' ? 'admin' : 'workspace';
   });
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const raw = localStorage.getItem('ui:theme');
@@ -272,6 +279,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('pm_view', view);
   }, [view]);
+
+  useEffect(() => {
+    localStorage.setItem('pm_platform', platform);
+  }, [platform]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -955,7 +966,32 @@ function App() {
     if (!selectedProjectId) return '未选择';
     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
   }, [projects, selectedProjectId]);
-  const canWrite = user?.role === 'pm' || user?.role === 'lead';
+  const userRole = String(user?.role || '');
+  const canWrite = ['super_admin', 'project_director', 'project_manager', 'lead', 'pm'].includes(userRole);
+  const canManageAdmin = ['super_admin', 'project_director', 'lead'].includes(userRole);
+  const canAccessAdminPlatform = canManageAdmin;
+
+  useEffect(() => {
+    if (!canAccessAdminPlatform && platform === 'admin') {
+      setPlatform('workspace');
+    }
+  }, [canAccessAdminPlatform, platform]);
+
+  useEffect(() => {
+    if (platform === 'workspace' && ADMIN_VIEWS.includes(view)) {
+      setView('dashboard');
+      return;
+    }
+    if (platform === 'admin' && WORKSPACE_VIEWS.includes(view)) {
+      setView('audit');
+    }
+  }, [platform, view]);
+
+  useEffect(() => {
+    if (!canManageAdmin && view === 'project-access') {
+      setView('dashboard');
+    }
+  }, [canManageAdmin, view]);
 
   useEffect(() => {
     if (view === 'audit' && canWrite) {
@@ -1927,6 +1963,14 @@ function App() {
       onViewChange={(newView: ViewKey) => {
         setView(newView);
       }}
+      platform={platform}
+      onPlatformChange={(mode) => {
+        if (mode === 'admin' && !canAccessAdminPlatform) return;
+        setPlatform(mode);
+        if (mode === 'workspace' && ADMIN_VIEWS.includes(view)) setView('dashboard');
+        if (mode === 'admin' && WORKSPACE_VIEWS.includes(view)) setView('audit');
+      }}
+      canAccessAdmin={canAccessAdminPlatform}
       user={user}
       onLogout={logout}
       unreadCount={notifications.filter((n) => !n.readAt).length}
@@ -1946,6 +1990,7 @@ function App() {
                               view === 'audit' ? '审计轨迹' :
                                 view === 'feishu-users' ? '人员映射' :
                                   view === 'global' ? '全局检索' :
+                                    view === 'project-access' ? '管理后台 · 项目授权' :
                                     view === 'settings' ? '系统配置' : ''}
           </h2>
           <div style={{ fontSize: 12, color: 'var(--glow-green)', padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: 20, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
@@ -1954,7 +1999,7 @@ function App() {
           </div>
         </div>
 
-        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'pm-assistant' && (
+        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'pm-assistant' && view !== 'project-access' && (
           <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
             <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
               <div>
@@ -2365,6 +2410,19 @@ function App() {
 
         {view === 'settings' && canWrite && (
           <SettingsView onError={setError} onMessage={setMessage} theme={theme} onThemeChange={setTheme} />
+        )}
+
+        {view === 'project-access' && canManageAdmin && (
+          <ProjectAccessView
+            users={users}
+            projects={projects}
+            canManage={canManageAdmin}
+            onError={setError}
+            onMessage={setMessage}
+            onReloadUsers={async () => {
+              await refreshAll(selectedProjectId);
+            }}
+          />
         )}
       </div>
     </AstraeaLayout>

@@ -5,6 +5,7 @@ import * as mammoth from 'mammoth';
 import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
 import { FeishuService } from '../feishu/feishu.service';
+import { AccessService } from '../access/access.service';
 const pdfParseModule = require('pdf-parse');
 async function parsePdfBuffer(buffer: Buffer) {
   if (typeof pdfParseModule === 'function') {
@@ -63,6 +64,7 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly feishuService: FeishuService,
+    private readonly accessService: AccessService,
   ) { }
 
   async weeklyReport(input: WeeklyReportInput) {
@@ -667,10 +669,10 @@ ${detailBlocks}`;
     const compact = raw.replace(/[\s\p{P}\p{S}]+/gu, '');
     if (!compact) return null;
 
-    if (['todo', '待办', '未开始', '待开始'].some((k) => compact.includes(k))) return TaskStatus.todo;
-    if (['inprogress', 'in_progress', '进行中', '处理中', '开发中'].some((k) => compact.includes(k))) return TaskStatus.in_progress;
-    if (['blocked', '阻塞', '受阻', '卡住'].some((k) => compact.includes(k))) return TaskStatus.blocked;
-    if (['done', '已完成', '完成', '完成了', '已结束', 'closed', 'resolved'].some((k) => compact.includes(k))) return TaskStatus.done;
+    if (['todo', '待办', '未开始', '待开始', 'pending', 'open'].some((k) => compact.includes(k))) return TaskStatus.todo;
+    if (['inprogress', 'in_progress', '进行中', '处理中', '开发中', 'ongoing', 'working', 'doing'].some((k) => compact.includes(k))) return TaskStatus.in_progress;
+    if (['blocked', '阻塞', '受阻', '卡住', 'stuck', 'hold', 'onhold'].some((k) => compact.includes(k))) return TaskStatus.blocked;
+    if (['done', '已完成', '完成', '完成了', '已结束', 'closed', 'resolved', 'completed', 'complete', 'finished'].some((k) => compact.includes(k))) return TaskStatus.done;
     return null;
   }
 
@@ -685,6 +687,7 @@ ${detailBlocks}`;
     title: string;
     projectName?: string;
     status: TaskStatus;
+    allowedProjectNames?: Set<string>;
   }): Promise<{ ok: true; recordId: string; projectName: string; taskName: string; status: string } | null> {
     const title = input.title.trim();
     if (!title) return null;
@@ -703,6 +706,7 @@ ${detailBlocks}`;
       const taskName = String(fields['任务名称'] ?? fields['任务ID'] ?? '').trim();
       if (!taskName) return false;
       const scopedProjectName = String(fields['所属项目'] ?? '').trim();
+      if (input.allowedProjectNames && scopedProjectName && !input.allowedProjectNames.has(scopedProjectName)) return false;
       if (projectName && scopedProjectName && !this.fuzzyIncludes(scopedProjectName, projectName)) return false;
       return this.fuzzyIncludes(taskName, title);
     });
@@ -750,13 +754,20 @@ ${detailBlocks}`;
     return null;
   }
 
-  private resolveProjectId(actionInput: Record<string, unknown>, projectNameToId: Map<string, number>): number | null {
+  private resolveProjectId(
+    actionInput: Record<string, unknown>,
+    projectNameToId: Map<string, number>,
+    allowedProjectIds?: Set<number>
+  ): number | null {
     const idRaw = actionInput.projectId;
     if (typeof idRaw === 'number' && Number.isInteger(idRaw)) {
+      if (allowedProjectIds && !allowedProjectIds.has(idRaw)) return null;
       return idRaw;
     }
     if (typeof idRaw === 'string' && /^\d+$/.test(idRaw.trim())) {
-      return Number(idRaw.trim());
+      const id = Number(idRaw.trim());
+      if (allowedProjectIds && !allowedProjectIds.has(id)) return null;
+      return id;
     }
     const nameRaw = actionInput.projectName;
     if (typeof nameRaw === 'string') {
@@ -809,14 +820,20 @@ ${detailBlocks}`;
   private async executeReActTool(
     action: ReActActionName,
     actionInput: Record<string, unknown> | null,
-    projectNameToId: Map<string, number>
+    projectNameToId: Map<string, number>,
+    allowedProjectIds?: Set<number>
   ): Promise<string> {
     if (!actionInput) {
       return '执行失败：Action Input 不是合法 JSON 对象。';
     }
+    const allowedProjectNames = new Set(
+      Array.from(projectNameToId.entries())
+        .filter(([, id]) => !allowedProjectIds || allowedProjectIds.has(id))
+        .map(([name]) => name)
+    );
 
     if (action === 'create_task') {
-      const projectId = this.resolveProjectId(actionInput, projectNameToId);
+      const projectId = this.resolveProjectId(actionInput, projectNameToId, allowedProjectIds);
       if (!projectId) return '执行失败：缺少 projectId 或无法通过 projectName 匹配到项目。';
       const title = String(actionInput.title ?? '').trim();
       if (!title) return '执行失败：缺少 title。';
@@ -861,11 +878,15 @@ ${detailBlocks}`;
       if (!targetTaskId) {
         const title = String(actionInput.title ?? '').trim();
         if (!title) return '执行失败：缺少 taskId，且未提供 title 用于定位任务。';
-        const projectId = this.resolveProjectId(actionInput, projectNameToId) ?? undefined;
+        const projectId = this.resolveProjectId(actionInput, projectNameToId, allowedProjectIds) ?? undefined;
         const projectName = typeof actionInput.projectName === 'string' ? actionInput.projectName.trim() : undefined;
         const candidates = await this.prisma.task.findMany({
           where: {
-            ...(projectId ? { projectId } : {})
+            projectId: projectId
+              ? projectId
+              : allowedProjectIds
+                ? { in: Array.from(allowedProjectIds.values()) }
+                : undefined
           },
           orderBy: { id: 'desc' },
           take: 200
@@ -877,7 +898,8 @@ ${detailBlocks}`;
             const feishuUpdated = await this.updateFeishuTaskStatusByTitle({
               title,
               projectName,
-              status: targetStatus
+              status: targetStatus,
+              allowedProjectNames
             });
             if (feishuUpdated) {
               return JSON.stringify({
@@ -901,6 +923,15 @@ ${detailBlocks}`;
         targetTaskId = matched.id;
       }
 
+      const targetTask = await this.prisma.task.findUnique({
+        where: { id: targetTaskId },
+        select: { id: true, projectId: true }
+      });
+      if (!targetTask) return `执行失败：任务 ${targetTaskId} 不存在。`;
+      if (allowedProjectIds && !allowedProjectIds.has(targetTask.projectId)) {
+        return `执行失败：无权修改项目 ${targetTask.projectId} 的任务。`;
+      }
+
       const updated = await this.prisma.task.update({
         where: { id: targetTaskId },
         data: { status: targetStatus },
@@ -912,7 +943,8 @@ ${detailBlocks}`;
         const feishuUpdated = await this.updateFeishuTaskStatusByTitle({
           title: updated.title,
           projectName: updated.project.name,
-          status: targetStatus
+          status: targetStatus,
+          allowedProjectNames
         });
         if (feishuUpdated) {
           feishuSync = { ok: true, recordId: feishuUpdated.recordId, status: feishuUpdated.status };
@@ -938,7 +970,7 @@ ${detailBlocks}`;
     }
 
     if (action === 'create_requirement') {
-      const projectId = this.resolveProjectId(actionInput, projectNameToId);
+      const projectId = this.resolveProjectId(actionInput, projectNameToId, allowedProjectIds);
       if (!projectId) return '执行失败：缺少 projectId 或无法通过 projectName 匹配到项目。';
       const title = String(actionInput.title ?? '').trim();
       const description = String(actionInput.description ?? '').trim();
@@ -965,7 +997,7 @@ ${detailBlocks}`;
       });
     }
 
-    const projectId = this.resolveProjectId(actionInput, projectNameToId) ?? undefined;
+    const projectId = this.resolveProjectId(actionInput, projectNameToId, allowedProjectIds) ?? undefined;
     const status = this.normalizeTaskStatus(actionInput.status) ?? undefined;
     const keyword = String(actionInput.keyword ?? '').trim();
     const limitRaw = Number(actionInput.limit ?? 10);
@@ -974,6 +1006,7 @@ ${detailBlocks}`;
     const tasks = await this.prisma.task.findMany({
       where: {
         ...(projectId ? { projectId } : {}),
+        ...(allowedProjectIds ? { projectId: { in: Array.from(allowedProjectIds.values()) } } : {}),
         ...(status ? { status } : {}),
         ...(keyword ? { title: { contains: keyword, mode: 'insensitive' } } : {})
       },
@@ -1078,9 +1111,28 @@ ${detailBlocks}`;
     }
 
     // 获取实时项目上下文数据 (RAG)
-    const projects = await this.prisma.project.findMany({
+    const allProjects = await this.prisma.project.findMany({
       select: { id: true, name: true, budget: true, startDate: true, endDate: true }
     });
+    const accessibleIds = await this.accessService.getAccessibleProjectIds(actor);
+    const projects = accessibleIds === null
+      ? allProjects
+      : allProjects.filter((project) => accessibleIds.includes(project.id));
+    if (projects.length === 0) {
+      await this.createChatAuditLog({
+        actor,
+        mode: 'error',
+        message: input.message,
+        history: input.history,
+        scopedProjectIds: [],
+        scopedProjectNames: [],
+        detailScope: '当前用户无可访问项目',
+        error: 'no_accessible_project',
+        trace: [this.buildTraceStep('access_check', { ok: false, reason: 'no_accessible_project' })],
+        toolCalls: []
+      });
+      return { content: '当前账号暂无可访问项目，请联系管理员分配项目权限。' };
+    }
 
     // 根据用户提问里的项目名优先做项目范围过滤；未命中则回退全局。
     const normalizedMessage = input.message.toLowerCase();
@@ -1301,12 +1353,13 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
       for (const project of projects) {
         projectNameToId.set(project.name.trim().toLowerCase(), project.id);
       }
+      const allowedProjectIdSet = new Set(projects.map((project) => project.id));
 
       // 对“修改任务状态”这种高频命令走确定性写入路径，避免模型未触发 action。
       const directTaskStatus = this.tryParseDirectTaskStatusUpdate(input.message);
       if (directTaskStatus?.title && directTaskStatus.status) {
         if (!auditProjectId && directTaskStatus.projectName) {
-          auditProjectId = this.resolveProjectId({ projectName: directTaskStatus.projectName }, projectNameToId) ?? undefined;
+          auditProjectId = this.resolveProjectId({ projectName: directTaskStatus.projectName }, projectNameToId, allowedProjectIdSet) ?? undefined;
         }
         traceSteps.push(this.buildTraceStep('direct_intent_parse', {
           projectName: directTaskStatus.projectName || '',
@@ -1320,7 +1373,8 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
             title: directTaskStatus.title,
             status: directTaskStatus.status
           },
-          projectNameToId
+          projectNameToId,
+          allowedProjectIdSet
         );
         toolCalls.push(this.buildTraceStep('tool_call', {
           action: 'update_task_status',
@@ -1446,7 +1500,12 @@ ${dataContext}`;
             return { content: modelOutput };
           }
 
-          const observation = await this.executeReActTool(step.action, step.actionInput ?? null, projectNameToId);
+          const observation = await this.executeReActTool(
+            step.action,
+            step.actionInput ?? null,
+            projectNameToId,
+            allowedProjectIdSet
+          );
           toolCalls.push(this.buildTraceStep('tool_call', {
             iteration: i + 1,
             action: step.action,

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateProjectInput {
   name: string;
@@ -20,10 +21,15 @@ interface UpdateProjectInput {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessService: AccessService
+  ) {}
 
-  list() {
+  async list(actor?: AuthActor) {
+    const ids = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.project.findMany({
+      where: ids === null ? undefined : { id: { in: ids } },
       orderBy: { id: 'asc' }
     });
   }
@@ -34,7 +40,8 @@ export class ProjectsService {
     });
   }
 
-  async update(id: number, input: UpdateProjectInput) {
+  async update(id: number, input: UpdateProjectInput, actor?: AuthActor) {
+    await this.accessService.assertProjectAccess(actor, id);
     const exists = await this.prisma.project.findUnique({
       where: { id },
       select: { id: true }
@@ -49,7 +56,8 @@ export class ProjectsService {
     });
   }
 
-  async remove(id: number) {
+  async remove(id: number, actor?: AuthActor) {
+    await this.accessService.assertProjectAccess(actor, id);
     const exists = await this.prisma.project.findUnique({
       where: { id },
       select: { id: true }
