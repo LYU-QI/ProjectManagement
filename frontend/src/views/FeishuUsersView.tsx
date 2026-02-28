@@ -202,13 +202,13 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                                         <td>
                                             {editingId === u.id ? (
                                                 <div style={{ display: 'flex', gap: 6 }}>
-                                                    <button className="btn btn-primary" onClick={() => void saveEdit(u.id)} style={{ fontSize: 12, padding: '2px 8px' }}>保存</button>
-                                                    <button className="btn" onClick={cancelEdit} style={{ fontSize: 12, padding: '2px 8px' }}>取消</button>
+                                                    <button className="btn btn-primary btn-small" onClick={() => void saveEdit(u.id)}>保存</button>
+                                                    <button className="btn btn-small" onClick={cancelEdit}>取消</button>
                                                 </div>
                                             ) : (
                                                 <div style={{ display: 'flex', gap: 6 }}>
-                                                    <button className="btn" onClick={() => startEdit(u)} style={{ fontSize: 12, padding: '2px 8px' }}>编辑</button>
-                                                    <button className="btn" style={{ fontSize: 12, padding: '2px 8px', color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }} onClick={() => void handleDelete(u.id, u.name)}>删除</button>
+                                                    <button className="btn btn-small" onClick={() => startEdit(u)}>编辑</button>
+                                                    <button className="btn btn-small btn-danger" onClick={() => void handleDelete(u.id, u.name)}>删除</button>
                                                 </div>
                                             )}
                                         </td>

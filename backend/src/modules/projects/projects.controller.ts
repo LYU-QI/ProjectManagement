@@ -8,9 +8,6 @@ class CreateProjectDto {
   name!: string;
 
   @IsNumber()
-  ownerId!: number;
-
-  @IsNumber()
   budget!: number;
 
   @IsOptional()
@@ -59,8 +56,11 @@ export class ProjectsController {
 
   @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   @Post()
-  create(@Body() body: CreateProjectDto) {
-    return this.projectsService.create(body);
+  create(
+    @Body() body: CreateProjectDto,
+    @Req() req: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.projectsService.create(body, req.user);
   }
 
   @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')

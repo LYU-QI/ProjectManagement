@@ -1,4 +1,4 @@
-export const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:3000/api/v1';
+export const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://127.0.0.1:3001/api/v1';
 export const TOKEN_KEY = 'projectlvqi_token';
 export const USER_KEY = 'projectlvqi_user';
 

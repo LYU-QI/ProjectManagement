@@ -12,7 +12,8 @@ import {
   MessageSquare,
   Users,
   CalendarDays,
-  ShieldCheck
+  ShieldCheck,
+  Flag
 } from 'lucide-react';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
 
@@ -31,7 +32,8 @@ export type ViewKey =
   | 'pm-assistant'
   | 'global'
   | 'settings'
-  | 'project-access';
+  | 'project-access'
+  | 'milestone-board';
 export type PlatformMode = 'workspace' | 'admin';
 
 interface AstraeaLayoutProps {
@@ -53,6 +55,7 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
+  { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={18} />, platform: 'workspace' },
   { id: 'ai', label: 'AI 分析', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
@@ -74,6 +77,8 @@ export default function AstraeaLayout({
   unreadCount = 0
 }: AstraeaLayoutProps) {
   const role = String(user?.role || '');
+  const displayName = String(user?.username || user?.name || '未知用户');
+  const displayRole = role || 'unknown';
   const canManageAdmin = canAccessAdmin || ['super_admin', 'project_director', 'lead'].includes(role);
   const visibleNavItems = navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true));
 
@@ -129,10 +134,10 @@ export default function AstraeaLayout({
         </div>
 
         <div className="astraea-user-profile">
-          <div className="user-avatar">{user?.username?.charAt(0).toUpperCase() || 'U'}</div>
+          <div className="user-avatar">{displayName.charAt(0).toUpperCase() || 'U'}</div>
           <div className="user-info">
-            <span className="user-name">{user?.username}</span>
-            <span className="user-role">{user?.role}</span>
+            <span className="user-name">{displayName}</span>
+            <span className="user-role">角色：{displayRole}</span>
           </div>
           <button className="logout-btn" onClick={onLogout}>退出</button>
         </div>

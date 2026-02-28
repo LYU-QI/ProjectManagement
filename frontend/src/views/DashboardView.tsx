@@ -68,6 +68,10 @@ export default function DashboardView({
     return [...(overview?.projects || [])].sort((a, b) => a.healthScore - b.healthScore).slice(0, 5);
   }, [overview]);
 
+  const visibleProjectBudgets = useMemo(() => {
+    return [...(overview?.projects || [])].sort((a, b) => a.projectId - b.projectId);
+  }, [overview]);
+
   return (
     <div>
       {canWrite && (
@@ -150,6 +154,32 @@ export default function DashboardView({
               <p className="metric-label">平均健康度</p>
               <p className="metric-value">{summary.avgHealth}</p>
             </div>
+          </div>
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--color-border)' }}>
+            {visibleProjectBudgets.length > 0 ? (
+              <table className="table table-compact">
+                <thead>
+                  <tr>
+                    <th>项目</th>
+                    <th>预算</th>
+                    <th>实际</th>
+                    <th>偏差</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleProjectBudgets.map((item) => (
+                    <tr key={`budget-${item.projectId}`}>
+                      <td>{item.projectName}</td>
+                      <td>¥{formatMoney(item.budget)}</td>
+                      <td className={item.actualCost > item.budget ? 'danger' : 'good'}>¥{formatMoney(item.actualCost)}</td>
+                      <td className={item.varianceRate > 0 ? 'danger' : 'good'}>{item.varianceRate}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p className="muted">暂无可见项目预算数据。</p>
+            )}
           </div>
         </article>
       </section>

@@ -1,10 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateProjectInput {
   name: string;
-  ownerId: number;
   budget: number;
   startDate?: string;
   endDate?: string;
@@ -34,9 +33,16 @@ export class ProjectsService {
     });
   }
 
-  create(input: CreateProjectInput) {
+  create(input: CreateProjectInput, actor?: AuthActor) {
+    const ownerId = Number(actor?.sub);
+    if (!ownerId) {
+      throw new ForbiddenException('Only authenticated users can create project');
+    }
     return this.prisma.project.create({
-      data: input
+      data: {
+        ...input,
+        ownerId
+      }
     });
   }
 

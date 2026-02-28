@@ -44,12 +44,13 @@ import SettingsView from './views/SettingsView';
 import FeishuUsersView from './views/FeishuUsersView';
 import PmAssistantView from './views/PmAssistantView';
 import ProjectAccessView from './views/ProjectAccessView';
+import MilestoneBoardView from './views/MilestoneBoardView';
 import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access';
+type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark';
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users'];
 
 function focusInlineEditor(selector: string) {
@@ -136,7 +137,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [platform, setPlatform] = useState<PlatformMode>(() => {
@@ -329,7 +330,6 @@ function App() {
       await runWithRetry('新增项目', async () => {
         const created = await apiPost<{ id: number }>('/projects', {
           name,
-          ownerId: 1,
           budget,
           startDate: String(form.get('startDate') || ''),
           endDate: String(form.get('endDate') || ''),
@@ -1165,6 +1165,7 @@ function App() {
       || String(original.budget) !== String(draft.budget)
       || String(original.startDate ?? '') !== String(draft.startDate ?? '')
       || String(original.endDate ?? '') !== String(draft.endDate ?? '')
+      || String(original.feishuChatIds ?? '') !== String(draft.feishuChatIds ?? '')
     ),
     selector: (id, field) => `[data-project-edit="${id}-${String(field)}"]`
   });
@@ -1941,13 +1942,13 @@ function App() {
           <form className="form" style={{ gridTemplateColumns: '1fr', gap: 20 }} onSubmit={submitLogin}>
             <div>
               <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>NODE ACCESS KEY</label>
-              <input name="username" placeholder="pm / lead / viewer" required />
+              <input name="username" placeholder="admin / user / 你的账号" required />
             </div>
             <div>
               <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>SECURITY TOKEN</label>
               <input name="password" type="password" placeholder="***" required />
             </div>
-            <button className="btn" type="submit" style={{ marginTop: '10px', padding: 12, fontSize: 15, background: 'rgba(59, 130, 246, 0.2)' }}>
+            <button className="btn btn-primary" type="submit" style={{ marginTop: '10px', padding: 12, fontSize: 15 }}>
               INITIALIZE CONNECTION
             </button>
           </form>
@@ -1991,6 +1992,7 @@ function App() {
                                 view === 'feishu-users' ? '人员映射' :
                                   view === 'global' ? '全局检索' :
                                     view === 'project-access' ? '管理后台 · 项目授权' :
+                                      view === 'milestone-board' ? '里程碑看板' :
                                     view === 'settings' ? '系统配置' : ''}
           </h2>
           <div style={{ fontSize: 12, color: 'var(--glow-green)', padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: 20, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
@@ -2288,6 +2290,15 @@ function App() {
             scheduleError={scheduleError}
             selectedProjectName={selectedProjectName}
             users={users}
+          />
+        )}
+
+        {view === 'milestone-board' && (
+          <MilestoneBoardView
+            projects={projects}
+            feishuUserNames={feishuUsers.map((u) => u.name)}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={(id) => { if (id) void refreshAll(id); }}
           />
         )}
 

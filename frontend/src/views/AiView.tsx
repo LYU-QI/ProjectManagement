@@ -291,31 +291,6 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   const [weeklyViewMode, setWeeklyViewMode] = useState<'edit' | 'preview'>('preview');
   const [progressViewMode, setProgressViewMode] = useState<'edit' | 'preview'>('preview');
 
-  // 标签页按钮样式
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: '8px 20px',
-    background: active ? 'var(--color-primary-soft)' : 'var(--color-bg-surface)',
-    border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border)',
-    color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-    cursor: 'pointer',
-    fontSize: 12,
-    fontFamily: 'inherit',
-    transition: 'all 0.3s ease',
-    borderRadius: 0,
-  });
-
-  // 模式切换按钮样式
-  const modeBtnStyle = (active: boolean): React.CSSProperties => ({
-    padding: '4px 12px',
-    background: active ? 'var(--color-success-soft)' : 'var(--color-bg-surface)',
-    border: active ? '1px solid var(--color-success)' : '1px solid var(--color-border)',
-    color: active ? 'var(--color-success)' : 'var(--color-text-secondary)',
-    cursor: 'pointer',
-    fontSize: 12,
-    borderRadius: '4px',
-    marginLeft: 8,
-  });
-
   // 通用的 Markdown 渲染区域样式
   const markdownContainerStyle: React.CSSProperties = {
     padding: '16px',
@@ -359,16 +334,16 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 标签页导航 */}
       <div style={{ display: 'flex', marginBottom: 0 }}>
-        <button style={{ ...tabStyle(activeTab === 'weekly'), borderRadius: '4px 0 0 0' }} onClick={() => setActiveTab('weekly')}>
+        <button className={`btn btn-tab ${activeTab === 'weekly' ? 'active' : ''}`} style={{ borderRadius: '4px 0 0 0' }} onClick={() => setActiveTab('weekly')}>
           📋 周报草稿
         </button>
-        <button style={{ ...tabStyle(activeTab === 'progress') }} onClick={() => setActiveTab('progress')}>
+        <button className={`btn btn-tab ${activeTab === 'progress' ? 'active' : ''}`} onClick={() => setActiveTab('progress')}>
           📊 项目进展报告
         </button>
-        <button style={{ ...tabStyle(activeTab === 'nlp') }} onClick={() => setActiveTab('nlp')}>
+        <button className={`btn btn-tab ${activeTab === 'nlp' ? 'active' : ''}`} onClick={() => setActiveTab('nlp')}>
           ✍️ 自然语言录入任务
         </button>
-        <button style={{ ...tabStyle(activeTab === 'meeting'), borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('meeting')}>
+        <button className={`btn btn-tab ${activeTab === 'meeting' ? 'active' : ''}`} style={{ borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('meeting')}>
           🎤 会议纪要转任务
         </button>
       </div>
@@ -383,8 +358,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
             {copiedWeekly && <span style={{ color: 'var(--color-success)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
 
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-              <button style={modeBtnStyle(weeklyViewMode === 'edit')} onClick={() => setWeeklyViewMode('edit')}>📝 编辑源码</button>
-              <button style={modeBtnStyle(weeklyViewMode === 'preview')} onClick={() => setWeeklyViewMode('preview')}>👁 渲染预览</button>
+              <button className={`btn btn-small btn-mode ${weeklyViewMode === 'edit' ? 'active' : ''}`} onClick={() => setWeeklyViewMode('edit')}>📝 编辑源码</button>
+              <button className={`btn btn-small btn-mode ${weeklyViewMode === 'preview' ? 'active' : ''}`} onClick={() => setWeeklyViewMode('preview')}>👁 渲染预览</button>
             </div>
           </div>
 
@@ -439,10 +414,9 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
         <div className="card" style={{ borderTop: '2px solid var(--color-success)', borderRadius: '0 4px 4px 4px' }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              className="btn"
+              className={`btn ${selectedProjectId ? 'btn-mode active' : ''}`}
               onClick={generateProgressReport}
               disabled={!selectedProjectId || generatingProgress}
-              style={selectedProjectId ? { borderColor: 'var(--color-success)', color: 'var(--color-success)' } : {}}
             >
               {generatingProgress ? '⏳ 分析中...' : '🤖 AI 生成项目进展报告'}
             </button>
@@ -454,8 +428,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
             )}
 
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-              <button style={modeBtnStyle(progressViewMode === 'edit')} onClick={() => setProgressViewMode('edit')}>📝 编辑源码</button>
-              <button style={modeBtnStyle(progressViewMode === 'preview')} onClick={() => setProgressViewMode('preview')}>👁 渲染预览</button>
+              <button className={`btn btn-small btn-mode ${progressViewMode === 'edit' ? 'active' : ''}`} onClick={() => setProgressViewMode('edit')}>📝 编辑源码</button>
+              <button className={`btn btn-small btn-mode ${progressViewMode === 'preview' ? 'active' : ''}`} onClick={() => setProgressViewMode('preview')}>👁 渲染预览</button>
             </div>
           </div>
 
@@ -497,10 +471,15 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
             />
             <button
-              className="btn"
+              className="btn btn-strong-contrast"
               type="button"
               disabled={!nlpText.trim() || nlpLoading}
-              style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)', alignSelf: 'stretch', minWidth: 100 }}
+              style={{
+                alignSelf: 'stretch',
+                minWidth: 100,
+                ['--cta-bg' as string]: 'var(--color-primary)',
+                ['--cta-text' as string]: '#ffffff'
+              }}
               onClick={() => void handleNlpParse()}
             >
               {nlpLoading ? '⏳ 解析中...' : '🪄 AI 解析'}
@@ -639,19 +618,13 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               </div>
               <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                 <button
-                  className="btn"
+                  className="btn btn-primary"
                   type="button"
                   disabled={creatingFeishu || !nlpConfirmed}
                   onClick={() => void handleCreateToFeishu()}
                   style={{
-                    background: 'var(--color-primary)',
-                    color: '#fff',
-                    border: '1px solid var(--color-primary)',
-                    padding: '8px 16px',
                     width: '100%',
-                    justifyContent: 'center',
-                    fontWeight: 'bold',
-                    boxShadow: 'none'
+                    justifyContent: 'center'
                   }}
                 >
                   {creatingFeishu ? '🚀 正在同步创建至飞书...' : '⚡ 一键创建至飞书同步列表'}
@@ -659,7 +632,6 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 <button
                   className="btn"
                   type="button"
-                  style={{ padding: '8px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', color: 'var(--text-muted)' }}
                   onClick={() => {
                     setNlpResult(null);
                     setNlpText('');
@@ -697,10 +669,15 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
             />
             <button
-              className="btn"
+              className="btn btn-strong-contrast"
               type="button"
               disabled={!meetingText.trim() || meetingLoading}
-              style={{ borderColor: 'var(--color-warning)', color: 'var(--color-warning)', alignSelf: 'stretch', minWidth: 100 }}
+              style={{
+                alignSelf: 'stretch',
+                minWidth: 100,
+                ['--cta-bg' as string]: 'var(--color-warning-strong)',
+                ['--cta-text' as string]: '#ffffff'
+              }}
               onClick={() => void handleMeetingParse()}
             >
               {meetingLoading ? '⏳ 解析中...' : '🪄 提取任务'}
@@ -832,9 +809,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                         </td>
                         <td>
                           <button
-                            className="btn"
+                            className="btn btn-small btn-danger"
                             type="button"
-                            style={{ padding: '2px 8px', fontSize: 11, background: 'var(--color-bg-surface)', border: '1px solid var(--color-danger)', color: 'var(--color-danger)' }}
                             onClick={() => {
                               const newTasks = meetingTasks.filter((_, i) => i !== idx);
                               setMeetingTasks(newTasks);
@@ -854,8 +830,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               {meetingTasks.length > 0 && (
                 <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
                   <button
-                    className="btn"
-                    style={{ flex: 1, background: 'var(--color-warning)', color: '#fff', border: '1px solid var(--color-warning)', fontWeight: 600 }}
+                    className="btn btn-warning"
+                    style={{ flex: 1 }}
                     disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
                     onClick={() => void handleBatchCreate()}
                   >
@@ -868,7 +844,6 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   <button
                     className="btn"
                     type="button"
-                    style={{ padding: '8px 16px', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', color: 'var(--text-muted)' }}
                     onClick={() => {
                       setMeetingTasks([]);
                       setSelectedTaskIndices([]);

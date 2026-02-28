@@ -1,18 +1,42 @@
 import { Injectable } from '@nestjs/common';
 import { TaskStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { AccessService, AuthActor } from '../access/access.service';
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessService: AccessService
+  ) {}
 
-  async overview() {
-    const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
-      this.prisma.project.findMany({ orderBy: { id: 'asc' } }),
-      this.prisma.requirement.findMany({ orderBy: { id: 'asc' } }),
-      this.prisma.costEntry.findMany(),
-      this.prisma.task.findMany(),
-      this.prisma.worklog.findMany()
+  async overview(actor?: AuthActor) {
+    const accessibleProjectIds = await this.accessService.getAccessibleProjectIds(actor);
+    const projectFilter = accessibleProjectIds === null
+      ? undefined
+      : { id: { in: accessibleProjectIds } };
+
+    const projects = await this.prisma.project.findMany({
+      where: projectFilter,
+      orderBy: { id: 'asc' }
+    });
+    const ids = projects.map((item) => item.id);
+    if (ids.length === 0) {
+      return {
+        summary: {
+          projectCount: 0,
+          requirementCount: 0,
+          riskProjectCount: 0
+        },
+        projects: []
+      };
+    }
+
+    const [requirements, costs, tasks, worklogs] = await Promise.all([
+      this.prisma.requirement.findMany({ where: { projectId: { in: ids } }, orderBy: { id: 'asc' } }),
+      this.prisma.costEntry.findMany({ where: { projectId: { in: ids } } }),
+      this.prisma.task.findMany({ where: { projectId: { in: ids } } }),
+      this.prisma.worklog.findMany({ where: { projectId: { in: ids } } })
     ]);
 
     const projectCards = projects.map((project) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createProjectMembership, listProjectMemberships, removeProjectMembership } from '../api/projectMemberships';
-import { updateUserRole } from '../api/users';
+import { createUser, resetUserPassword, updateUserRole } from '../api/users';
 import type { ProjectItem, ProjectMembershipItem, UserItem } from '../types';
 
 type Props = {
@@ -18,6 +18,12 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
   const [rows, setRows] = useState<ProjectMembershipItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [newUserForm, setNewUserForm] = useState({
+    username: '',
+    name: '',
+    password: '',
+    role: 'project_manager' as UserItem['role']
+  });
   const [form, setForm] = useState({
     userId: '',
     projectId: '',
@@ -72,6 +78,52 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
     }
   };
 
+  const onCreateUser = async () => {
+    if (!canManage) return;
+    if (!newUserForm.username.trim() || !newUserForm.name.trim() || !newUserForm.password.trim()) {
+      onError('请填写账号、姓名和密码');
+      return;
+    }
+    if (newUserForm.password.trim().length < 6) {
+      onError('密码至少 6 位');
+      return;
+    }
+    try {
+      await createUser({
+        username: newUserForm.username.trim(),
+        name: newUserForm.name.trim(),
+        password: newUserForm.password.trim(),
+        role: newUserForm.role
+      });
+      onMessage(`用户 ${newUserForm.username.trim()} 已创建`);
+      setNewUserForm({
+        username: '',
+        name: '',
+        password: '',
+        role: 'project_manager'
+      });
+      await onReloadUsers();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : '创建用户失败');
+    }
+  };
+
+  const onResetPassword = async (user: UserItem) => {
+    if (!canManage) return;
+    const next = window.prompt(`为 ${user.username} 设置新密码（至少 6 位）`, '123456');
+    if (!next) return;
+    if (next.trim().length < 6) {
+      onError('密码至少 6 位');
+      return;
+    }
+    try {
+      await resetUserPassword(user.id, next.trim());
+      onMessage(`用户 ${user.username} 密码已重置`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : '重置密码失败');
+    }
+  };
+
   const onUpdateRole = async (user: UserItem, role: UserItem['role']) => {
     if (!canManage) return;
     if (role === user.role) return;
@@ -92,8 +144,37 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
       <div className="card">
         <h3>管理后台 · 用户角色</h3>
         <p style={{ color: 'var(--text-muted)', margin: '6px 0 12px' }}>
-          仅超级管理员/项目总监可修改角色。项目总监仅可分配 project_manager / pm / viewer。
+          仅超级管理员/项目总监可管理用户。项目总监仅可分配 project_manager / pm / viewer。
         </p>
+        <div className="form" style={{ gridTemplateColumns: '180px 180px 180px 200px auto', marginBottom: 12 }}>
+          <input
+            value={newUserForm.username}
+            placeholder="账号（username）"
+            onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
+          />
+          <input
+            value={newUserForm.name}
+            placeholder="姓名"
+            onChange={(e) => setNewUserForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <input
+            type="password"
+            value={newUserForm.password}
+            placeholder="初始密码（>=6位）"
+            onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
+          />
+          <select
+            value={newUserForm.role}
+            onChange={(e) => setNewUserForm((prev) => ({ ...prev, role: e.target.value as UserItem['role'] }))}
+          >
+            {ROLE_OPTIONS.map((item) => (
+              <option key={`new-role-${item}`} value={item}>{item}</option>
+            ))}
+          </select>
+          <button className="btn btn-primary" type="button" disabled={!canManage} onClick={() => void onCreateUser()}>
+            新增用户
+          </button>
+        </div>
         <table className="table table-wrap" style={{ marginBottom: 12 }}>
           <thead>
             <tr>
@@ -102,6 +183,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
               <th>账号</th>
               <th>当前角色</th>
               <th>目标角色</th>
+              <th>密码</th>
             </tr>
           </thead>
           <tbody>
@@ -122,11 +204,21 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
                     ))}
                   </select>
                 </td>
+                <td>
+                  <button
+                    className="btn btn-small"
+                    type="button"
+                    disabled={!canManage || updatingUserId === u.id}
+                    onClick={() => void onResetPassword(u)}
+                  >
+                    重置密码
+                  </button>
+                </td>
               </tr>
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ color: 'var(--text-muted)' }}>暂无用户数据</td>
+                <td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无用户数据</td>
               </tr>
             )}
           </tbody>

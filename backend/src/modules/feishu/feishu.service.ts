@@ -298,6 +298,7 @@ export class FeishuService {
     filterStatus?: string;
     filterAssignee?: string;
     filterRisk?: string;
+    allowedProjectNames?: Set<string> | null;
   }) {
     const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
@@ -357,6 +358,7 @@ export class FeishuService {
     const filterStatus = query.filterStatus?.trim();
     const filterAssignee = query.filterAssignee?.trim().toLowerCase();
     const filterRisk = query.filterRisk?.trim();
+    const allowedProjectNames = query.allowedProjectNames ?? null;
 
     const projectKey = this.resolveFieldName('所属项目');
     const statusKey = this.resolveFieldName('状态');
@@ -364,6 +366,16 @@ export class FeishuService {
     const assigneeKey = this.resolveFieldName('负责人');
 
     let items = mappedItems;
+    if (allowedProjectNames !== null) {
+      items = items.filter((item: any) => {
+        const fields = item?.fields || {};
+        const projectName = String(fields['所属项目'] ?? '').trim();
+        if (!projectName) return false;
+        const normalized = projectName.toLowerCase();
+        return allowedProjectNames.has(projectName) || allowedProjectNames.has(normalized);
+      });
+    }
+
     if (filterProject || filterStatus || filterAssignee || filterRisk) {
       items = items.filter((item: any) => {
         const fields = item?.fields || {};
@@ -408,7 +420,20 @@ export class FeishuService {
       ...data,
       items,
       search_applied: Boolean(query.search),
-      filters_applied: Boolean(filterProject || filterStatus || filterAssignee || filterRisk)
+      filters_applied: Boolean(filterProject || filterStatus || filterAssignee || filterRisk || allowedProjectNames !== null)
+    };
+  }
+
+  async getRecord(recordId: string) {
+    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+    const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
+    const data = await this.request<{ record: { record_id: string; fields: Record<string, unknown> } }>(
+      `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`
+    );
+    return {
+      ...data.record,
+      fields: this.mapFieldsToLogical(data.record?.fields)
     };
   }
 
