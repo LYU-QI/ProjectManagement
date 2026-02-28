@@ -165,7 +165,7 @@ export class PmAssistantService {
         if (fallback) receiveIds = [fallback];
       }
       if (receiveIds.length === 0) {
-        throw new BadRequestException('未配置 FEISHU_CHAT_ID，无法发送消息。');
+        throw new BadRequestException('未找到可用群聊 Chat ID，请先在项目管理列表中为项目配置 chat_id。');
       }
 
       await Promise.all(receiveIds.map((receiveId) => this.feishuService.sendInteractiveMessage({

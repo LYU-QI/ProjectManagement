@@ -94,14 +94,14 @@ export default function AstraeaLayout({
         </div>
         <div className="astraea-platform-switch">
           <button
-            className={`astraea-platform-btn ${platform === 'workspace' ? 'active' : ''}`}
+            className={`btn theme-btn astraea-platform-btn ${platform === 'workspace' ? 'active' : ''}`}
             type="button"
             onClick={() => onPlatformChange('workspace')}
           >
             用户平台
           </button>
           <button
-            className={`astraea-platform-btn ${platform === 'admin' ? 'active' : ''}`}
+            className={`btn theme-btn astraea-platform-btn ${platform === 'admin' ? 'active' : ''}`}
             type="button"
             disabled={!canManageAdmin}
             onClick={() => onPlatformChange('admin')}

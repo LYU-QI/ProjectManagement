@@ -459,7 +459,19 @@ ${detailBlocks}`;
         throw new Error(`AI 请求失败 [reason=timeout] endpoint=${endpoint} timeoutMs=${timeoutMs}`);
       }
       const detail = err instanceof Error ? err.message : String(err);
-      throw new Error(`AI 请求失败 [reason=network_error] endpoint=${endpoint} detail=${detail}`);
+      const causeCode = typeof (err as { cause?: { code?: unknown } })?.cause?.code === 'string'
+        ? String((err as { cause?: { code?: string } }).cause?.code)
+        : '';
+      const causeMessage = typeof (err as { cause?: { message?: unknown } })?.cause?.message === 'string'
+        ? String((err as { cause?: { message?: string } }).cause?.message)
+        : '';
+      const causeText = [causeCode, causeMessage].filter(Boolean).join(' ');
+      const hint = causeCode === 'ENOTFOUND'
+        ? ' hint=dns_lookup_failed(请检查 DNS / 代理 / 网络策略，或更换可达 AI_ENDPOINT)'
+        : '';
+      throw new Error(
+        `AI 请求失败 [reason=network_error] endpoint=${endpoint} detail=${detail}${causeText ? ` cause=${causeText}` : ''}${hint}`
+      );
     } finally {
       clearTimeout(timeoutId);
     }
@@ -579,7 +591,7 @@ ${detailBlocks}`;
         source?: string;
         task?: { id?: number; recordId?: string; project?: string; title?: string; status?: string };
         feishuSync?: { ok?: boolean; recordId?: string; status?: string; error?: string };
-        requirement?: { id?: number; project?: string; title?: string; status?: string; priority?: string };
+        requirement?: { id?: number; projectSeq?: number; project?: string; title?: string; status?: string; priority?: string };
       };
       if (parsed?.ok && parsed.task) {
         const taskRef = parsed.task.id ? `任务#${parsed.task.id}` : `飞书记录#${parsed.task.recordId || '-'}`;
@@ -597,7 +609,8 @@ ${detailBlocks}`;
         return `已执行成功：${taskRef}（${parsed.task.title || '-'}）状态已更新为「${parsed.task.status || '-'}」，项目「${parsed.task.project || '-'}」，数据源：${sourceText}。${syncText}`;
       }
       if (parsed?.ok && parsed.requirement) {
-        return `已执行成功：已创建需求#${parsed.requirement.id || '-'}「${parsed.requirement.title || '-'}」，项目「${parsed.requirement.project || '-'}」，优先级「${parsed.requirement.priority || '-'}」，状态「${parsed.requirement.status || '-'}」。`;
+        const reqNo = parsed.requirement.projectSeq ?? parsed.requirement.id ?? '-';
+        return `已执行成功：已创建需求#${reqNo}「${parsed.requirement.title || '-'}」，项目「${parsed.requirement.project || '-'}」，优先级「${parsed.requirement.priority || '-'}」，状态「${parsed.requirement.status || '-'}」。`;
       }
       return `执行结果：${observation}`;
     } catch {
@@ -980,15 +993,37 @@ ${detailBlocks}`;
       const versionRaw = String(actionInput.version ?? '').trim();
       const version = versionRaw || undefined;
 
-      const created = await this.prisma.requirement.create({
-        data: { projectId, title, description, priority, version },
-        include: { project: { select: { name: true } } }
-      });
+      let created: Prisma.RequirementGetPayload<{ include: { project: { select: { name: true } } } }> | null = null;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          created = await this.prisma.$transaction(async (tx) => {
+            const last = await tx.requirement.findFirst({
+              where: { projectId },
+              orderBy: { projectSeq: 'desc' },
+              select: { projectSeq: true }
+            });
+            const nextProjectSeq = last ? last.projectSeq + 1 : 1;
+            return tx.requirement.create({
+              data: { projectId, projectSeq: nextProjectSeq, title, description, priority, version },
+              include: { project: { select: { name: true } } }
+            });
+          });
+          break;
+        } catch (err) {
+          const isUniqueConflict =
+            err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+          if (!isUniqueConflict || attempt === 4) {
+            throw err;
+          }
+        }
+      }
+      if (!created) return '执行失败：创建需求失败，请稍后重试。';
       return JSON.stringify({
         ok: true,
         action,
         requirement: {
           id: created.id,
+          projectSeq: created.projectSeq,
           project: created.project.name,
           title: created.title,
           priority: created.priority,
@@ -1112,7 +1147,7 @@ ${detailBlocks}`;
 
     // 获取实时项目上下文数据 (RAG)
     const allProjects = await this.prisma.project.findMany({
-      select: { id: true, name: true, budget: true, startDate: true, endDate: true }
+      select: { id: true, name: true, alias: true, budget: true, startDate: true, endDate: true }
     });
     const accessibleIds = await this.accessService.getAccessibleProjectIds(actor);
     const projects = accessibleIds === null
@@ -1137,7 +1172,10 @@ ${detailBlocks}`;
     // 根据用户提问里的项目名优先做项目范围过滤；未命中则回退全局。
     const normalizedMessage = input.message.toLowerCase();
     const scopedProjectIds = projects
-      .filter((project) => this.fuzzyIncludes(normalizedMessage, project.name))
+      .filter((project) =>
+        this.fuzzyIncludes(normalizedMessage, project.name)
+        || this.fuzzyIncludes(normalizedMessage, project.alias || '')
+      )
       .map((project) => project.id);
     const scopedWhere = scopedProjectIds.length > 0 ? { projectId: { in: scopedProjectIds } } : {};
 
@@ -1190,7 +1228,9 @@ ${detailBlocks}`;
     const totalActualCost = costAgg._sum.amount || 0;
     const taskSummary = taskStats.map(t => `${t.status}: ${t._count._all}`).join(', ');
     const reqSummary = requirementStats.map(r => `${r.status}: ${r._count._all}`).join(', ');
-    const projectList = scopedProjects.map(p => ` - ${p.name} (预算: ¥${p.budget.toLocaleString()}, 周期: ${p.startDate || '未设'} 至 ${p.endDate || '未设'})`).join('\n');
+    const projectList = scopedProjects
+      .map((p) => ` - ${p.name}${p.alias ? `（别名: ${p.alias}）` : ''} (预算: ¥${p.budget.toLocaleString()}, 周期: ${p.startDate || '未设'} 至 ${p.endDate || '未设'})`)
+      .join('\n');
 
     const DETAIL_LIMIT = 200;
     const clippedTaskDetails = taskDetails.slice(0, DETAIL_LIMIT);
@@ -1352,6 +1392,9 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
       const projectNameToId = new Map<string, number>();
       for (const project of projects) {
         projectNameToId.set(project.name.trim().toLowerCase(), project.id);
+        if (project.alias) {
+          projectNameToId.set(project.alias.trim().toLowerCase(), project.id);
+        }
       }
       const allowedProjectIdSet = new Set(projects.map((project) => project.id));
 

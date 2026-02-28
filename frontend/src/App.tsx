@@ -318,10 +318,15 @@ function App() {
     setError('');
     const form = new FormData(formEl);
     const name = String(form.get('name'));
+    const alias = String(form.get('alias') || '').trim().toUpperCase();
     const budget = Number(form.get('budget'));
 
     if (!Number.isFinite(budget) || budget <= 0) {
       setError('预算必须是大于 0 的数字。');
+      return;
+    }
+    if (!/^[A-Z]+$/.test(alias)) {
+      setError('项目别名仅支持大写英文字母（A-Z）。');
       return;
     }
 
@@ -330,6 +335,7 @@ function App() {
       await runWithRetry('新增项目', async () => {
         const created = await apiPost<{ id: number }>('/projects', {
           name,
+          alias,
           budget,
           startDate: String(form.get('startDate') || ''),
           endDate: String(form.get('endDate') || ''),
@@ -488,14 +494,20 @@ function App() {
     setMessage('');
     setError('');
     const budget = Number(draft.budget);
+    const alias = String(draft.alias || '').trim().toUpperCase();
     if (!Number.isFinite(budget) || budget <= 0) {
       setError('预算必须是大于 0 的数字。');
+      return;
+    }
+    if (!/^[A-Z]+$/.test(alias)) {
+      setError('项目别名仅支持大写英文字母（A-Z）。');
       return;
     }
     try {
       await runWithRetry('更新项目', async () => {
         await apiPatch(`/projects/${original.id}`, {
           name: String(draft.name || ''),
+          alias,
           budget,
           startDate: draft.startDate || null,
           endDate: draft.endDate || null,
@@ -870,11 +882,11 @@ function App() {
     await refreshAll(selectedProjectId);
   }
 
-  async function markRequirementChanged(req: Requirement, input: { reason: string; version: string }) {
+  async function markRequirementChanged(req: Requirement, input: { description: string; reason: string; version: string }) {
     if (!canWrite) return;
     await runWithRetry('记录需求变更', async () => {
       await apiPost(`/requirements/${req.id}/change`, {
-        description: req.description,
+        description: input.description,
         version: input.version,
         reason: input.reason,
         changedBy: user?.name ?? 'PM Demo'
@@ -903,6 +915,11 @@ function App() {
       return;
     }
     await loadRequirementChanges(req);
+  }
+
+  function closeRequirementChanges() {
+    setSelectedRequirementForChanges(null);
+    setRequirementChanges([]);
   }
 
   async function generateReport() {
@@ -1117,7 +1134,7 @@ function App() {
     const query = globalSearch.trim().toLowerCase();
     if (!query) return null;
     const projectMatches = projects.filter((p) =>
-      matchesSearch(p.name, query) || matchesSearch(p.id, query)
+      matchesSearch(p.name, query) || matchesSearch(p.alias, query) || matchesSearch(p.id, query)
     );
     const requirementMatches = requirements.filter((r) =>
       matchesSearch(r.title, query) || matchesSearch(r.description, query) || matchesSearch(r.status, query)
@@ -1162,6 +1179,7 @@ function App() {
     getId: (row) => row.id,
     hasChanges: (original, draft) => (
       original.name !== draft.name
+      || String(original.alias ?? '') !== String(draft.alias ?? '')
       || String(original.budget) !== String(draft.budget)
       || String(original.startDate ?? '') !== String(draft.startDate ?? '')
       || String(original.endDate ?? '') !== String(draft.endDate ?? '')
@@ -2068,11 +2086,11 @@ function App() {
                 <div style={{ marginBottom: 10 }}>
                   <strong>需求 ({globalSearchResults.counts.requirements})</strong>
                   <table className="table" style={{ marginTop: 6 }}>
-                    <thead><tr><th>ID</th><th>标题</th><th>状态</th></tr></thead>
+                    <thead><tr><th>项目-编号</th><th>标题</th><th>状态</th></tr></thead>
                     <tbody>
                       {globalSearchResults.requirements.map((r) => (
                         <tr key={`g-r-${r.id}`}>
-                          <td>{r.id}</td>
+                          <td>{`${projects.find((p) => p.id === r.projectId)?.name || `项目${r.projectId}`}-${(r as any).projectSeq ?? r.id}`}</td>
                           <td>{r.title}</td>
                           <td>{r.status}</td>
                         </tr>
@@ -2226,6 +2244,7 @@ function App() {
             onReviewRequirement={(id, decision) => void reviewRequirementAction(id, decision)}
             onMarkRequirementChanged={(req, input) => void markRequirementChanged(req, input)}
             onShowRequirementChanges={(req) => void toggleRequirementChanges(req)}
+            onCloseRequirementChanges={closeRequirementChanges}
             onDeleteRequirement={(req) => void deleteRequirement(req)}
             onDeleteSelectedRequirements={() => void deleteSelectedRequirements()}
             onToggleRequirementSelection={toggleRequirementSelection}
@@ -2234,6 +2253,7 @@ function App() {
             requirementChanges={requirementChanges}
             selectedRequirementForChanges={selectedRequirementForChanges}
             selectedProjectId={selectedProjectId}
+            selectedProjectName={selectedProjectName}
             onImportSuccess={() => void refreshAll(selectedProjectId)}
           />
         )}

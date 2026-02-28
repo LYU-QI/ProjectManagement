@@ -31,6 +31,7 @@ export interface DashboardOverview {
 export interface Requirement {
   id: number;
   projectId: number;
+  projectSeq?: number;
   title: string;
   description: string;
   priority: string;
@@ -156,6 +157,7 @@ export interface PrdCompareResult {
 export interface ProjectItem {
   id: number;
   name: string;
+  alias?: string | null;
   budget: number;
   startDate?: string | null;
   endDate?: string | null;

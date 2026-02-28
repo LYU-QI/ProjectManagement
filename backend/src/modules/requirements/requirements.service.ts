@@ -1,6 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { NotificationLevel, RequirementStatus } from '@prisma/client';
+import { NotificationLevel, Prisma, RequirementStatus } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AccessService, AuthActor } from '../access/access.service';
 
@@ -38,7 +38,10 @@ export class RequirementsService {
         ...(projectId ? { projectId } : {}),
         ...(accessible === null ? {} : { projectId: { in: accessible } })
       },
-      orderBy: { id: 'asc' }
+      orderBy: [
+        { projectId: 'asc' },
+        { projectSeq: 'asc' }
+      ]
     });
   }
 
@@ -52,12 +55,35 @@ export class RequirementsService {
       throw new NotFoundException('Project not found');
     }
 
-    return this.prisma.requirement.create({
-      data: {
-        ...input,
-        status: RequirementStatus.draft
+    // 规则：按项目维度分配业务编号 projectSeq（每个项目从 1 开始递增）。
+    // 导入时可能并发创建，遇到唯一键冲突时重试。
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const last = await tx.requirement.findFirst({
+            where: { projectId: input.projectId },
+            orderBy: { projectSeq: 'desc' },
+            select: { projectSeq: true }
+          });
+          const nextProjectSeq = last ? last.projectSeq + 1 : 1;
+          return tx.requirement.create({
+            data: {
+              ...input,
+              projectSeq: nextProjectSeq,
+              status: RequirementStatus.draft
+            }
+          });
+        });
+      } catch (err) {
+        const isUniqueConflict =
+          err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+        if (!isUniqueConflict || attempt === 4) {
+          throw err;
+        }
       }
-    });
+    }
+
+    throw new ConflictException('Requirement ID generation conflict, please retry.');
   }
 
   async review(actor: AuthActor | undefined, id: number, reviewer: string, decision: 'approved' | 'rejected', comment?: string) {

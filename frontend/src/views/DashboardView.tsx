@@ -82,6 +82,7 @@ export default function DashboardView({
           </div>
           <form className="form new-project-form" onSubmit={onSubmitProject}>
             <input name="name" placeholder="项目名称" required />
+            <input name="alias" placeholder="项目别名（大写英文）" required />
             <input name="budget" type="number" step="0.01" placeholder="预算" required />
             <input name="startDate" type="date" />
             <input name="endDate" type="date" />
@@ -211,6 +212,7 @@ export default function DashboardView({
               )}
               <th>ID</th>
               <th>名称</th>
+              <th>别名</th>
               <th>预算</th>
               <th>开始</th>
               <th>结束</th>
@@ -251,6 +253,23 @@ export default function DashboardView({
                       />
                     ) : (
                       rowDraft.name
+                    )}
+                  </td>
+
+                  <td
+                    className={isEditing && projectEdit.editingField === 'alias' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'alias')}
+                  >
+                    {isEditing && projectEdit.editingField === 'alias' ? (
+                      <input
+                        data-project-edit={`${project.id}-alias`}
+                        value={rowDraft.alias ?? ''}
+                        onChange={(e) => projectEdit.updateDraft('alias', e.target.value.toUpperCase())}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                        onBlur={() => projectEdit.finalize(project)}
+                      />
+                    ) : (
+                      rowDraft.alias || '-'
                     )}
                   </td>
 

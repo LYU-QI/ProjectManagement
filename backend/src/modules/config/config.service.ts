@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 
 /**
@@ -29,7 +29,6 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     FEISHU_APP_TOKEN: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书多维表格 App Token' },
     FEISHU_TABLE_ID: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书多维表格 Table ID' },
     FEISHU_USER_ID_TYPE: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书用户 ID 类型' },
-    FEISHU_CHAT_ID: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '飞书群聊 Chat ID（pm-assistant 发送群消息）' },
     FEISHU_MULTI_SELECT_FIELDS: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '多维表格多选字段名（逗号分隔）' },
     FEISHU_FIELD_MAP: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: '字段名映射（逻辑名=实际名，逗号分隔；或 JSON 对象）' },
     FEISHU_PM_ASSISTANT_ENABLED: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 定时任务开关（true/false）' },
@@ -63,7 +62,25 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
 @Injectable()
 export class ConfigService {
     /** .env 文件路径 */
-    private readonly envPath = resolve(__dirname, '..', '..', '..', '.env');
+    private readonly envPath = this.resolveEnvPath();
+
+    private resolveEnvPath(): string {
+        const candidates = [
+            // 1) 优先使用 backend/.env（兼容从仓库根目录启动）
+            resolve(process.cwd(), 'backend', '.env'),
+            // 2) 其次使用当前工作目录 .env（通常为 backend/.env）
+            resolve(process.cwd(), '.env'),
+            // 3) 兼容 ts-node/nest watch
+            resolve(__dirname, '..', '..', '..', '.env'),
+            // 4) 兼容 dist 目录执行，回退到 backend/.env（而非 dist/.env）
+            resolve(__dirname, '..', '..', '..', '..', '.env'),
+        ];
+        for (const file of candidates) {
+            if (existsSync(file)) return file;
+        }
+        // 保底：沿用旧路径
+        return resolve(__dirname, '..', '..', '..', '.env');
+    }
 
     /**
      * 读取 .env 文件，解析为键值对

@@ -74,33 +74,34 @@ enum DependencyType {
 }
 
 model User {
-  id       Int      @id @default(autoincrement())
-  name     String
-  username String?  @unique
-  password String?
-  role     UserRole
-  projects Project[] @relation("ProjectOwner")
+  id          Int                 @id @default(autoincrement())
+  name        String
+  username    String?             @unique
+  password    String?
+  role        UserRole
+  projects    Project[]           @relation("ProjectOwner")
   memberships ProjectMembership[]
-  worklogs Worklog[]
+  worklogs    Worklog[]
 }
 
 model Project {
-  id           Int           @id @default(autoincrement())
-  name         String
-  ownerId      Int
-  budget       Float
-  startDate    String?
-  endDate      String?
+  id            Int                 @id @default(autoincrement())
+  name          String
+  alias         String?             @unique
+  ownerId       Int
+  budget        Float
+  startDate     String?
+  endDate       String?
   feishuChatIds String?
-  owner        User          @relation("ProjectOwner", fields: [ownerId], references: [id])
-  memberships  ProjectMembership[]
-  requirements Requirement[]
-  costs        CostEntry[]
-  milestones   Milestone[]
-  tasks        Task[]
-  worklogs     Worklog[]
+  owner         User                @relation("ProjectOwner", fields: [ownerId], references: [id])
+  memberships   ProjectMembership[]
+  requirements  Requirement[]
+  costs         CostEntry[]
+  milestones    Milestone[]
+  tasks         Task[]
+  worklogs      Worklog[]
   notifications Notification[]
-  prdDocuments PrdDocument[]
+  prdDocuments  PrdDocument[]
 }
 
 model ProjectMembership {
@@ -120,6 +121,7 @@ model ProjectMembership {
 model Requirement {
   id          Int                 @id @default(autoincrement())
   projectId   Int
+  projectSeq  Int
   title       String
   description String
   priority    RequirementPriority
@@ -130,6 +132,8 @@ model Requirement {
   project     Project             @relation(fields: [projectId], references: [id])
   reviews     RequirementReview[]
   changes     RequirementChange[]
+
+  @@unique([projectId, projectSeq])
 }
 
 model RequirementReview {
@@ -167,17 +171,17 @@ model PrdDocument {
 }
 
 model PrdVersion {
-  id          Int      @id @default(autoincrement())
-  documentId  Int
+  id           Int         @id @default(autoincrement())
+  documentId   Int
   versionLabel String?
-  fileName    String
-  mimeType    String?
-  fileSize    Int?
-  storagePath String
-  contentText String   @db.Text
-  contentHash String
-  createdAt   DateTime @default(now())
-  document    PrdDocument @relation(fields: [documentId], references: [id])
+  fileName     String
+  mimeType     String?
+  fileSize     Int?
+  storagePath  String
+  contentText  String      @db.Text
+  contentHash  String
+  createdAt    DateTime    @default(now())
+  document     PrdDocument @relation(fields: [documentId], references: [id])
 
   @@index([documentId])
   @@index([contentHash])
@@ -194,12 +198,12 @@ model CostEntry {
 }
 
 model Milestone {
-  id         Int      @id @default(autoincrement())
-  projectId  Int
-  name       String
+  id          Int     @id @default(autoincrement())
+  projectId   Int
+  name        String
   plannedDate String
-  actualDate String?
-  project    Project  @relation(fields: [projectId], references: [id])
+  actualDate  String?
+  project     Project @relation(fields: [projectId], references: [id])
 }
 
 model Task {
@@ -214,34 +218,34 @@ model Task {
 }
 
 model FeishuDependency {
-  id                 Int            @id @default(autoincrement())
-  projectName        String
-  taskRecordId       String
-  taskId             String?
-  dependsOnRecordId  String
-  dependsOnTaskId    String?
-  type               DependencyType @default(FS)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  id                Int            @id @default(autoincrement())
+  projectName       String
+  taskRecordId      String
+  taskId            String?
+  dependsOnRecordId String
+  dependsOnTaskId   String?
+  type              DependencyType @default(FS)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   @@unique([taskRecordId, dependsOnRecordId, type])
 }
 
 model Worklog {
-  id         Int      @id @default(autoincrement())
-  projectId  Int
-  userId     Int?
+  id           Int      @id @default(autoincrement())
+  projectId    Int
+  userId       Int?
   assigneeName String?
-  taskTitle  String?
-  weekStart  String?
-  weekEnd    String?
-  totalDays  Float?
-  hours      Float
-  hourlyRate Float
-  workedOn   String
-  createdAt  DateTime @default(now())
-  project    Project  @relation(fields: [projectId], references: [id])
-  user       User?    @relation(fields: [userId], references: [id])
+  taskTitle    String?
+  weekStart    String?
+  weekEnd      String?
+  totalDays    Float?
+  hours        Float
+  hourlyRate   Float
+  workedOn     String
+  createdAt    DateTime @default(now())
+  project      Project  @relation(fields: [projectId], references: [id])
+  user         User?    @relation(fields: [userId], references: [id])
 }
 
 model PmAssistantLog {
@@ -275,18 +279,18 @@ model Notification {
 }
 
 model RiskRule {
-  id                Int        @id @default(autoincrement())
-  key               String     @unique
-  type              RiskRuleType @default(deadline_progress)
+  id                Int           @id @default(autoincrement())
+  key               String        @unique
+  type              RiskRuleType  @default(deadline_progress)
   name              String
-  enabled           Boolean    @default(true)
+  enabled           Boolean       @default(true)
   thresholdDays     Int
   progressThreshold Int
-  blockedValue      String?    @default("是")
-  includeMilestones Boolean    @default(false)
-  autoNotify        Boolean    @default(true)
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  blockedValue      String?       @default("是")
+  includeMilestones Boolean       @default(false)
+  autoNotify        Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
   alerts            RiskAlert[]
   logs              RiskRuleLog[]
 }
@@ -317,15 +321,15 @@ model RiskAlert {
 }
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
-  userId     Int?
-  userName   String?
-  userRole   String?
-  method     String
-  path       String
-  projectId  Int?
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  userName    String?
+  userRole    String?
+  method      String
+  path        String
+  projectId   Int?
   requestBody Json?
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 }
 
 model FeishuUser {

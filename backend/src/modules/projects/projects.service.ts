@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
 
 interface CreateProjectInput {
   name: string;
+  alias: string;
   budget: number;
   startDate?: string;
   endDate?: string;
@@ -12,6 +13,7 @@ interface CreateProjectInput {
 
 interface UpdateProjectInput {
   name?: string;
+  alias?: string;
   budget?: number;
   startDate?: string;
   endDate?: string;
@@ -33,14 +35,29 @@ export class ProjectsService {
     });
   }
 
+  private normalizeAlias(aliasRaw: string | undefined): string | undefined {
+    if (typeof aliasRaw !== 'string') return undefined;
+    const alias = aliasRaw.trim().toUpperCase();
+    if (!alias) return undefined;
+    if (!/^[A-Z]+$/.test(alias)) {
+      throw new BadRequestException('项目别名仅支持大写英文字母（A-Z）。');
+    }
+    return alias;
+  }
+
   create(input: CreateProjectInput, actor?: AuthActor) {
     const ownerId = Number(actor?.sub);
     if (!ownerId) {
       throw new ForbiddenException('Only authenticated users can create project');
     }
+    const alias = this.normalizeAlias(input.alias);
+    if (!alias) {
+      throw new BadRequestException('项目别名不能为空，且必须为大写英文字母。');
+    }
     return this.prisma.project.create({
       data: {
         ...input,
+        alias,
         ownerId
       }
     });
@@ -56,9 +73,13 @@ export class ProjectsService {
       throw new NotFoundException('Project not found');
     }
 
+    const normalizedAlias = this.normalizeAlias(input.alias);
     return this.prisma.project.update({
       where: { id },
-      data: input
+      data: {
+        ...input,
+        ...(typeof input.alias === 'undefined' ? {} : { alias: normalizedAlias ?? null })
+      }
     });
   }
 

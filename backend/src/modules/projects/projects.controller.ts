@@ -1,11 +1,15 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
-import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import { ProjectsService } from './projects.service';
 import { Roles } from '../auth/roles.decorator';
 
 class CreateProjectDto {
   @IsNotEmpty()
   name!: string;
+
+  @IsNotEmpty()
+  @Matches(/^[A-Z]+$/, { message: 'alias must be uppercase English letters only' })
+  alias!: string;
 
   @IsNumber()
   budget!: number;
@@ -27,6 +31,10 @@ class UpdateProjectDto {
   @IsOptional()
   @IsNotEmpty()
   name?: string;
+
+  @IsOptional()
+  @Matches(/^[A-Z]+$/, { message: 'alias must be uppercase English letters only' })
+  alias?: string;
 
   @IsOptional()
   @IsNumber()

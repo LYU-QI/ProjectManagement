@@ -360,13 +360,13 @@ export default function ScheduleView({
           <div className="muted">切换不同展示方式查看任务状态</div>
           <div className="panel-actions">
             {viewMode === 'list' && (
-              <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              <button className="btn theme-btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
                 {compactTable ? '标准密度' : '紧凑密度'}
               </button>
             )}
-            <button className={viewMode === 'list' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
-            <button className={viewMode === 'gantt' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
-            <button className={viewMode === 'calendar' ? 'btn active' : 'btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
+            <button className={viewMode === 'list' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
+            <button className={viewMode === 'gantt' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
+            <button className={viewMode === 'calendar' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
           </div>
         </div>
         {scheduleLoading && <p>Loading...</p>}
@@ -473,7 +473,7 @@ export default function ScheduleView({
               </div>
               <div>
                 <button
-                  className="btn"
+                  className="btn theme-btn"
                   type="button"
                   disabled={!canWrite || !dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId}
                   onClick={() => {
@@ -506,7 +506,7 @@ export default function ScheduleView({
                       <td>{dependsOnLabel}</td>
                       <td>
                         {canWrite ? (
-                          <button className="btn" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
+                          <button className="btn theme-btn-danger" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
                         ) : '-'}
                       </td>
                     </tr>
@@ -613,9 +613,9 @@ export default function ScheduleView({
             <span className="muted">任务与里程碑按日分布</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
+            <button className="btn theme-btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
             <strong>{calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月</strong>
-            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>下个月</button>
+            <button className="btn theme-btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>下个月</button>
           </div>
           <div className="calendar-grid">
             {['日', '一', '二', '三', '四', '五', '六'].map((label) => (
