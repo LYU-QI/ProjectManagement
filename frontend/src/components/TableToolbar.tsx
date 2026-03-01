@@ -6,7 +6,7 @@ type Props = {
 
 export default function TableToolbar({ children }: Props) {
   return (
-    <div className="table-toolbar">
+    <div className="table-toolbar glass-surface glass-surface--interactive">
       {children}
     </div>
   );

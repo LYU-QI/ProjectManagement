@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { apiPost } from '../api/client';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type ProjectItem = {
   id: number;
@@ -291,50 +292,36 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
   const [weeklyViewMode, setWeeklyViewMode] = useState<'edit' | 'preview'>('preview');
   const [progressViewMode, setProgressViewMode] = useState<'edit' | 'preview'>('preview');
 
-  // 通用的 Markdown 渲染区域样式
-  const markdownContainerStyle: React.CSSProperties = {
-    padding: '16px',
-    background: 'var(--color-bg-surface)',
-    border: '1px solid var(--color-border)',
-    borderRadius: 4,
-    color: 'var(--color-text-primary)',
-    minHeight: '400px',
-    maxHeight: '600px',
-    overflowY: 'auto',
-    lineHeight: '1.6',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
-  };
-
   return (
     <div>
       {/* 目标工作区选择器 */}
-      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--color-primary)' }}>
-        <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
+      <div className="card ai-workspace-card">
+        <div className="form ai-workspace-form">
           <div>
-            <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block' }}>
+            <label className="ai-workspace-label">
               目标工作区
             </label>
-            <select
-              value={selectedProjectId ?? ''}
+            <ThemedSelect
+              value={selectedProjectId == null ? '' : String(selectedProjectId)}
               onChange={(e) => {
                 const value = e.target.value;
                 onSelectProject(value ? Number(value) : null);
               }}
             >
-              {projects.length === 0 && <option value="">暂无项目</option>}
+              <option value="" disabled={projects.length > 0}>{projects.length === 0 ? '暂无项目' : '请选择目标工作区'}</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} (#{p.id})
                 </option>
               ))}
-            </select>
+            </ThemedSelect>
           </div>
         </div>
       </div>
 
       {/* 标签页导航 */}
-      <div style={{ display: 'flex', marginBottom: 0 }}>
-        <button className={`btn btn-tab ${activeTab === 'weekly' ? 'active' : ''}`} style={{ borderRadius: '4px 0 0 0' }} onClick={() => setActiveTab('weekly')}>
+      <div className="ai-tab-nav">
+        <button className={`btn btn-tab ai-tab-first ${activeTab === 'weekly' ? 'active' : ''}`} onClick={() => setActiveTab('weekly')}>
           📋 周报草稿
         </button>
         <button className={`btn btn-tab ${activeTab === 'progress' ? 'active' : ''}`} onClick={() => setActiveTab('progress')}>
@@ -343,21 +330,21 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
         <button className={`btn btn-tab ${activeTab === 'nlp' ? 'active' : ''}`} onClick={() => setActiveTab('nlp')}>
           ✍️ 自然语言录入任务
         </button>
-        <button className={`btn btn-tab ${activeTab === 'meeting' ? 'active' : ''}`} style={{ borderRadius: '0 4px 0 0' }} onClick={() => setActiveTab('meeting')}>
+        <button className={`btn btn-tab ai-tab-last ${activeTab === 'meeting' ? 'active' : ''}`} onClick={() => setActiveTab('meeting')}>
           🎤 会议纪要转任务
         </button>
       </div>
 
       {/* 周报草稿 Tab */}
       {activeTab === 'weekly' && (
-        <div className="card" style={{ borderTop: '2px solid var(--color-primary)', borderRadius: '0 4px 4px 4px' }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="card ai-tab-panel ai-tab-weekly">
+          <div className="ai-tab-actions">
             <button className="btn" onClick={onGenerate}>生成周报草稿</button>
             <button className="btn" type="button" onClick={() => copy(weeklyDraft, setCopiedWeekly)} disabled={!weeklyDraft}>复制全文</button>
             <button className="btn" type="button" onClick={() => download(weeklyDraft, 'weekly-report')} disabled={!weeklyDraft}>下载 TXT</button>
-            {copiedWeekly && <span style={{ color: 'var(--color-success)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
+            {copiedWeekly && <span className="ai-copy-ok">已复制</span>}
 
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            <div className="ai-view-switch">
               <button className={`btn btn-small btn-mode ${weeklyViewMode === 'edit' ? 'active' : ''}`} onClick={() => setWeeklyViewMode('edit')}>📝 编辑源码</button>
               <button className={`btn btn-small btn-mode ${weeklyViewMode === 'preview' ? 'active' : ''}`} onClick={() => setWeeklyViewMode('preview')}>👁 渲染预览</button>
             </div>
@@ -365,23 +352,14 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
           {/* 模板模式提示：引导用户配置 AI */}
           {aiReportSource === 'template' && weeklyDraft && (
-            <div style={{
-              marginBottom: 16,
-              padding: '12px 16px',
-              background: 'var(--color-warning-soft)',
-              border: '1px solid var(--color-warning)',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-            }}>
-              <span style={{ fontSize: 20 }}>⚠️</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ color: 'var(--color-warning)', fontWeight: 600, fontSize: 13, marginBottom: 2 }}>
+            <div className="ai-template-tip">
+              <span className="ai-template-tip-icon">⚠️</span>
+              <div className="ai-template-tip-main">
+                <div className="ai-template-tip-title">
                   当前为模板模式 — AI 智能分析未启用
                 </div>
-                <div style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>
-                  前往左侧菜单「⚙ 系统配置」填写 <strong style={{ color: 'var(--color-text-primary)' }}>AI_API_URL</strong>、<strong style={{ color: 'var(--color-text-primary)' }}>AI_API_KEY</strong> 和 <strong style={{ color: 'var(--color-text-primary)' }}>AI_MODEL</strong>，即可启用 AI 深度分析周报。
+                <div className="ai-template-tip-desc">
+                  前往左侧菜单「⚙ 系统配置」填写 <strong className="ai-strong">AI_API_URL</strong>、<strong className="ai-strong">AI_API_KEY</strong> 和 <strong className="ai-strong">AI_MODEL</strong>，即可启用 AI 深度分析周报。
                 </div>
               </div>
             </div>
@@ -393,16 +371,16 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               value={weeklyDraft || ''}
               onChange={(e) => setWeeklyDraft(e.target.value)}
               placeholder="选择目标工作区后，点击按钮生成周报草稿"
-              style={{ width: '100%', fontFamily: 'monospace', lineHeight: '1.5' }}
+              className="ai-report-editor"
             />
           ) : (
-            <div style={markdownContainerStyle} className="markdown-body">
+            <div className="markdown-body ai-markdown-view">
               {weeklyDraft ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                   {weeklyDraft}
                 </ReactMarkdown>
               ) : (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 100 }}>暂无报告内容，点击生成即可预览。</div>
+                <div className="ai-empty-placeholder">暂无报告内容，点击生成即可预览。</div>
               )}
             </div>
           )}
@@ -411,8 +389,8 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 项目进展报告 Tab */}
       {activeTab === 'progress' && (
-        <div className="card" style={{ borderTop: '2px solid var(--color-success)', borderRadius: '0 4px 4px 4px' }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="card ai-tab-panel ai-tab-progress">
+          <div className="ai-tab-actions">
             <button
               className={`btn ${selectedProjectId ? 'btn-mode active' : ''}`}
               onClick={generateProgressReport}
@@ -422,12 +400,12 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
             </button>
             <button className="btn" type="button" onClick={() => copy(progressDraft, setCopiedProgress)} disabled={!progressDraft}>复制全文</button>
             <button className="btn" type="button" onClick={() => download(progressDraft, 'progress-report')} disabled={!progressDraft}>下载 TXT</button>
-            {copiedProgress && <span style={{ color: 'var(--color-success)', lineHeight: '32px', fontSize: 12 }}>已复制</span>}
+            {copiedProgress && <span className="ai-copy-ok">已复制</span>}
             {!selectedProjectId && (
-              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>请先选择目标工作区</span>
+              <span className="ai-project-hint">请先选择目标工作区</span>
             )}
 
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            <div className="ai-view-switch">
               <button className={`btn btn-small btn-mode ${progressViewMode === 'edit' ? 'active' : ''}`} onClick={() => setProgressViewMode('edit')}>📝 编辑源码</button>
               <button className={`btn btn-small btn-mode ${progressViewMode === 'preview' ? 'active' : ''}`} onClick={() => setProgressViewMode('preview')}>👁 渲染预览</button>
             </div>
@@ -439,16 +417,16 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               value={progressDraft || ''}
               onChange={(e) => setProgressDraft(e.target.value)}
               placeholder="选择目标工作区后，点击按钮生成项目进展分析报告（包含健康度评分、任务进度、预算分析、风险评估和 AI 建议）"
-              style={{ width: '100%', fontFamily: 'monospace', lineHeight: '1.6' }}
+              className="ai-report-editor"
             />
           ) : (
-            <div style={markdownContainerStyle} className="markdown-body">
+            <div className="markdown-body ai-markdown-view">
               {progressDraft ? (
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                   {progressDraft}
                 </ReactMarkdown>
               ) : (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 100 }}>暂无报告内容，选择项目并点击 AI 生成以预览分析。</div>
+                <div className="ai-empty-placeholder">暂无报告内容，选择项目并点击 AI 生成以预览分析。</div>
               )}
             </div>
           )}
@@ -457,29 +435,23 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 自然语言录入任务 Tab */}
       {activeTab === 'nlp' && (
-        <div className="card" style={{ borderTop: '2px solid var(--color-primary)', borderRadius: '0 4px 4px 4px' }}>
-          <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
+        <div className="card ai-tab-panel ai-tab-nlp">
+          <div className="ai-section-hint">
             用自然语言描述任务，AI 自动解析为结构化字段。例如：「下周四前张三完成支付接口联调，大概 3 天，优先级很高」
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+          <div className="ai-input-row">
             <textarea
               rows={3}
               value={nlpText}
               onChange={(e) => setNlpText(e.target.value)}
               placeholder="在此输入任务描述，支持口语化表达..."
-              style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
+              className="ai-input-textarea"
             />
             <button
-              className="btn btn-strong-contrast"
+              className="btn btn-strong-contrast ai-cta-primary"
               type="button"
               disabled={!nlpText.trim() || nlpLoading}
-              style={{
-                alignSelf: 'stretch',
-                minWidth: 100,
-                ['--cta-bg' as string]: 'var(--color-primary)',
-                ['--cta-text' as string]: '#ffffff'
-              }}
               onClick={() => void handleNlpParse()}
             >
               {nlpLoading ? '⏳ 解析中...' : '🪄 AI 解析'}
@@ -488,127 +460,119 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
           {/* 错误提示 */}
           {nlpError && (
-            <div style={{
-              padding: '10px 14px',
-              background: 'var(--color-danger-soft)',
-              border: '1px solid var(--color-danger)',
-              borderRadius: 4,
-              color: 'var(--color-danger)',
-              fontSize: 13,
-              marginBottom: 12
-            }}>
+            <div className="ai-error-box">
               ⚠️ {nlpError}
             </div>
           )}
 
           {/* 解析结果预览 */}
           {nlpResult && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ color: 'var(--color-primary)', fontSize: 12, marginBottom: 10 }}>
+            <div className="ai-result-wrap">
+              <div className="ai-success-tip">
                 ✅ 解析成功 — 可编辑后确认，再一键创建到飞书
               </div>
-              <table className="table" style={{ fontSize: 13 }}>
+              <table className="table ai-edit-table">
                 <tbody>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>任务名称</td>
+                    <td className="ai-edit-label">任务名称</td>
                     <td>
                       <input
                         type="text"
                         value={nlpResult.taskName}
                         onChange={(e) => updateNlpResult({ taskName: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                       />
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>负责人</td>
+                    <td className="ai-edit-label">负责人</td>
                     <td>
                       <input
                         type="text"
                         value={nlpResult.assignee || ''}
                         onChange={(e) => updateNlpResult({ assignee: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                         placeholder="未识别可手动填写"
                       />
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>所属项目</td>
+                    <td className="ai-edit-label">所属项目</td>
                     <td>
                       <input
                         type="text"
                         value={nlpResult.projectName || ''}
                         onChange={(e) => updateNlpResult({ projectName: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                         placeholder="如飞书为单选，请填写已有选项"
                       />
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>开始日期</td>
+                    <td className="ai-edit-label">开始日期</td>
                     <td>
                       <input
                         type="date"
                         value={nlpResult.startDate || ''}
                         onChange={(e) => updateNlpResult({ startDate: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                       />
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>截止日期</td>
+                    <td className="ai-edit-label">截止日期</td>
                     <td>
                       <input
                         type="date"
                         value={nlpResult.endDate || ''}
                         onChange={(e) => updateNlpResult({ endDate: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                       />
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>优先级</td>
+                    <td className="ai-edit-label">优先级</td>
                     <td>
-                      <select
+                      <ThemedSelect
                         value={nlpResult.priority || 'medium'}
                         onChange={(e) => updateNlpResult({ priority: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                       >
                         <option value="high">高</option>
                         <option value="medium">中</option>
                         <option value="low">低</option>
-                      </select>
+                      </ThemedSelect>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>状态</td>
+                    <td className="ai-edit-label">状态</td>
                     <td>
-                      <select
+                      <ThemedSelect
                         value={nlpResult.status || 'todo'}
                         onChange={(e) => updateNlpResult({ status: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                       >
                         <option value="todo">待办</option>
                         <option value="in_progress">进行中</option>
                         <option value="done">已完成</option>
-                      </select>
+                      </ThemedSelect>
                     </td>
                   </tr>
                   <tr>
-                    <td style={{ width: 100, color: 'var(--text-muted)', fontSize: 12 }}>补充说明</td>
+                    <td className="ai-edit-label">补充说明</td>
                     <td>
                       <textarea
                         rows={2}
                         value={nlpResult.notes || ''}
                         onChange={(e) => updateNlpResult({ notes: e.target.value })}
-                        style={{ width: '100%', background: 'var(--color-bg-surface)', border: '1px solid var(--color-border)', padding: '4px 6px', borderRadius: 3 }}
+                        className="ai-edit-input"
                         placeholder="可选"
                       />
                     </td>
                   </tr>
                 </tbody>
               </table>
-              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+              <div className="ai-confirm-row">
                 <input
                   type="checkbox"
                   checked={nlpConfirmed}
@@ -616,16 +580,12 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                 />
                 我已确认以上信息无误
               </div>
-              <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+              <div className="ai-action-row">
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary ai-primary-wide"
                   type="button"
                   disabled={creatingFeishu || !nlpConfirmed}
                   onClick={() => void handleCreateToFeishu()}
-                  style={{
-                    width: '100%',
-                    justifyContent: 'center'
-                  }}
                 >
                   {creatingFeishu ? '🚀 正在同步创建至飞书...' : '⚡ 一键创建至飞书同步列表'}
                 </button>
@@ -646,7 +606,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           )}
 
           {!nlpResult && !nlpError && !nlpLoading && (
-            <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
+            <div className="ai-empty-state">
               输入任务描述后点击「AI 解析」，即可自动提取任务字段
             </div>
           )}
@@ -655,29 +615,23 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
       {/* 会议纪要转任务 Tab */}
       {activeTab === 'meeting' && (
-        <div className="card" style={{ borderTop: '2px solid var(--color-warning)', borderRadius: '0 4px 4px 4px' }}>
-          <div style={{ marginBottom: 14, color: 'var(--text-muted)', fontSize: 12 }}>
+        <div className="card ai-tab-panel ai-tab-meeting">
+          <div className="ai-section-hint">
             粘贴会议记录全文、纪要流水或群聊对话，AI 将自动提取 Action Items 并允许批量同步至系统。
           </div>
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12 }}>
+          <div className="ai-input-row">
             <textarea
               rows={6}
               value={meetingText}
               onChange={(e) => setMeetingText(e.target.value)}
               placeholder="在这里粘贴会议纪要文本..."
-              style={{ flex: 1, fontFamily: 'system-ui', lineHeight: '1.5', resize: 'vertical' }}
+              className="ai-input-textarea"
             />
             <button
-              className="btn btn-strong-contrast"
+              className="btn btn-strong-contrast ai-cta-warning"
               type="button"
               disabled={!meetingText.trim() || meetingLoading}
-              style={{
-                alignSelf: 'stretch',
-                minWidth: 100,
-                ['--cta-bg' as string]: 'var(--color-warning-strong)',
-                ['--cta-text' as string]: '#ffffff'
-              }}
               onClick={() => void handleMeetingParse()}
             >
               {meetingLoading ? '⏳ 解析中...' : '🪄 提取任务'}
@@ -685,24 +639,24 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
           </div>
 
           {meetingError && (
-            <div style={{ padding: '10px 14px', background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)', borderRadius: 4, color: 'var(--color-danger)', fontSize: 13, marginBottom: 12 }}>
+            <div className="ai-error-box">
               ⚠️ {meetingError}
             </div>
           )}
 
           {meetingTasks.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <div style={{ color: 'var(--color-warning)', fontSize: 12 }}>
+            <div className="ai-result-wrap ai-result-wrap-lg">
+              <div className="ai-result-head">
+                <div className="ai-warning-tip">
                   ✅ 识别到 {meetingTasks.length} 个 Action Item
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                <div className="ai-result-count">
                   已选中 {selectedTaskIndices.length} 项
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="ai-sync-row">
+                <label className="ai-sync-label">
                   <input
                     type="checkbox"
                     checked={syncToFeishu}
@@ -711,15 +665,15 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                   同步到飞书进度列表
                 </label>
                 {!selectedProjectId && (
-                  <span style={{ fontSize: 12, color: 'var(--color-danger)' }}>未选择工作区，无法创建系统任务</span>
+                  <span className="ai-danger-tip">未选择工作区，无法创建系统任务</span>
                 )}
               </div>
 
-              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 4, padding: 2 }}>
-                <table className="table" style={{ fontSize: 13 }}>
+              <div className="ai-task-table-wrap">
+                <table className="table ai-edit-table">
                   <thead>
                     <tr>
-                      <th style={{ width: 40 }}>
+                      <th className="ai-col-40">
                         <input
                           type="checkbox"
                           checked={selectedTaskIndices.length === meetingTasks.length && meetingTasks.length > 0}
@@ -740,7 +694,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                     {meetingTasks.map((task, idx) => {
                       const { plannedStart, plannedEnd } = resolvePlannedDates(task);
                       return (
-                      <tr key={idx} style={{ background: selectedTaskIndices.includes(idx) ? 'var(--color-warning-soft)' : 'transparent' }}>
+                      <tr key={idx} className={selectedTaskIndices.includes(idx) ? 'ai-row-selected' : ''}>
                         <td>
                           <input
                             type="checkbox"
@@ -760,9 +714,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               newTasks[idx] = { ...task, taskName: e.target.value };
                               setMeetingTasks(newTasks);
                             }}
-                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
-                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                            className="ai-meeting-inline-input"
                           />
                         </td>
                         <td>
@@ -774,9 +726,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               newTasks[idx] = { ...task, assignee: e.target.value };
                               setMeetingTasks(newTasks);
                             }}
-                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
-                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                            className="ai-meeting-inline-input"
                           />
                         </td>
                         <td>
@@ -788,9 +738,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               newTasks[idx] = { ...task, startDate: e.target.value };
                               setMeetingTasks(newTasks);
                             }}
-                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
-                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                            className="ai-meeting-inline-input"
                           />
                         </td>
                         <td>
@@ -802,9 +750,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
                               newTasks[idx] = { ...task, endDate: e.target.value };
                               setMeetingTasks(newTasks);
                             }}
-                            style={{ width: '100%', background: 'transparent', border: '1px solid transparent', padding: '2px 4px', borderRadius: 2 }}
-                            onFocus={(e) => e.target.style.borderColor = 'var(--color-warning)'}
-                            onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                            className="ai-meeting-inline-input"
                           />
                         </td>
                         <td>
@@ -828,10 +774,9 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               </div>
 
               {meetingTasks.length > 0 && (
-                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <div className="ai-action-row ai-action-row-lg">
                   <button
-                    className="btn btn-warning"
-                    style={{ flex: 1 }}
+                    className="btn btn-warning ai-primary-wide"
                     disabled={selectedTaskIndices.length === 0 || batchCreating || !selectedProjectId}
                     onClick={() => void handleBatchCreate()}
                   >
@@ -857,7 +802,7 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
               )}
 
               {!meetingTasks.length && !meetingLoading && !meetingError && (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0', fontSize: 13 }}>
+                <div className="ai-empty-state">
                   输入会议文本后点击指示按钮提取行动项
                 </div>
               )}

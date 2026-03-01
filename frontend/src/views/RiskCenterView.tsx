@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { RiskAlertsResponse } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Filters = {
   thresholdDays: number;
@@ -97,7 +98,7 @@ export default function RiskCenterView({
         </article>
       </section>
 
-      <div className="card compact-card" style={{ marginTop: 12 }}>
+      <div className="card compact-card risk-card-mt">
         <div className="section-title-row">
           <h3>风险过滤与执行</h3>
           <div className="panel-actions">
@@ -112,100 +113,100 @@ export default function RiskCenterView({
         </div>
 
         {filtersOpen && (
-          <div className="filters-grid">
-          <div>
+          <div className="filters-grid risk-filters-grid">
+          <div className="risk-filter-item">
             <label>截止天数 ≤</label>
             <input type="number" min={1} value={filters.thresholdDays} onChange={(e) => onChange({ thresholdDays: Number(e.target.value) || 0 })} />
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>进度 &lt;</label>
             <input type="number" min={0} max={100} value={filters.progressThreshold} onChange={(e) => onChange({ progressThreshold: Number(e.target.value) || 0 })} />
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>所属项目</label>
-            <select value={filters.filterProject} onChange={(e) => onChange({ filterProject: e.target.value })}>
+            <ThemedSelect value={filters.filterProject} onChange={(e) => onChange({ filterProject: e.target.value })}>
               <option value="">全部</option>
               {projectOptions.map((project) => <option key={project} value={project}>{project}</option>)}
-            </select>
+            </ThemedSelect>
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>状态</label>
-            <select value={filters.filterStatus} onChange={(e) => onChange({ filterStatus: e.target.value })}>
+            <ThemedSelect value={filters.filterStatus} onChange={(e) => onChange({ filterStatus: e.target.value })}>
               <option value="">全部</option>
               <option value="待办">待办</option>
               <option value="进行中">进行中</option>
               <option value="已完成">已完成</option>
-            </select>
+            </ThemedSelect>
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>负责人</label>
             <input placeholder="姓名" value={filters.filterAssignee} onChange={(e) => onChange({ filterAssignee: e.target.value })} />
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>风险等级</label>
-            <select value={filters.filterRisk} onChange={(e) => onChange({ filterRisk: e.target.value })}>
+            <ThemedSelect value={filters.filterRisk} onChange={(e) => onChange({ filterRisk: e.target.value })}>
               <option value="">全部</option>
               <option value="低">低</option>
               <option value="中">中</option>
               <option value="高">高</option>
-            </select>
+            </ThemedSelect>
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>包含里程碑</label>
-            <select value={filters.includeMilestones ? '是' : '否'} onChange={(e) => onChange({ includeMilestones: e.target.value === '是' })}>
+            <ThemedSelect value={filters.includeMilestones ? '是' : '否'} onChange={(e) => onChange({ includeMilestones: e.target.value === '是' })}>
               <option value="否">否</option>
               <option value="是">是</option>
-            </select>
+            </ThemedSelect>
           </div>
-          <div>
+          <div className="risk-filter-item">
             <label>规则启用</label>
-            <select value={filters.enabled ? '是' : '否'} onChange={(e) => onChange({ enabled: e.target.value === '是' })}>
+            <ThemedSelect value={filters.enabled ? '是' : '否'} onChange={(e) => onChange({ enabled: e.target.value === '是' })}>
               <option value="是">是</option>
               <option value="否">否</option>
-            </select>
+            </ThemedSelect>
           </div>
           </div>
         )}
 
-        {message && <div style={{ marginTop: 10, color: 'var(--color-success)' }}>{message}</div>}
-        {error && <div className="warn" style={{ marginTop: 10 }}>{error}</div>}
+        {message && <div className="risk-message">{message}</div>}
+        {error && <div className="warn risk-error">{error}</div>}
       </div>
 
-      <div className="dashboard-panels" style={{ marginTop: 12 }}>
+      <div className="dashboard-panels risk-panels-mt">
         <div className="card compact-card">
           <div className="section-title-row">
             <h3>规则配置</h3>
             <span className="muted">多规则启停与通知控制</span>
           </div>
-          <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <div className="form risk-rule-grid">
             <div>
               <label>延期规则</label>
               <div className="muted">{deadlineRule?.name || '-'}</div>
               {deadlineRule && (
-                <select value={deadlineRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(deadlineRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
+                <ThemedSelect value={deadlineRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(deadlineRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
                   <option value="是">启用</option>
                   <option value="否">停用</option>
-                </select>
+                </ThemedSelect>
               )}
             </div>
             <div>
               <label>阻塞规则</label>
               <div className="muted">{blockedRule?.name || '-'}</div>
               {blockedRule && (
-                <select value={blockedRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(blockedRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
+                <ThemedSelect value={blockedRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(blockedRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
                   <option value="是">启用</option>
                   <option value="否">停用</option>
-                </select>
+                </ThemedSelect>
               )}
             </div>
             <div>
               <label>逾期规则</label>
               <div className="muted">{overdueRule?.name || '-'}</div>
               {overdueRule && (
-                <select value={overdueRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(overdueRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
+                <ThemedSelect value={overdueRule.enabled ? '是' : '否'} onChange={(e) => onUpdateRule(overdueRule.key, { enabled: e.target.value === '是' })} disabled={!canWrite}>
                   <option value="是">启用</option>
                   <option value="否">停用</option>
-                </select>
+                </ThemedSelect>
               )}
             </div>
             {blockedRule && (
@@ -222,7 +223,7 @@ export default function RiskCenterView({
             <h3>规则变更日志</h3>
             <span className="muted">最近 {logs.length} 条</span>
           </div>
-          <div style={{ maxHeight: 280, overflow: 'auto' }}>
+          <div className="risk-log-wrap">
             <table className="table">
               <thead>
                 <tr><th>时间</th><th>规则</th><th>动作</th><th>说明</th></tr>
@@ -235,7 +236,7 @@ export default function RiskCenterView({
                       <td>{new Date(log.createdAt).toLocaleString()}</td>
                       <td>{rule?.name || log.ruleId}</td>
                       <td>{log.action}</td>
-                      <td style={{ whiteSpace: 'pre-wrap' }}>{log.note || '-'}</td>
+                      <td className="risk-note-cell">{log.note || '-'}</td>
                     </tr>
                   );
                 })}
@@ -248,7 +249,7 @@ export default function RiskCenterView({
         </div>
       </div>
 
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card risk-card-mt">
         <div className="section-title-row">
           <h3>风险明细</h3>
           <div className="panel-actions">
@@ -259,7 +260,7 @@ export default function RiskCenterView({
           </div>
         </div>
         <div className="table-wrap">
-          <table className={`table ${compactTable ? 'table-compact' : ''}`} style={{ marginTop: 8 }}>
+          <table className={`table ${compactTable ? 'table-compact' : ''} risk-table-top`}>
             <thead>
               <tr>
                 <th>任务</th>
@@ -284,7 +285,7 @@ export default function RiskCenterView({
                   <td>{Number.isFinite(item.progress) ? `${item.progress.toFixed(0)}%` : '-'}</td>
                   <td>{item.riskLevel || '-'}</td>
                   <td>{item.blocked || '-'}</td>
-                  <td style={{ whiteSpace: 'pre-wrap' }}>{item.blockedReason || '-'}</td>
+                  <td className="risk-note-cell">{item.blockedReason || '-'}</td>
                 </tr>
               ))}
               {(data?.items?.length ?? 0) === 0 && !loading && (

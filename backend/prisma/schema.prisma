@@ -102,6 +102,10 @@ model Project {
   worklogs      Worklog[]
   notifications Notification[]
   prdDocuments  PrdDocument[]
+  pmJobConfigs  PmAssistantProjectJobConfig[]
+  pmPrompts     PmAssistantProjectPrompt[]
+  pmSchedules   PmAssistantProjectSchedule[]
+  pmLogs        PmAssistantLog[]
 }
 
 model ProjectMembership {
@@ -250,6 +254,7 @@ model Worklog {
 
 model PmAssistantLog {
   id          Int      @id @default(autoincrement())
+  projectId   Int?
   jobId       String
   triggeredBy String
   status      String
@@ -258,6 +263,7 @@ model PmAssistantLog {
   aiSummary   String?
   error       String?
   createdAt   DateTime @default(now())
+  project     Project? @relation(fields: [projectId], references: [id])
 }
 
 model PmAssistantJobConfig {
@@ -265,6 +271,43 @@ model PmAssistantJobConfig {
   jobId     String   @unique
   enabled   Boolean  @default(true)
   updatedAt DateTime @updatedAt
+}
+
+model PmAssistantProjectJobConfig {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  jobId     String
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, jobId])
+  @@index([projectId])
+}
+
+model PmAssistantProjectPrompt {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  jobId     String
+  prompt    String
+  updatedAt DateTime @updatedAt
+  project   Project  @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, jobId])
+  @@index([projectId])
+}
+
+model PmAssistantProjectSchedule {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  scheduleId String
+  cron       String
+  timezone   String
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, scheduleId])
+  @@index([projectId])
 }
 
 model Notification {

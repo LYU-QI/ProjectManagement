@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ProjectItem } from '../types';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type MilestoneStatus = 'upcoming' | 'in_progress' | 'completed';
 type MilestoneRisk = 'low' | 'medium' | 'high';
@@ -228,19 +229,19 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
   }
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="milestone-page">
       <div className="card">
         <h3>多项目里程碑配置与看板</h3>
         <p className="muted">请使用页面上方“目标工作区”切换项目。里程碑配置按项目独立保存（本地）。当前日期：{todayText()}</p>
       </div>
 
-      <div style={{ display: 'grid', gap: 12 }}>
+      <div className="milestone-page">
           <div className="card">
             <div className="section-title-row">
               <h3>{currentProject.name} · 里程碑看板</h3>
               <span className="muted">项目ID #{currentProject.id}</span>
             </div>
-            <div className="metrics-grid" style={{ marginTop: 8 }}>
+            <div className="metrics-grid milestone-metrics">
               <article className="metric-card"><p className="metric-label">里程碑总数</p><p className="metric-value">{stats.total}</p></article>
               <article className="metric-card"><p className="metric-label">高风险</p><p className="metric-value danger">{stats.highRisk}</p></article>
               <article className="metric-card"><p className="metric-label">平均进度</p><p className="metric-value">{stats.avgProgress}%</p></article>
@@ -253,9 +254,9 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
               <h3>里程碑配置</h3>
               {editingId && <button className="btn btn-small" type="button" onClick={resetMilestoneForm}>取消编辑</button>}
             </div>
-            <div className="form" style={{ gridTemplateColumns: '1.4fr 1fr 0.8fr 0.9fr 0.9fr 0.8fr auto' }}>
+            <div className="form milestone-form-grid">
               <input value={milestoneForm.title} placeholder="里程碑名称" onChange={(e) => setMilestoneForm((prev) => ({ ...prev, title: e.target.value }))} />
-              <select
+              <ThemedSelect
                 value={milestoneForm.owner}
                 onChange={(e) => setMilestoneForm((prev) => ({ ...prev, owner: e.target.value }))}
                 disabled={ownerOptions.length === 0}
@@ -264,65 +265,45 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                 {ownerOptions.map((owner) => (
                   <option key={`owner-${owner}`} value={owner}>{owner}</option>
                 ))}
-              </select>
+              </ThemedSelect>
               <input
                 type="date"
                 value={milestoneForm.due}
                 onChange={(e) => setMilestoneForm((prev) => ({ ...prev, due: e.target.value }))}
               />
-              <select value={milestoneForm.status} onChange={(e) => setMilestoneForm((prev) => ({ ...prev, status: e.target.value as MilestoneStatus }))}>
+              <ThemedSelect value={milestoneForm.status} onChange={(e) => setMilestoneForm((prev) => ({ ...prev, status: e.target.value as MilestoneStatus }))}>
                 <option value="upcoming">待开始</option>
                 <option value="in_progress">进行中</option>
                 <option value="completed">已完成</option>
-              </select>
-              <select value={milestoneForm.risk} onChange={(e) => setMilestoneForm((prev) => ({ ...prev, risk: e.target.value as MilestoneRisk }))}>
+              </ThemedSelect>
+              <ThemedSelect value={milestoneForm.risk} onChange={(e) => setMilestoneForm((prev) => ({ ...prev, risk: e.target.value as MilestoneRisk }))}>
                 <option value="low">低风险</option>
                 <option value="medium">中风险</option>
                 <option value="high">高风险</option>
-              </select>
+              </ThemedSelect>
               <input type="number" min={0} max={100} value={milestoneForm.progress} onChange={(e) => setMilestoneForm((prev) => ({ ...prev, progress: Number(e.target.value) || 0 }))} />
               <button className="btn btn-primary" type="button" onClick={createOrUpdateMilestone}>{editingId ? '保存' : '新增'}</button>
             </div>
             {ownerOptions.length === 0 && (
-              <p className="muted" style={{ marginTop: 8 }}>暂无可选负责人，请先在“飞书成员”维护人员名册。</p>
+              <p className="muted milestone-owner-empty">暂无可选负责人，请先在“飞书成员”维护人员名册。</p>
             )}
           </div>
 
           <div className="card">
             <div className="section-title-row">
               <h3>当前项目时间线</h3>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: 'var(--color-text-secondary)',
-                  background: 'var(--color-bg-muted)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 999,
-                  padding: '4px 10px'
-                }}
-              >
+              <span className="milestone-today-chip">
                 当前日期：{todayText()}
               </span>
             </div>
-            <div style={{ marginTop: 8, overflowX: 'auto', paddingBottom: 4 }}>
-              <div style={{ width: '100%', position: 'relative', padding: '18px 12px 6px' }}>
+            <div className="milestone-timeline-scroll">
+              <div className="milestone-timeline-shell">
+                <div className="milestone-timeline-track" />
                 <div
+                  className="milestone-timeline-grid"
                   style={{
-                    position: 'absolute',
-                    left: 18,
-                    right: 18,
-                    top: 28,
-                    height: 4,
-                    borderRadius: 999,
-                    background: 'linear-gradient(90deg, var(--color-primary) 0%, var(--color-primary) 85%, var(--color-success) 100%)'
-                  }}
-                />
-                <div
-                  style={{
-                    display: 'grid',
                     gridTemplateColumns: `repeat(${Math.max(1, timelineNodes.length)}, minmax(0, 1fr))`,
-                    gap: timelineNodes.length > 12 ? 3 : timelineNodes.length > 8 ? 5 : 8,
-                    position: 'relative'
+                    gap: timelineNodes.length > 12 ? 3 : timelineNodes.length > 8 ? 5 : 8
                   }}
                 >
                   {timelineNodes.map((m) => {
@@ -335,39 +316,29 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                         ? 'var(--color-primary)'
                         : 'var(--color-border-strong)';
                     return (
-                      <div key={`timeline-${m.id}`} style={{ textAlign: 'center', display: 'grid', justifyItems: 'center', gap: 6 }}>
+                      <div key={`timeline-${m.id}`} className="milestone-timeline-node">
                         <span
+                          className="milestone-timeline-dot-shell"
                           style={{
                             width: isDense ? 22 : 26,
                             height: isDense ? 22 : 26,
-                            borderRadius: '50%',
-                            background: 'var(--color-bg-surface)',
-                            border: '3px solid color-mix(in srgb, var(--color-border) 75%, #fff 25%)',
-                            display: 'grid',
-                            placeItems: 'center',
-                            zIndex: 1
                           }}
                         >
                           <span
+                            className="milestone-timeline-dot-core"
                             style={{
                               width: isDense ? 11 : 14,
                               height: isDense ? 11 : 14,
-                              borderRadius: '50%',
                               background: dotColor
                             }}
                           />
                         </span>
-                        <div style={{ fontSize: dateFont, color: 'var(--color-text-secondary)', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{m.due}</div>
+                        <div className="milestone-timeline-date" style={{ fontSize: dateFont }}>{m.due}</div>
                         <div
+                          className="milestone-timeline-title"
                           style={{
                             fontSize: titleFont,
-                            color: 'var(--color-text-primary)',
-                            lineHeight: 1.25,
-                            wordBreak: 'break-word',
-                            display: '-webkit-box',
                             WebkitLineClamp: timelineNodes.length > 12 ? 2 : 3,
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden'
                           }}
                         >
                           {m.title}
@@ -394,16 +365,16 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))', gap: 8 }}>
+            <div className="milestone-lane-grid">
               {(['upcoming', 'in_progress', 'completed'] as MilestoneStatus[]).map((lane) => (
-                <section key={lane} className="card" style={{ margin: 0, minHeight: 220 }}>
+                <section key={lane} className="card milestone-lane">
                   <div className="section-title-row">
                     <h3>{statuses[lane]}</h3>
                     <span className="muted">{laneMap[lane].length} 项</span>
                   </div>
-                  <div style={{ display: 'grid', gap: 8 }}>
+                  <div className="milestone-lane-list">
                     {laneMap[lane].map((m) => (
-                      <article key={m.id} className="card" style={{ margin: 0 }}>
+                      <article key={m.id} className="card milestone-item">
                         <div className="section-title-row">
                           <span className="muted">{m.owner}</span>
                           <span className={`badge ${m.risk === 'high' ? 'danger' : m.risk === 'medium' ? 'warning' : 'success'}`}>{riskText[m.risk]}</span>
@@ -414,7 +385,7 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                           <span className="muted">{m.progress}%</span>
                         </div>
                         <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, m.progress))}%` }} /></div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                        <div className="milestone-item-actions">
                           <button className="btn btn-small" type="button" onClick={() => editMilestone(m)}>编辑</button>
                           <button className="btn btn-small" type="button" onClick={() => moveStatus(m.id, 'prev')}>回退</button>
                           <button className="btn btn-small" type="button" onClick={() => moveStatus(m.id, 'next')}>推进</button>

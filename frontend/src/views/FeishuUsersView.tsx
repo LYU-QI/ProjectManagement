@@ -119,26 +119,26 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
     }
 
     return (
-        <div className="card">
-            <h2 style={{ marginBottom: 12 }}>飞书组员名册</h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 24 }}>
+        <div className="card feishu-users-card">
+            <h2 className="feishu-users-title">飞书组员名册</h2>
+            <p className="feishu-users-desc">
                 维护此列表可实现业务负责人（如“张三”）和飞书内部 `open_id`（如 `ou_xxxx`）间的安全匹配。这替代了旧版的全局环境变量硬编码。
             </p>
 
-            {error && <div className="warn" style={{ marginBottom: 16 }}>{error}</div>}
-            {message && <div style={{ color: 'var(--color-success)', marginBottom: 16 }}>{message}</div>}
+            {error && <div className="warn feishu-users-alert">{error}</div>}
+            {message && <div className="feishu-users-success">{message}</div>}
 
             {canWrite && (
-                <form onSubmit={(e) => void handleSubmit(e)} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 24, padding: 16, background: 'var(--color-bg-muted)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                <form onSubmit={(e) => void handleSubmit(e)} className="feishu-users-form">
                     <div>
-                        <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-muted)' }}>显示名称 (表格显示)</label>
+                        <label className="feishu-users-label">显示名称 (表格显示)</label>
                         <input type="text" name="name" className="input" placeholder="例如：李四" required />
                     </div>
                     <div>
-                        <label style={{ display: 'block', fontSize: 12, marginBottom: 4, color: 'var(--text-muted)' }}>飞书 Open ID</label>
+                        <label className="feishu-users-label">飞书 Open ID</label>
                         <input type="text" name="openId" className="input" placeholder="例如：ou_1234abcd5678..." required />
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <div className="feishu-users-form-actions">
                         <button type="submit" className="btn btn-primary">新增</button>
                     </div>
                 </form>
@@ -150,16 +150,16 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                 <table className="table">
                     <thead>
                         <tr>
-                            <th style={{ width: 60 }}>ID</th>
+                            <th className="feishu-users-col-id">ID</th>
                             <th>显示名称</th>
                             <th>飞书 Open ID</th>
-                            {canWrite && <th style={{ width: 140 }}>操作</th>}
+                            {canWrite && <th className="feishu-users-col-actions">操作</th>}
                         </tr>
                     </thead>
                     <tbody>
                         {users.length === 0 ? (
                             <tr>
-                                <td colSpan={canWrite ? 4 : 3} style={{ textAlign: 'center', padding: 24, color: 'var(--text-muted)' }}>
+                                <td colSpan={canWrite ? 4 : 3} className="feishu-users-empty">
                                     暂未登记任何负责人映射。
                                 </td>
                             </tr>
@@ -195,18 +195,18 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                                                 }}
                                             />
                                         ) : (
-                                            <code style={{ fontSize: 12 }}>{u.openId}</code>
+                                            <code className="feishu-users-openid">{u.openId}</code>
                                         )}
                                     </td>
                                     {canWrite && (
                                         <td>
                                             {editingId === u.id ? (
-                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                <div className="feishu-users-row-actions">
                                                     <button className="btn btn-primary btn-small" onClick={() => void saveEdit(u.id)}>保存</button>
                                                     <button className="btn btn-small" onClick={cancelEdit}>取消</button>
                                                 </div>
                                             ) : (
-                                                <div style={{ display: 'flex', gap: 6 }}>
+                                                <div className="feishu-users-row-actions">
                                                     <button className="btn btn-small" onClick={() => startEdit(u)}>编辑</button>
                                                     <button className="btn btn-small btn-danger" onClick={() => void handleDelete(u.id, u.name)}>删除</button>
                                                 </div>

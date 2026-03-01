@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createProjectMembership, listProjectMemberships, removeProjectMembership } from '../api/projectMemberships';
 import { createUser, resetUserPassword, updateUserRole } from '../api/users';
 import type { ProjectItem, ProjectMembershipItem, UserItem } from '../types';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   users: UserItem[];
@@ -140,13 +141,13 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
   };
 
   return (
-    <div style={{ display: 'grid', gap: 12 }}>
+    <div className="project-access-page">
       <div className="card">
         <h3>管理后台 · 用户角色</h3>
-        <p style={{ color: 'var(--text-muted)', margin: '6px 0 12px' }}>
+        <p className="project-access-hint">
           仅超级管理员/项目总监可管理用户。项目总监仅可分配 project_manager / pm / viewer。
         </p>
-        <div className="form" style={{ gridTemplateColumns: '180px 180px 180px 200px auto', marginBottom: 12 }}>
+        <div className="form project-access-user-form">
           <input
             value={newUserForm.username}
             placeholder="账号（username）"
@@ -163,19 +164,19 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
             placeholder="初始密码（>=6位）"
             onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
           />
-          <select
+          <ThemedSelect
             value={newUserForm.role}
             onChange={(e) => setNewUserForm((prev) => ({ ...prev, role: e.target.value as UserItem['role'] }))}
           >
             {ROLE_OPTIONS.map((item) => (
               <option key={`new-role-${item}`} value={item}>{item}</option>
             ))}
-          </select>
+          </ThemedSelect>
           <button className="btn btn-primary" type="button" disabled={!canManage} onClick={() => void onCreateUser()}>
             新增用户
           </button>
         </div>
-        <table className="table table-wrap" style={{ marginBottom: 12 }}>
+        <table className="table table-wrap project-access-user-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -194,7 +195,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
                 <td>{u.username}</td>
                 <td>{u.role}</td>
                 <td>
-                  <select
+                  <ThemedSelect
                     value={u.role}
                     disabled={!canManage || updatingUserId === u.id}
                     onChange={(e) => void onUpdateRole(u, e.target.value as UserItem['role'])}
@@ -202,7 +203,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
                     {ROLE_OPTIONS.map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 </td>
                 <td>
                   <button
@@ -218,7 +219,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无用户数据</td>
+                <td colSpan={6} className="project-access-empty-cell">暂无用户数据</td>
               </tr>
             )}
           </tbody>
@@ -227,24 +228,24 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
 
       <div className="card">
         <h3>管理后台 · 项目成员授权</h3>
-        <p style={{ color: 'var(--text-muted)', margin: '6px 0 12px' }}>
+        <p className="project-access-hint">
           用于配置“谁能访问哪个项目”。同一用户可绑定多个项目。
         </p>
-        <div className="form" style={{ gridTemplateColumns: '1fr 1fr 160px auto' }}>
-          <select value={form.userId} onChange={(e) => setForm((prev) => ({ ...prev, userId: e.target.value }))}>
+        <div className="form project-access-form">
+          <ThemedSelect value={form.userId} onChange={(e) => setForm((prev) => ({ ...prev, userId: e.target.value }))}>
             <option value="">选择用户</option>
             {userOptions.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
-          </select>
-          <select value={form.projectId} onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}>
+          </ThemedSelect>
+          <ThemedSelect value={form.projectId} onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}>
             <option value="">选择项目</option>
             {projectOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
-          <select value={form.role} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as 'director' | 'manager' | 'member' | 'viewer' }))}>
+          </ThemedSelect>
+          <ThemedSelect value={form.role} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as 'director' | 'manager' | 'member' | 'viewer' }))}>
             <option value="director">director</option>
             <option value="manager">manager</option>
             <option value="member">member</option>
             <option value="viewer">viewer</option>
-          </select>
+          </ThemedSelect>
           <button className="btn" type="button" disabled={!canManage} onClick={() => void onSubmit()}>
             新增/更新授权
           </button>
@@ -252,8 +253,8 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
       </div>
 
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <h3 style={{ margin: 0 }}>授权列表</h3>
+        <div className="project-access-list-head">
+          <h3 className="project-access-list-title">授权列表</h3>
           <button className="btn btn-small" type="button" onClick={() => void loadRows()} disabled={loading}>
             {loading ? '刷新中...' : '刷新'}
           </button>
@@ -286,7 +287,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无授权记录</td>
+                <td colSpan={6} className="project-access-empty-cell">暂无授权记录</td>
               </tr>
             )}
           </tbody>

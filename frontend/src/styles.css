@@ -2002,3 +2002,43 @@ body {
   color: var(--color-text-muted);
   font-weight: 700;
 }
+
+/* =========================================================
+   Global Dropdown Theming (force consistent themed popup)
+   ========================================================= */
+:root[data-theme="dark"] select {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] select {
+  color-scheme: light;
+}
+
+select {
+  border-radius: 22px;
+  min-height: 44px;
+  padding: 0 40px 0 14px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border) 65%);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--glass-specular) 28%, transparent 72%), transparent 42%),
+    color-mix(in srgb, var(--glass-bg) 84%, var(--color-bg-surface) 16%);
+  color: var(--text-on-glass-primary);
+}
+
+select option,
+select optgroup {
+  background: color-mix(in srgb, var(--color-bg-surface) 80%, var(--glass-bg) 20%) !important;
+  color: var(--color-text-primary) !important;
+}
+
+:root[data-theme="dark"] select option,
+:root[data-theme="dark"] select optgroup {
+  background: #132a49 !important;
+  color: #f1f6ff !important;
+}
+
+:root[data-theme="light"] select option,
+:root[data-theme="light"] select optgroup {
+  background: #f3f7ff !important;
+  color: #0f172a !important;
+}

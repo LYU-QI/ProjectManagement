@@ -150,11 +150,28 @@ export class FeishuService {
       }
     });
 
+    const raw = await res.text().catch(() => '');
+    const parsed = raw
+      ? (() => {
+        try {
+          return JSON.parse(raw) as { code?: number; msg?: string; data?: T };
+        } catch {
+          return null;
+        }
+      })()
+      : null;
+
     if (!res.ok) {
-      throw new BadRequestException(`Feishu API failed: HTTP ${res.status}`);
+      if (res.status === 403 && parsed?.code === 91403) {
+        throw new BadRequestException(
+          '飞书权限不足（91403 Forbidden）。请检查：1）当前应用是否已添加为该多维表格协作者；2）应用是否开通多维表格读写权限；3）FEISHU_APP_ID/FEISHU_APP_SECRET 与 FEISHU_APP_TOKEN 是否属于同一飞书应用与租户。'
+        );
+      }
+      const detail = raw ? ` ${raw.slice(0, 400)}` : '';
+      throw new BadRequestException(`Feishu API failed: HTTP ${res.status}${detail}`);
     }
 
-    const data = (await res.json()) as { code: number; msg: string; data?: T };
+    const data = (parsed || {}) as { code: number; msg: string; data?: T };
     if (data.code !== 0) {
       throw new BadRequestException(`Feishu API failed: ${data.code} ${data.msg}`);
     }
@@ -258,7 +275,7 @@ export class FeishuService {
     return '';
   }
 
-  private async normalizeFields(fields: Record<string, unknown>, options?: { normalizeAssignee?: boolean }) {
+  private async normalizeFields(fields: Record<string, unknown>, options?: { normalizeAssignee?: boolean; partial?: boolean }) {
     const mappedFields = Object.fromEntries(
       Object.entries(fields).map(([key, value]) => [this.resolveFieldName(key), value])
     );
@@ -269,16 +286,30 @@ export class FeishuService {
       ))
     );
     const normalizeAssignee = options?.normalizeAssignee !== false;
+    const partial = options?.partial === true;
     const assigneeKey = this.resolveFieldName('负责人');
-    return {
-      ...withMultiSelect,
-      [assigneeKey]: normalizeAssignee
+    const startKey = this.resolveFieldName('开始时间');
+    const endKey = this.resolveFieldName('截止时间');
+    const progressKey = this.resolveFieldName('进度');
+
+    const normalized: Record<string, unknown> = { ...withMultiSelect };
+    const hasField = (key: string) => Object.prototype.hasOwnProperty.call(withMultiSelect, key);
+
+    if (!partial || hasField(assigneeKey)) {
+      normalized[assigneeKey] = normalizeAssignee
         ? await this.normalizeAssignee(withMultiSelect[assigneeKey])
-        : withMultiSelect[assigneeKey],
-      [this.resolveFieldName('开始时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('开始时间')]),
-      [this.resolveFieldName('截止时间')]: this.normalizeDate(withMultiSelect[this.resolveFieldName('截止时间')]),
-      [this.resolveFieldName('进度')]: this.normalizeProgress(withMultiSelect[this.resolveFieldName('进度')])
-    };
+        : withMultiSelect[assigneeKey];
+    }
+    if (!partial || hasField(startKey)) {
+      normalized[startKey] = this.normalizeDate(withMultiSelect[startKey]);
+    }
+    if (!partial || hasField(endKey)) {
+      normalized[endKey] = this.normalizeDate(withMultiSelect[endKey]);
+    }
+    if (!partial || hasField(progressKey)) {
+      normalized[progressKey] = this.normalizeProgress(withMultiSelect[progressKey]);
+    }
+    return normalized;
   }
 
   async listRecords(query: {
@@ -318,16 +349,30 @@ export class FeishuService {
     if (userIdType) params.set('user_id_type', userIdType);
 
     let data: { items: Array<Record<string, unknown>>; page_token?: string; has_more?: boolean };
-    const url = `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`;
+    const buildUrl = () => `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`;
     try {
-      data = await this.request(url);
+      data = await this.request(buildUrl());
     } catch (err: any) {
       const message = err?.message || '';
       if (fieldNames && message.includes('FieldNameNotFound')) {
         this.logger.warn(`Feishu field_names invalid, retrying without field_names: ${fieldNames}`);
         params.delete('field_names');
-        const fallbackUrl = `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?${params.toString()}`;
-        data = await this.request(fallbackUrl);
+        data = await this.request(buildUrl());
+      } else if (params.has('user_id_type') && message.includes('HTTP 403')) {
+        const currentUserIdType = params.get('user_id_type');
+        this.logger.warn(`Feishu listRecords HTTP 403 with user_id_type=${currentUserIdType || ''}, retrying without user_id_type`);
+        params.delete('user_id_type');
+        try {
+          data = await this.request(buildUrl());
+        } catch (retryErr: any) {
+          const retryMsg = retryErr?.message || '';
+          if (params.has('field_names') && retryMsg.includes('FieldNameNotFound')) {
+            params.delete('field_names');
+            data = await this.request(buildUrl());
+          } else {
+            throw retryErr;
+          }
+        }
       } else {
         throw err;
       }
@@ -462,6 +507,16 @@ export class FeishuService {
           }
         );
       }
+      if (message.includes('UserFieldConvFail')) {
+        const fallback = await this.normalizeFields(fields, { normalizeAssignee: false });
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+          {
+            method: 'POST',
+            body: JSON.stringify({ fields: fallback })
+          }
+        );
+      }
       throw err;
     }
   }
@@ -469,7 +524,7 @@ export class FeishuService {
   async updateRecord(recordId: string, fields: Record<string, unknown>) {
     const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
     const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
-    const normalized = await this.normalizeFields(fields);
+    const normalized = await this.normalizeFields(fields, { partial: true });
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
     try {
       return await this.request(
@@ -482,7 +537,7 @@ export class FeishuService {
     } catch (err: any) {
       const message = err?.message || '';
       if (message.includes('SingleSelectFieldConvFail')) {
-        const fallback = await this.normalizeFields(fields, { normalizeAssignee: false });
+        const fallback = await this.normalizeFields(fields, { normalizeAssignee: false, partial: true });
         return this.request(
           `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
           {
@@ -490,6 +545,32 @@ export class FeishuService {
             body: JSON.stringify({ fields: fallback })
           }
         );
+      }
+      if (message.includes('UserFieldConvFail')) {
+        const assigneeKey = this.resolveFieldName('负责人');
+        const rawAssigneeFallback = await this.normalizeFields(fields, { normalizeAssignee: false, partial: true });
+        try {
+          return await this.request(
+            `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify({ fields: rawAssigneeFallback })
+            }
+          );
+        } catch {
+          const dropAssigneeFallback = { ...normalized };
+          delete dropAssigneeFallback[assigneeKey];
+          if (Object.keys(dropAssigneeFallback).length === 0) {
+            throw new BadRequestException('负责人字段格式不匹配，请检查人员映射后重试。');
+          }
+          return this.request(
+            `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+            {
+              method: 'PUT',
+              body: JSON.stringify({ fields: dropAssigneeFallback })
+            }
+          );
+        }
       }
       throw err;
     }

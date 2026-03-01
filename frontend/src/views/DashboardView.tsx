@@ -75,7 +75,7 @@ export default function DashboardView({
   return (
     <div>
       {canWrite && (
-        <div className="card compact-card" style={{ marginBottom: 12 }}>
+        <div className="card compact-card dashboard-create-card">
           <div className="section-title-row">
             <h3>快速创建项目</h3>
             <span className="muted">填写基础信息后可在需求页继续完善</span>
@@ -114,7 +114,7 @@ export default function DashboardView({
         </article>
       </section>
 
-      <section className="dashboard-panels" style={{ marginTop: 12 }}>
+      <section className="dashboard-panels dashboard-panels-gap">
         <article className="card compact-card">
           <div className="section-title-row">
             <h3>风险优先项目</h3>
@@ -156,7 +156,7 @@ export default function DashboardView({
               <p className="metric-value">{summary.avgHealth}</p>
             </div>
           </div>
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--color-border)' }}>
+          <div className="dashboard-budget-detail">
             {visibleProjectBudgets.length > 0 ? (
               <table className="table table-compact">
                 <thead>
@@ -185,7 +185,7 @@ export default function DashboardView({
         </article>
       </section>
 
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card req-mt-12">
         <div className="section-title-row">
           <h3>项目管理</h3>
           {canWrite && (
@@ -346,7 +346,7 @@ export default function DashboardView({
                   </td>
 
                   {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td className="req-inline-actions">
                       {isEditing && isDirty ? (
                         <>
                           <button className="btn" type="button" onClick={() => onSaveProject(project)}>

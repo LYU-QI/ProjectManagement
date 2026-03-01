@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost } from '../api/client';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 const COLOR_MAP: Record<string, string> = {
   red: 'var(--color-danger)',
@@ -47,12 +48,6 @@ type ScheduleItem = {
 type JobConfig = {
   jobId: string;
   enabled: boolean;
-};
-
-type ConfigItem = {
-  key: string;
-  value: string;
-  group: string;
 };
 
 type DefaultPrompt = {
@@ -134,7 +129,8 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       setSchedulesLoading(true);
       setSchedulesError('');
       try {
-        const res = await apiGet<ScheduleItem[]>('/pm-assistant/schedules');
+        const qs = projectId ? `?projectId=${projectId}` : '';
+        const res = await apiGet<ScheduleItem[]>(`/pm-assistant/schedules${qs}`);
         setSchedules(res);
         if (res.length > 0) {
           setTimezoneDraft(res[0].timezone);
@@ -146,18 +142,19 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       }
     };
     void loadSchedules();
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void loadLogs();
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     const loadConfigs = async () => {
       setConfigLoading(true);
       setConfigError('');
       try {
-        const res = await apiGet<JobConfig[]>('/pm-assistant/configs');
+        const qs = projectId ? `?projectId=${projectId}` : '';
+        const res = await apiGet<JobConfig[]>(`/pm-assistant/configs${qs}`);
         setJobConfigs(res);
       } catch (err: any) {
         setConfigError(err.message || '加载任务开关失败');
@@ -166,19 +163,21 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       }
     };
     void loadConfigs();
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     const loadAiConfig = async () => {
       setAiConfigLoading(true);
       setAiConfigError('');
       try {
-        const res = await apiGet<ConfigItem[]>('/config');
+        if (!projectId) {
+          setJobPromptDrafts({});
+          return;
+        }
+        const res = await apiGet<Record<string, string>>(`/pm-assistant/prompt-configs?projectId=${projectId}`);
         const nextDrafts: Record<string, string> = {};
         jobs.forEach((job) => {
-          const key = `FEISHU_PM_ASSISTANT_PROMPT_${job.id.toUpperCase().replace(/-/g, '_')}`;
-          const item = res.find((row) => row.key === key);
-          nextDrafts[job.id] = item?.value || '';
+          nextDrafts[job.id] = res[job.id] || '';
         });
         setJobPromptDrafts(nextDrafts);
       } catch (err: any) {
@@ -188,7 +187,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       }
     };
     void loadAiConfig();
-  }, [jobs]);
+  }, [jobs, projectId]);
 
   useEffect(() => {
     const loadDefaultPrompts = async () => {
@@ -258,7 +257,8 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setLogsLoading(true);
     setLogsError('');
     try {
-      const res = await apiGet<LogEntry[]>('/pm-assistant/logs');
+      const qs = projectId ? `?projectId=${projectId}` : '';
+      const res = await apiGet<LogEntry[]>(`/pm-assistant/logs${qs}`);
       setLogs(res);
     } catch (err: any) {
       setLogsError(err.message || '加载执行记录失败');
@@ -294,7 +294,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setSavingScheduleId(item.id);
     setSchedulesError('');
     try {
-      await apiPost('/pm-assistant/schedules', { id: item.id, cron: item.cron });
+      await apiPost('/pm-assistant/schedules', { id: item.id, cron: item.cron, projectId: projectId || undefined });
     } catch (err: any) {
       setSchedulesError(err.message || '保存定时配置失败');
     } finally {
@@ -306,7 +306,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setSavingTimezone(true);
     setSchedulesError('');
     try {
-      await apiPost('/pm-assistant/schedules/timezone', { timezone: timezoneDraft });
+      await apiPost('/pm-assistant/schedules/timezone', { timezone: timezoneDraft, projectId: projectId || undefined });
     } catch (err: any) {
       setSchedulesError(err.message || '保存时区失败');
     } finally {
@@ -318,7 +318,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setSavingJobId(jobId);
     setConfigError('');
     try {
-      await apiPost('/pm-assistant/configs', { jobId, enabled });
+      await apiPost('/pm-assistant/configs', { jobId, enabled, projectId: projectId || undefined });
       setJobConfigs((prev) => prev.map((item) => item.jobId === jobId ? { ...item, enabled } : item));
     } catch (err: any) {
       setConfigError(err.message || '更新任务开关失败');
@@ -332,7 +332,7 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setConfigError('');
     try {
       for (const job of jobs) {
-        await apiPost('/pm-assistant/configs', { jobId: job.id, enabled });
+        await apiPost('/pm-assistant/configs', { jobId: job.id, enabled, projectId: projectId || undefined });
       }
       setJobConfigs((prev) => prev.map((item) => ({ ...item, enabled })));
     } catch (err: any) {
@@ -347,12 +347,11 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
     setAiConfigSaving(true);
     setAiConfigError('');
     try {
-      const payload: Record<string, string> = {};
-      Object.entries(jobPromptDrafts).forEach(([jobId, prompt]) => {
-        const key = `FEISHU_PM_ASSISTANT_PROMPT_${jobId.toUpperCase().replace(/-/g, '_')}`;
-        payload[key] = prompt;
-      });
-      await apiPost('/config', payload);
+      if (!projectId) {
+        setAiConfigError('请先选择项目后再保存提示词配置');
+        return;
+      }
+      await apiPost('/pm-assistant/prompt-configs', { projectId, prompts: jobPromptDrafts });
     } catch (err: any) {
       setAiConfigError(err.message || '保存 AI 提示词失败');
     } finally {
@@ -362,84 +361,77 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--color-primary)' }}>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
+      <div className="card pm-intro-card">
+        <div className="pm-intro-text">
           PM Assistant 会根据飞书多维表格任务数据生成卡片，并按配置发送到飞书群。定时任务由后端自动触发，这里提供手动校验入口。
         </div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+        <div className="pm-intro-text">
           如需启用定时任务，请在系统配置中设置 `FEISHU_PM_ASSISTANT_ENABLED=true`。
         </div>
+        {!projectId && (
+          <div className="warn pm-warn-top">当前未选择项目，编辑配置将应用到全局默认项。建议先切换到目标项目再配置。</div>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 13, letterSpacing: 1 }}>AI 提示词配置（按类型）</h3>
+      <div className="card pm-card-gap">
+        <div className="pm-row-head">
+          <h3 className="pm-section-title">AI 提示词配置（按类型）</h3>
           <button className="btn" onClick={() => void saveAiConfig()} disabled={aiConfigSaving}>
             {aiConfigSaving ? '保存中...' : '保存配置'}
           </button>
         </div>
-        {aiConfigLoading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>正在加载 AI 配置...</div>}
-        {aiConfigError && <div className="warn" style={{ marginTop: 6 }}>{aiConfigError}</div>}
-        <details style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 12px' }}>
-          <summary style={{ cursor: 'pointer', fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', listStyle: 'none' }}>
+        {aiConfigLoading && <div className="pm-muted-sm">正在加载 AI 配置...</div>}
+        {aiConfigError && <div className="warn pm-warn-top">{aiConfigError}</div>}
+        <details className="pm-details-box">
+          <summary className="pm-details-summary-strong">
             展开按类型编辑 Prompt
           </summary>
-          <div style={{ display: 'grid', gap: 10, marginTop: 10 }}>
+          <div className="pm-grid-top">
             {jobs.map((job) => (
-              <div key={job.id} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)', marginBottom: 6 }}>{job.name}</div>
+              <div key={job.id} className="pm-item-card">
+                <div className="pm-item-title">{job.name}</div>
                 <textarea
                   rows={3}
                   value={jobPromptDrafts[job.id] ?? ''}
                   onChange={(e) => setJobPromptDrafts((prev) => ({ ...prev, [job.id]: e.target.value }))}
                   placeholder="留空则使用内置默认 prompt"
-                  style={{ width: '100%', fontFamily: 'monospace', lineHeight: 1.5 }}
+                  className="pm-prompt-textarea"
                 />
               </div>
             ))}
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <div className="pm-muted-sm">
               留空将自动使用内置默认 System Prompt。
             </div>
           </div>
         </details>
-        <details open={defaultPromptsOpen} onToggle={(e) => setDefaultPromptsOpen((e.target as HTMLDetailsElement).open)} style={{ marginTop: 12 }}>
-          <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>
+        <details open={defaultPromptsOpen} onToggle={(e) => setDefaultPromptsOpen((e.target as HTMLDetailsElement).open)} className="pm-details-gap">
+          <summary className="pm-details-summary">
             查看各类型默认 System Prompt
           </summary>
-          <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+          <div className="pm-grid-top">
             {defaultPrompts.length === 0 && (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>暂无默认提示词数据。</div>
+              <div className="pm-muted-sm">暂无默认提示词数据。</div>
             )}
             {defaultPrompts.map((item) => (
-              <div key={item.jobId} style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 12px' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-primary)' }}>{item.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>{item.prompt}</div>
+              <div key={item.jobId} className="pm-item-card">
+                <div className="pm-item-title">{item.name}</div>
+                <div className="pm-muted-sm pm-text-top">{item.prompt}</div>
               </div>
             ))}
           </div>
         </details>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card pm-card-gap">
         <details open={showJobToggles} onToggle={(e) => setShowJobToggles((e.target as HTMLDetailsElement).open)}>
-          <summary
-            style={{
-              listStyle: 'none',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              fontSize: 13,
-              letterSpacing: 1
-            }}
-          >
+          <summary className="pm-toggle-summary">
             <span>任务开关</span>
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            <span className="pm-muted-sm">
               {showJobToggles ? '收起' : '展开'}
             </span>
           </summary>
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+          <div className="pm-section-top">
+            <div className="pm-toolbar-wrap">
               <button className="btn" onClick={() => void updateAllJobs(true)} disabled={bulkSaving}>
                 {bulkSaving ? '处理中...' : '全选启用'}
               </button>
@@ -447,31 +439,20 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                 {bulkSaving ? '处理中...' : '全选停用'}
               </button>
             </div>
-            {configLoading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>正在加载任务开关...</div>}
-            {configError && <div className="warn" style={{ marginTop: 6 }}>{configError}</div>}
+            {configLoading && <div className="pm-muted-sm">正在加载任务开关...</div>}
+            {configError && <div className="warn pm-warn-top">{configError}</div>}
             {jobConfigs.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <div className="pm-job-grid">
                 {filteredJobs.map((job) => {
                   const config = jobConfigs.find((item) => item.jobId === job.id);
                   const enabled = config?.enabled ?? true;
                   return (
-                    <label
-                      key={job.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '10px 12px',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 6,
-                        background: 'var(--color-bg-surface)'
-                      }}
-                    >
+                    <label key={job.id} className="pm-job-card">
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: enabled ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                        <div className={`pm-job-name ${enabled ? 'is-enabled' : 'is-disabled'}`}>
                           {job.name}
                         </div>
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{job.description}</div>
+                        <div className="pm-job-desc">{job.description}</div>
                       </div>
                       <input
                         type="checkbox"
@@ -488,32 +469,32 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
         </details>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 13, letterSpacing: 1 }}>定时任务配置</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>时区</label>
+      <div className="card pm-card-gap">
+        <div className="pm-row-head">
+          <h3 className="pm-section-title">定时任务配置</h3>
+          <div className="pm-timezone-row">
+            <label className="pm-form-label">时区</label>
             <input
               value={timezoneDraft}
               onChange={(e) => setTimezoneDraft(e.target.value)}
-              style={{ width: 160 }}
+              className="pm-timezone-input"
             />
             <button className="btn" disabled={!timezoneDraft || savingTimezone} onClick={() => void saveTimezone()}>
               {savingTimezone ? '保存中...' : '保存时区'}
             </button>
           </div>
         </div>
-        {schedulesLoading && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>正在加载定时配置...</div>}
-        {schedulesError && <div className="warn" style={{ marginTop: 6 }}>{schedulesError}</div>}
+        {schedulesLoading && <div className="pm-muted-sm">正在加载定时配置...</div>}
+        {schedulesError && <div className="warn pm-warn-top">{schedulesError}</div>}
         {schedules.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ fontSize: 12 }}>
+          <div className="pm-table-wrap">
+            <table className="table pm-table-sm">
               <thead>
                 <tr>
                   <th>批次</th>
                   <th>Cron</th>
                   <th>任务</th>
-                  <th style={{ width: 120 }}>操作</th>
+                  <th className="pm-col-action">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -521,14 +502,14 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                   <tr key={item.id}>
                     <td>{item.name}</td>
                     <td>
-                      <input
-                        value={item.cron}
-                        onChange={(e) =>
-                          setSchedules((prev) => prev.map((row) => row.id === item.id ? { ...row, cron: e.target.value } : row))
-                        }
-                        style={{ width: 180 }}
-                      />
-                    </td>
+                        <input
+                          value={item.cron}
+                          onChange={(e) =>
+                            setSchedules((prev) => prev.map((row) => row.id === item.id ? { ...row, cron: e.target.value } : row))
+                          }
+                          className="pm-cron-input"
+                        />
+                      </td>
                     <td>{item.jobs.join(', ')}</td>
                     <td>
                       <button
@@ -547,11 +528,11 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
         )}
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 260px) 1fr', gap: 16 }}>
+      <div className="card pm-card-gap">
+        <div className="pm-run-grid">
           <div>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>任务类型</label>
-            <select
+            <label className="pm-form-label">任务类型</label>
+            <ThemedSelect
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
               disabled={jobsLoading || jobs.length === 0}
@@ -561,69 +542,69 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                   {job.name}
                 </option>
               ))}
-            </select>
-            {jobsLoading && <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>正在加载任务列表...</div>}
-            {jobsError && <div className="warn" style={{ marginTop: 6 }}>{jobsError}</div>}
+            </ThemedSelect>
+            {jobsLoading && <div className="pm-muted-sm pm-text-top">正在加载任务列表...</div>}
+            {jobsError && <div className="warn pm-warn-top">{jobsError}</div>}
           </div>
           <div>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>任务说明</label>
-            <div style={{ marginTop: 6, padding: '10px 12px', border: '1px solid var(--color-border)', borderRadius: 4, background: 'var(--color-bg-surface)' }}>
-              <div style={{ fontSize: 13, color: selectedJob ? COLOR_MAP[selectedJob.color] : 'var(--text-muted)', fontWeight: 600 }}>
+            <label className="pm-form-label">任务说明</label>
+            <div className="pm-job-info-box">
+              <div className="pm-job-name-highlight" style={{ color: selectedJob ? COLOR_MAP[selectedJob.color] : 'var(--text-muted)' }}>
                 {selectedJob?.name || '未选择任务'}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+              <div className="pm-muted-sm pm-text-top pm-job-desc-text">
                 {selectedJob?.description || '请选择任务查看描述。'}
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center', marginTop: 16 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+        <div className="pm-run-toolbar">
+          <label className="pm-check-inline pm-check-card">
             <input type="checkbox" checked={dryRun} onChange={(e) => setDryRun(e.target.checked)} />
             仅预览（dryRun，不发送飞书）
           </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 220 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>指定群聊 ID（可选）</label>
+          <div className="pm-receive-row pm-receive-card">
+            <label className="pm-form-label pm-receive-label">指定群聊 ID（可选）</label>
             <input
               value={receiveId}
               onChange={(e) => setReceiveId(e.target.value)}
               placeholder="oc_xxx"
-              style={{ flex: 1 }}
+              className="pm-receive-input"
             />
           </div>
-          <button className="btn" onClick={() => void runJob()} disabled={!selectedJobId || running}>
+          <button className="btn pm-run-submit" onClick={() => void runJob()} disabled={!selectedJobId || running}>
             {running ? '执行中...' : '运行一次'}
           </button>
         </div>
 
         {runError && (
-          <div className="warn" style={{ marginTop: 12 }}>
+          <div className="warn pm-warn-gap">
             {runError}
           </div>
         )}
       </div>
 
       {runResult && (
-        <div className="card" style={{ borderLeft: '3px solid var(--color-success)' }}>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+        <div className="card pm-result-card">
+          <div className="pm-muted-sm pm-result-head">
             执行结果：{runResult.sent ? '已发送' : '仅预览'}
           </div>
-          <div style={{ whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6 }}>
+          <div className="pm-result-summary">
             {runResult.summary}
           </div>
-          <details style={{ marginTop: 12 }}>
-            <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>查看卡片 JSON</summary>
-            <pre style={{ marginTop: 8, fontSize: 12, background: 'var(--color-bg-muted)', padding: 12, borderRadius: 6, overflowX: 'auto', border: '1px solid var(--color-border)' }}>
+          <details className="pm-details-gap">
+            <summary className="pm-details-summary">查看卡片 JSON</summary>
+            <pre className="pm-json-pre">
 {JSON.stringify(runResult.card, null, 2)}
             </pre>
           </details>
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 16 }}>
+      <div className="card pm-card-gap-top">
         <div className="panel-header">
-          <h3 style={{ margin: 0, fontSize: 13, letterSpacing: 1 }}>执行记录</h3>
+          <h3 className="pm-section-title">执行记录</h3>
           <div className="panel-actions">
             <button className="btn" type="button" onClick={() => setCompactLogsTable((prev) => !prev)}>
               {compactLogsTable ? '标准密度' : '紧凑密度'}
@@ -641,44 +622,44 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
         </div>
         {logFiltersOpen && (
           <div className="filter-panel">
-            <div className="filters-grid">
+            <div className="filters-grid pm-log-filters-grid">
               <input
                 value={logSearch}
                 onChange={(e) => setLogSearch(e.target.value)}
                 placeholder="搜索日志..."
               />
-              <select value={logFilterStatus} onChange={(e) => setLogFilterStatus(e.target.value as any)}>
+              <ThemedSelect value={logFilterStatus} onChange={(e) => setLogFilterStatus(e.target.value as typeof logFilterStatus)}>
                 <option value="all">全部状态</option>
                 <option value="success">成功</option>
                 <option value="failed">失败</option>
                 <option value="dry-run">预览</option>
                 <option value="skipped">已跳过</option>
-              </select>
-              <select value={logFilterTrigger} onChange={(e) => setLogFilterTrigger(e.target.value as any)}>
+              </ThemedSelect>
+              <ThemedSelect value={logFilterTrigger} onChange={(e) => setLogFilterTrigger(e.target.value as typeof logFilterTrigger)}>
                 <option value="all">全部来源</option>
                 <option value="manual">手动</option>
                 <option value="schedule">定时</option>
-              </select>
-              <select value={logFilterJob} onChange={(e) => setLogFilterJob(e.target.value)}>
+              </ThemedSelect>
+              <ThemedSelect value={logFilterJob} onChange={(e) => setLogFilterJob(e.target.value)}>
                 <option value="all">全部任务</option>
                 {jobs.map((job) => (
                   <option key={job.id} value={job.id}>{job.name}</option>
                 ))}
-              </select>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+              </ThemedSelect>
+              <label className="pm-check-inline pm-log-filter-today">
                 <input type="checkbox" checked={logFilterToday} onChange={(e) => setLogFilterToday(e.target.checked)} />
                 只看今天
               </label>
             </div>
           </div>
         )}
-        {logsError && <div className="warn" style={{ marginBottom: 8 }}>{logsError}</div>}
+        {logsError && <div className="warn pm-warn-bottom">{logsError}</div>}
         {filteredLogs.length === 0 && !logsLoading && (
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>暂无执行记录</div>
+          <div className="pm-muted-sm">暂无执行记录</div>
         )}
         {filteredLogs.length > 0 && (
           <div className="table-wrap">
-            <table className={`table ${compactLogsTable ? 'table-compact' : ''}`} style={{ fontSize: 12 }}>
+            <table className={`table ${compactLogsTable ? 'table-compact' : ''} pm-table-sm`}>
               <thead>
                 <tr>
                   <th>时间</th>
@@ -700,14 +681,14 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                     <td>
                       {log.summary}
                       {log.aiSummary && log.rawSummary && log.aiSummary !== log.rawSummary && (
-                        <details style={{ marginTop: 6 }}>
-                          <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)' }}>查看原始摘要</summary>
-                          <div style={{ whiteSpace: 'pre-wrap', fontSize: 12, marginTop: 6 }}>
+                        <details className="pm-details-top-sm">
+                          <summary className="pm-details-summary">查看原始摘要</summary>
+                          <div className="pm-raw-summary">
                             {log.rawSummary}
                           </div>
                         </details>
                       )}
-                      {log.error && <div style={{ color: 'var(--color-danger)', marginTop: 4 }}>{log.error}</div>}
+                      {log.error && <div className="pm-log-error">{log.error}</div>}
                     </td>
                   </tr>
                 ))}

@@ -33,6 +33,7 @@ export type PmRunResult = {
 
 export type PmRunLog = {
   id: string;
+  projectId?: number;
   jobId: PmJobId;
   triggeredBy: 'manual' | 'schedule';
   status: 'success' | 'failed' | 'dry-run' | 'skipped';

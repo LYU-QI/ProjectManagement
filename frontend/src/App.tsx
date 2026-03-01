@@ -46,6 +46,7 @@ import PmAssistantView from './views/PmAssistantView';
 import ProjectAccessView from './views/ProjectAccessView';
 import MilestoneBoardView from './views/MilestoneBoardView';
 import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
+import ThemedSelect from './components/ui/ThemedSelect';
 
 type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
@@ -445,8 +446,7 @@ function App() {
         if (prev.includes(key)) return prev;
         return [...prev, key];
       }
-      const next = prev.filter((item) => item !== key);
-      return next.length > 0 ? next : prev;
+      return prev.filter((item) => item !== key);
     });
   }
 
@@ -983,6 +983,10 @@ function App() {
     if (!selectedProjectId) return '未选择';
     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
   }, [projects, selectedProjectId]);
+  const selectedProjectAlias = useMemo(() => {
+    if (!selectedProjectId) return '';
+    return projects.find((item) => item.id === selectedProjectId)?.alias?.trim() ?? '';
+  }, [projects, selectedProjectId]);
   const userRole = String(user?.role || '');
   const canWrite = ['super_admin', 'project_director', 'project_manager', 'lead', 'pm'].includes(userRole);
   const canManageAdmin = ['super_admin', 'project_director', 'lead'].includes(userRole);
@@ -1075,7 +1079,7 @@ function App() {
   const [feishuNextToken, setFeishuNextToken] = useState<string | undefined>(undefined);
   const [feishuHasMore, setFeishuHasMore] = useState(false);
   const [feishuSearch, setFeishuSearch] = useState(() => localStorage.getItem('feishu_search') || '');
-  const [feishuSearchFields, setFeishuSearchFields] = useState(() => localStorage.getItem('feishu_search_fields') || '任务ID,任务名称,负责人');
+  const [feishuSearchFields, setFeishuSearchFields] = useState('');
   const [feishuFilter, setFeishuFilter] = useState('');
   const [feishuSort, setFeishuSort] = useState('');
   const [feishuFilterProject, setFeishuFilterProject] = useState(() => localStorage.getItem('feishu_filter_project') || '');
@@ -1257,10 +1261,6 @@ function App() {
   }, [feishuSearch]);
 
   useEffect(() => {
-    localStorage.setItem('feishu_search_fields', feishuSearchFields);
-  }, [feishuSearchFields]);
-
-  useEffect(() => {
     localStorage.setItem('feishu_filter_project', feishuFilterProject);
   }, [feishuFilterProject]);
 
@@ -1372,6 +1372,18 @@ function App() {
     const progress = Number(form.进度);
     payload['进度'] = Number.isFinite(progress) ? progress : null;
     return payload;
+  }
+
+  function buildFeishuPatchPayload(original: FeishuFormState, draft: FeishuFormState) {
+    const prev = buildFeishuFieldsPayload(original);
+    const next = buildFeishuFieldsPayload(draft);
+    const patch: Record<string, unknown> = {};
+    Object.keys(next).forEach((key) => {
+      if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
+        patch[key] = next[key];
+      }
+    });
+    return patch;
   }
 
   async function loadFeishuRecords(options?: { resetPage?: boolean }) {
@@ -1585,7 +1597,11 @@ function App() {
     setFeishuError('');
     setFeishuMessage('');
     try {
-      const payload = buildFeishuFieldsPayload(feishuRecordDraft);
+      const payload = buildFeishuPatchPayload(originalForm, feishuRecordDraft);
+      if (Object.keys(payload).length === 0) {
+        cancelInlineFeishuEdit();
+        return;
+      }
       await runWithRetry('更新飞书记录', async () => {
         await updateFeishuRecord(original.record_id, payload);
       });
@@ -1956,21 +1972,21 @@ function App() {
       <div className="login-screen">
         <div className="login-card">
           <h2>Astraea <span>Flow</span></h2>
-          <div style={{ textAlign: 'center', color: 'var(--glow-purple)', fontSize: 12, marginBottom: 20, fontFamily: 'Orbitron' }}>UNIFIED COMMAND CENTER</div>
-          <form className="form" style={{ gridTemplateColumns: '1fr', gap: 20 }} onSubmit={submitLogin}>
+          <div className="app-login-subtitle">UNIFIED COMMAND CENTER</div>
+          <form className="form app-login-form" onSubmit={submitLogin}>
             <div>
-              <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>NODE ACCESS KEY</label>
+              <label className="app-login-label">NODE ACCESS KEY</label>
               <input name="username" placeholder="admin / user / 你的账号" required />
             </div>
             <div>
-              <label style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8, display: 'block' }}>SECURITY TOKEN</label>
+              <label className="app-login-label">SECURITY TOKEN</label>
               <input name="password" type="password" placeholder="***" required />
             </div>
-            <button className="btn btn-primary" type="submit" style={{ marginTop: '10px', padding: 12, fontSize: 15 }}>
+            <button className="btn btn-primary app-login-submit" type="submit">
               INITIALIZE CONNECTION
             </button>
           </form>
-          {error && <p className="warn" style={{ marginTop: 15, textAlign: 'center' }}>[ERROR]: {error}</p>}
+          {error && <p className="warn app-login-error">[ERROR]: {error}</p>}
         </div>
       </div>
     );
@@ -1995,8 +2011,8 @@ function App() {
       unreadCount={notifications.filter((n) => !n.readAt).length}
     >
       <div className="page-content">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h2 style={{ margin: 0 }}>
+        <div className="app-view-head">
+          <h2 className="app-view-title">
             {view === 'dashboard' ? '指挥中心' :
               view === 'requirements' ? '需求流' :
                 view === 'costs' ? '成本池' :
@@ -2013,19 +2029,19 @@ function App() {
                                       view === 'milestone-board' ? '里程碑看板' :
                                     view === 'settings' ? '系统配置' : ''}
           </h2>
-          <div style={{ fontSize: 12, color: 'var(--glow-green)', padding: '4px 10px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: 20, border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-            <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'var(--glow-green)', marginRight: 6 }}></span>
+          <div className="app-system-online">
+            <span className="app-system-dot"></span>
             SYSTEM.ONLINE
           </div>
         </div>
 
-        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'pm-assistant' && view !== 'project-access' && (
-          <div className="card" style={{ marginBottom: 25, background: 'rgba(0,15,30,0.6)', borderLeft: '3px solid var(--neon-blue)' }}>
-            <div className="form" style={{ gridTemplateColumns: 'minmax(200px, 300px)', alignItems: 'center' }}>
+        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'project-access' && (
+          <div className="card app-workspace-card">
+            <div className="form app-workspace-form">
               <div>
-                <label style={{ color: 'var(--text-muted)', fontSize: 11, marginBottom: 5, display: 'block', fontFamily: 'Orbitron' }}>目标工作区</label>
-                <select
-                  value={selectedProjectId ?? ''}
+                <label className="app-workspace-label">目标工作区</label>
+                <ThemedSelect
+                  value={selectedProjectId == null ? '' : String(selectedProjectId)}
                   onChange={(e) => {
                     const value = e.target.value;
                     if (!value) {
@@ -2041,18 +2057,18 @@ function App() {
                       {project.name} (#{project.id})
                     </option>
                   ))}
-                </select>
+                </ThemedSelect>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', fontSize: 14, color: 'var(--text-main)', marginTop: 15, borderTop: '1px solid rgba(0, 243, 255, 0.1)', paddingTop: 10 }}>
-              <span style={{ color: 'var(--text-muted)', marginRight: 10 }}>当前项目：</span> <strong style={{ color: 'var(--neon-blue)', letterSpacing: 1 }}>{selectedProjectName}</strong>
+            <div className="app-workspace-current">
+              <span className="app-workspace-current-label">当前项目：</span> <strong className="app-workspace-current-name">{selectedProjectName}</strong>
             </div>
           </div>
         )}
 
         {view === 'global' && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="form" style={{ gridTemplateColumns: '1fr auto', alignItems: 'center' }}>
+          <div className="card app-global-search-card">
+            <div className="form app-global-search-form">
               <input
                 placeholder="全局搜索（项目/需求/成本/工时/任务/里程碑/飞书）"
                 value={globalSearch}
@@ -2064,12 +2080,12 @@ function App() {
         )}
 
         {view === 'global' && globalSearchResults && (
-          <div className="card" style={{ marginBottom: 12 }}>
+          <div className="card app-global-results-card">
             <div>
               {globalSearchResults.counts.projects > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>项目 ({globalSearchResults.counts.projects})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>ID</th><th>名称</th></tr></thead>
                     <tbody>
                       {globalSearchResults.projects.map((p) => (
@@ -2083,9 +2099,9 @@ function App() {
                 </div>
               )}
               {globalSearchResults.counts.requirements > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>需求 ({globalSearchResults.counts.requirements})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>项目-编号</th><th>标题</th><th>状态</th></tr></thead>
                     <tbody>
                       {globalSearchResults.requirements.map((r) => (
@@ -2100,9 +2116,9 @@ function App() {
                 </div>
               )}
               {globalSearchResults.counts.costs > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>成本 ({globalSearchResults.counts.costs})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>ID</th><th>类型</th><th>金额</th></tr></thead>
                     <tbody>
                       {globalSearchResults.costs.map((c) => (
@@ -2117,9 +2133,9 @@ function App() {
                 </div>
               )}
               {globalSearchResults.counts.worklogs > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>工时 ({globalSearchResults.counts.worklogs})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>ID</th><th>任务</th><th>日期</th></tr></thead>
                     <tbody>
                       {globalSearchResults.worklogs.map((w) => (
@@ -2134,9 +2150,9 @@ function App() {
                 </div>
               )}
               {globalSearchResults.counts.tasks > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>任务 ({globalSearchResults.counts.tasks})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>任务ID</th><th>任务名称</th><th>状态</th></tr></thead>
                     <tbody>
                       {globalSearchResults.tasks.map((t) => (
@@ -2151,9 +2167,9 @@ function App() {
                 </div>
               )}
               {globalSearchResults.counts.milestones > 0 && (
-                <div style={{ marginBottom: 10 }}>
+                <div className="app-global-group">
                   <strong>里程碑 ({globalSearchResults.counts.milestones})</strong>
-                  <table className="table" style={{ marginTop: 6 }}>
+                  <table className="table app-global-table">
                     <thead><tr><th>里程碑ID</th><th>名称</th><th>计划日期</th></tr></thead>
                     <tbody>
                       {globalSearchResults.milestones.map((m) => (
@@ -2170,7 +2186,7 @@ function App() {
               {globalSearchResults.counts.feishu > 0 && (
                 <div>
                   <strong>飞书记录 ({globalSearchResults.counts.feishu})</strong>
-                  <table className="table table-wrap" style={{ marginTop: 6 }}>
+                  <table className="table table-wrap app-global-table">
                     <thead><tr><th>任务ID</th><th>任务名称</th><th>负责人</th><th>状态</th><th>所属项目</th><th>风险等级</th></tr></thead>
                     <tbody>
                       {globalSearchResults.feishu.map((f) => {
@@ -2191,7 +2207,7 @@ function App() {
                 </div>
               )}
               {Object.values(globalSearchResults.counts).every((count) => count === 0) && (
-                <div style={{ color: 'var(--text-muted)' }}>没有匹配结果。</div>
+                <div className="app-global-empty">没有匹配结果。</div>
               )}
             </div>
           </div>
@@ -2201,8 +2217,8 @@ function App() {
         {message && <p>{message}</p>}
         {error && <p className="warn">{error}</p>}
         {lastRetry && (
-          <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid var(--neon-alert)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div className="card app-retry-card">
+            <div className="app-retry-row">
               <span className="warn">上次操作失败：{lastRetry.label}</span>
               <button className="btn" type="button" onClick={() => void handleRetry()} disabled={retrying}>
                 {retrying ? '重试中...' : '重试'}
@@ -2210,9 +2226,9 @@ function App() {
             </div>
           </div>
         )}
-        {!canWrite && <div className="card warn" style={{ marginBottom: 12 }}>当前角色为只读（viewer），新增与修改操作已禁用。</div>}
+        {!canWrite && <div className="card warn app-readonly-tip">当前角色为只读（viewer），新增与修改操作已禁用。</div>}
         {canWrite && (
-          <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 12 }}>
+          <div className="app-inline-edit-tip">
             提示：双击单元格进入编辑，Enter 保存，ESC 取消。
           </div>
         )}
@@ -2254,6 +2270,7 @@ function App() {
             selectedRequirementForChanges={selectedRequirementForChanges}
             selectedProjectId={selectedProjectId}
             selectedProjectName={selectedProjectName}
+            selectedProjectAlias={selectedProjectAlias}
             onImportSuccess={() => void refreshAll(selectedProjectId)}
           />
         )}

@@ -94,14 +94,14 @@ export default function AstraeaLayout({
         </div>
         <div className="astraea-platform-switch">
           <button
-            className={`btn theme-btn astraea-platform-btn ${platform === 'workspace' ? 'active' : ''}`}
+            className={`btn astraea-platform-btn ${platform === 'workspace' ? 'active' : ''}`}
             type="button"
             onClick={() => onPlatformChange('workspace')}
           >
             用户平台
           </button>
           <button
-            className={`btn theme-btn astraea-platform-btn ${platform === 'admin' ? 'active' : ''}`}
+            className={`btn astraea-platform-btn ${platform === 'admin' ? 'active' : ''}`}
             type="button"
             disabled={!canManageAdmin}
             onClick={() => onPlatformChange('admin')}
@@ -145,9 +145,8 @@ export default function AstraeaLayout({
 
       <header className="astraea-header">
         <div
-          className="cmd-k-hint"
+          className="cmd-k-hint cmd-k-hint--button"
           onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-          style={{ cursor: 'pointer' }}
         >
           <span className="hk-key">⌘</span> + <span className="hk-key">K</span> AI 快速入口
         </div>

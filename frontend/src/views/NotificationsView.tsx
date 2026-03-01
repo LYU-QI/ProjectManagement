@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { NotificationItem } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   notifications: NotificationItem[];
@@ -31,14 +32,14 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card notifications-config-card">
         <div className="section-title-row">
           <h3>通知规则配置</h3>
           <span className="muted">预警阈值可按团队偏好调整</span>
         </div>
         <div className="filters-grid">
           <div>
-            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>风险等级阈值</label>
+            <label className="notifications-label">风险等级阈值</label>
             <input
               type="number"
               min={1}
@@ -48,7 +49,7 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
             />
           </div>
           <div>
-            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>预算偏差阈值(%)</label>
+            <label className="notifications-label">预算偏差阈值(%)</label>
             <input
               type="number"
               min={0}
@@ -58,14 +59,14 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
             />
           </div>
           <div>
-            <label style={{ color: 'var(--text-muted)', fontSize: 12 }}>系统预警开关</label>
-            <select
+            <label className="notifications-label">系统预警开关</label>
+            <ThemedSelect
               value={settings.enableSystemAlerts ? 'on' : 'off'}
               onChange={(e) => onUpdateSettings({ ...settings, enableSystemAlerts: e.target.value === 'on' })}
             >
               <option value="on">开启</option>
               <option value="off">关闭</option>
-            </select>
+            </ThemedSelect>
           </div>
         </div>
       </div>
@@ -84,19 +85,19 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
         </div>
         {filtersOpen && (
           <div className="filter-panel">
-            <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 6 }}>筛选</div>
+            <div className="notifications-filter-title">筛选</div>
             <div className="filters-grid">
-              <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}>
+              <ThemedSelect value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}>
                 <option value="">全部级别</option>
                 <option value="info">info</option>
                 <option value="warning">warning</option>
                 <option value="error">error</option>
-              </select>
-              <select value={filterRead} onChange={(e) => setFilterRead(e.target.value)}>
+              </ThemedSelect>
+              <ThemedSelect value={filterRead} onChange={(e) => setFilterRead(e.target.value)}>
                 <option value="all">全部状态</option>
                 <option value="unread">未读</option>
                 <option value="read">已读</option>
-              </select>
+              </ThemedSelect>
               <input placeholder="关键词" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             </div>
           </div>
@@ -117,7 +118,7 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} style={{ color: 'var(--text-muted)' }}>暂无通知</td></tr>
+                <tr><td colSpan={5} className="notifications-empty-cell">暂无通知</td></tr>
               )}
             </tbody>
           </table>

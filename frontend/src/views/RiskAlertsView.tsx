@@ -43,7 +43,7 @@ export default function RiskAlertsView({
   }, [rows, thresholdDays, progressThreshold]);
 
   return (
-    <div className="card" style={{ marginTop: 12 }}>
+    <div className="card risk-alerts-card">
       <h3>延期预警（截止 ≤ {thresholdDays} 天且进度 &lt; {progressThreshold}%）</h3>
       <table className="table">
         <thead><tr><th>任务</th><th>负责人</th><th>截止日期</th><th>剩余天数</th><th>进度</th><th>风险等级</th></tr></thead>
@@ -59,7 +59,7 @@ export default function RiskAlertsView({
             </tr>
           ))}
           {alerts.length === 0 && (
-            <tr><td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无延期风险任务</td></tr>
+            <tr><td colSpan={6} className="risk-alerts-empty-cell">暂无延期风险任务</td></tr>
           )}
         </tbody>
       </table>

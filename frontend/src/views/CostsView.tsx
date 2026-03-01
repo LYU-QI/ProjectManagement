@@ -2,6 +2,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { useMemo } from 'react';
 import type { CostEntryItem, CostSummary, Worklog } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -71,7 +72,7 @@ export default function CostsView({
   }, [costSummary, worklogs]);
 
   return (
-    <div>
+    <div className="costs-page">
       <section className="metrics-grid">
         <article className="metric-card">
           <p className="metric-label">预算</p>
@@ -92,30 +93,30 @@ export default function CostsView({
       </section>
 
       {canWrite && (
-        <div className="card compact-card" style={{ marginTop: 12 }}>
+        <div className="card compact-card costs-card-mt">
           <div className="section-title-row">
             <h3>新增数据</h3>
             <span className="muted">支持成本条目与工时录入</span>
           </div>
           <form className="form" onSubmit={onSubmitCost}>
-            <select name="type" defaultValue="labor">
+            <ThemedSelect name="type" defaultValue="labor">
               <option value="labor">人力</option>
               <option value="outsource">外包</option>
               <option value="cloud">云资源</option>
-            </select>
+            </ThemedSelect>
             <input name="amount" type="number" step="0.01" placeholder="金额" required />
             <input name="occurredOn" type="date" required />
             <input name="note" placeholder="备注" />
             <button className="btn btn-primary" type="submit">新增成本</button>
           </form>
-          <form className="form" onSubmit={onSubmitWorklog} style={{ marginTop: 10 }}>
+          <form className="form costs-worklog-form" onSubmit={onSubmitWorklog}>
             <input name="taskTitle" placeholder="工时任务" required />
-            <select name="assigneeName" required defaultValue="">
+            <ThemedSelect name="assigneeName" required defaultValue="">
               <option value="" disabled>选择负责人</option>
               {feishuUserOptions.map(name => (
                 <option key={name} value={name}>{name}</option>
               ))}
-            </select>
+            </ThemedSelect>
             <input name="weekStart" type="date" required />
             <input name="weekEnd" type="date" required />
             <input name="totalDays" type="number" min="0" step="0.5" placeholder="总人天" required />
@@ -124,7 +125,7 @@ export default function CostsView({
           </form>
         </div>
       )}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card costs-card-mt">
         <div className="section-title-row">
           <h3>成本条目</h3>
           <div className="panel-actions">
@@ -135,7 +136,7 @@ export default function CostsView({
           </div>
         </div>
         {canWrite && (
-          <div className="panel-actions" style={{ justifyContent: 'flex-end', marginBottom: 8 }}>
+          <div className="panel-actions costs-batch-row">
             <button className="btn" type="button" disabled={selectedCostEntryIds.length === 0} onClick={onDeleteSelectedCostEntries}>
               批量删除 ({selectedCostEntryIds.length})
             </button>
@@ -246,7 +247,7 @@ export default function CostsView({
                     )}
                   </td>
                   {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td className="costs-row-actions">
                       {isEditing && isDirty ? (
                         <>
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveCost(entry)}>保存</button>
@@ -264,7 +265,7 @@ export default function CostsView({
           </table>
         </div>
       </div>
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card costs-card-mt">
         <div className="section-title-row">
           <h3>工时明细</h3>
           <span className="muted">周期、任务、负责人与成本联动</span>
@@ -289,7 +290,7 @@ export default function CostsView({
                     onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'weekStart')}
                   >
                     {isEditing && (worklogEdit.editingField === 'weekStart' || worklogEdit.editingField === 'weekEnd') ? (
-                      <div style={{ display: 'flex', gap: 6 }}>
+                      <div className="costs-week-range-edit">
                         <input
                           data-worklog-edit={`${w.id}-weekStart`}
                           type="date"
@@ -392,7 +393,7 @@ export default function CostsView({
                   </td>
                   <td>{cost}</td>
                   {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td className="costs-row-actions">
                       {isEditing && isDirty ? (
                         <>
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveWorklog(w)}>保存</button>

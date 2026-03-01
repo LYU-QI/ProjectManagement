@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getConfigItems, saveConfigItems, ConfigItem } from '../api/settings';
 import { apiGet } from '../api/client';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 /** 分组图标映射 */
 const GROUP_ICONS: Record<string, string> = {
@@ -184,8 +185,8 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
 
     if (loading && items.length === 0) {
         return (
-            <div className="card" style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: 28, marginBottom: 12 }}>⚙️</div>
+            <div className="card settings-loading-card">
+                <div className="settings-loading-icon">⚙️</div>
                 正在加载系统配置...
             </div>
         );
@@ -196,53 +197,43 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
     return (
         <div>
             {/* 页面头部 */}
-            <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--color-primary)', background: 'var(--color-bg-surface)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="card settings-header-card">
+                <div className="settings-header-row">
                     <div>
-                        <h3 style={{ margin: 0, fontSize: 16, letterSpacing: 1 }}>
+                        <h3 className="settings-title">
                             ⚙️ 系统配置管理
                         </h3>
-                        <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--text-muted)' }}>
+                        <p className="settings-subtitle">
                             管理 backend/.env 中的环境变量，修改后部分配置需要重启后端服务才能生效。
                         </p>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                        <select
+                    <div className="settings-actions">
+                        <ThemedSelect
                             value={theme}
                             onChange={(e) => onThemeChange(e.target.value as 'light' | 'dark')}
-                            style={{ width: 130, fontSize: 12 }}
+                            className="settings-theme-select"
                         >
                             <option value="light">Light Theme</option>
                             <option value="dark">Dark Theme</option>
-                        </select>
+                        </ThemedSelect>
                         <button
-                            className="btn"
+                            className="btn settings-mini-btn"
                             type="button"
                             onClick={handleResetUiPreferences}
-                            style={{ padding: '6px 14px', fontSize: 11 }}
                         >
                             [ 重置界面偏好 ]
                         </button>
                         <button
-                            className="btn"
+                            className={`btn settings-mini-btn ${hasChanges ? '' : 'settings-btn-dim'}`}
                             onClick={handleReset}
                             disabled={!hasChanges}
-                            style={{ padding: '6px 14px', fontSize: 11, opacity: hasChanges ? 1 : 0.4 }}
                         >
                             [ 重置 ]
                         </button>
                         <button
-                            className="btn"
+                            className={`btn settings-mini-btn settings-save-btn ${hasChanges ? 'has-changes' : 'settings-btn-dim'}`}
                             onClick={handleSave}
                             disabled={saving || !hasChanges}
-                            style={{
-                                padding: '6px 14px',
-                                fontSize: 11,
-                                background: hasChanges ? 'var(--color-success-soft)' : undefined,
-                                borderColor: hasChanges ? 'var(--color-success)' : undefined,
-                                color: hasChanges ? 'var(--color-success)' : undefined,
-                                opacity: hasChanges ? 1 : 0.4,
-                            }}
                         >
                             {saving ? '[ 保存中... ]' : '[ 保存配置 ]'}
                         </button>
@@ -252,25 +243,17 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
 
             {/* 配置分组 */}
             {groups.map(({ group, groupLabel, icon, items: groupItems }) => (
-                <div key={group} className="card" style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                        <h4 style={{
-                            margin: '0 0 16px',
-                            fontSize: 14,
-                            letterSpacing: 1,
-                            borderBottom: '1px solid var(--color-border)',
-                            paddingBottom: 10,
-                            flex: 1,
-                        }}>
+                <div key={group} className="card settings-group-card">
+                    <div className="settings-group-head">
+                        <h4 className="settings-group-title">
                             {icon} {groupLabel}
                         </h4>
                         {group === 'ai' && (
                             <button
-                                className="btn"
+                                className="btn settings-mini-btn settings-ai-test-btn"
                                 type="button"
                                 onClick={() => void handleAiHealthCheck()}
                                 disabled={aiHealthLoading}
-                                style={{ padding: '6px 10px', fontSize: 11, marginBottom: 10 }}
                             >
                                 {aiHealthLoading ? '检测中...' : 'AI 连通性测试'}
                             </button>
@@ -278,27 +261,17 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                     </div>
 
                     {group === 'ai' && aiHealthResult && (
-                        <div
-                            style={{
-                                marginBottom: 12,
-                                padding: '8px 10px',
-                                borderRadius: 4,
-                                fontSize: 12,
-                                color: aiHealthResult.ok ? 'var(--color-success)' : 'var(--color-danger)',
-                                background: aiHealthResult.ok ? 'var(--color-success-soft)' : 'var(--color-danger-soft)',
-                                border: aiHealthResult.ok ? '1px solid var(--color-success)' : '1px solid var(--color-danger)',
-                            }}
-                        >
+                        <div className={`settings-health ${aiHealthResult.ok ? 'ok' : 'error'}`}>
                             {aiHealthResult.message}
                             {aiHealthResult.detail && (
-                                <div style={{ color: 'var(--text-muted)', marginTop: 4 }}>
+                                <div className="settings-health-detail">
                                     {aiHealthResult.detail}
                                 </div>
                             )}
                         </div>
                     )}
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div className="settings-items">
                         {groupItems.map((item) => {
                             const isRevealed = revealedKeys.has(item.key);
                             const currentValue = editValues[item.key] ?? '';
@@ -308,30 +281,14 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                             return (
                                 <div
                                     key={item.key}
-                                    style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: '200px 1fr auto',
-                                        alignItems: 'center',
-                                        gap: 12,
-                                        padding: '10px 12px',
-                                        borderRadius: 4,
-                                        background: isModified ? 'var(--color-success-soft)' : 'var(--color-bg-surface)',
-                                        border: isModified ? '1px solid var(--color-success)' : '1px solid var(--color-border)',
-                                        transition: 'all 0.2s ease',
-                                    }}
+                                    className={`settings-item-row ${isModified ? 'is-modified' : ''}`}
                                 >
                                     {/* 键名和说明 */}
                                     <div>
-                                        <div style={{
-                                            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                                            fontSize: 12,
-                                            color: 'var(--color-primary)',
-                                            fontWeight: 600,
-                                            letterSpacing: 0.5,
-                                        }}>
+                                        <div className="settings-item-key">
                                             {item.key}
                                         </div>
-                                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                                        <div className="settings-item-desc">
                                             {item.description}
                                         </div>
                                     </div>
@@ -341,38 +298,22 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                                         type={item.sensitive && !isRevealed ? 'password' : 'text'}
                                         value={displayValue}
                                         onChange={(e) => handleChange(item.key, e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            background: 'var(--color-bg-surface)',
-                                            border: '1px solid var(--color-border)',
-                                            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                                            fontSize: 12,
-                                            letterSpacing: 0.3,
-                                        }}
+                                        className="settings-item-input"
                                     />
 
                                     {/* 操作按钮 */}
-                                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                    <div className="settings-item-actions">
                                         {item.sensitive && (
                                             <button
-                                                className="btn"
+                                                className="btn settings-item-toggle"
                                                 onClick={() => toggleReveal(item.key)}
                                                 title={isRevealed ? '隐藏' : '显示'}
-                                                style={{
-                                                    padding: '4px 8px',
-                                                    fontSize: 11,
-                                                    minWidth: 'auto',
-                                                }}
                                             >
                                                 {isRevealed ? '🙈' : '👁️'}
                                             </button>
                                         )}
                                         {isModified && (
-                                            <span style={{
-                                                fontSize: 10,
-                                                color: 'var(--color-success)',
-                                                whiteSpace: 'nowrap',
-                                            }}>
+                                            <span className="settings-item-modified">
                                                 已修改
                                             </span>
                                         )}
@@ -385,13 +326,7 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
             ))}
 
             {/* 底部提示 */}
-            <div className="card" style={{
-                marginTop: 8,
-                background: 'var(--color-warning-soft)',
-                borderLeft: '3px solid var(--color-warning)',
-                fontSize: 12,
-                color: 'var(--text-muted)',
-            }}>
+            <div className="card settings-footer-tip">
                 ⚠️ 注意：修改数据库连接或 JWT 密钥后需要重启后端服务，飞书配置变更即时生效。敏感信息请妥善保管。
             </div>
         </div>

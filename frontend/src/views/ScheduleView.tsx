@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
 import type { FeishuFormState, FeishuDependency } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type ScheduleRow = FeishuFormState & { recordId: string };
 
@@ -351,22 +352,22 @@ export default function ScheduleView({
         </article>
       </section>
 
-      <div className="card compact-card" style={{ marginTop: 12 }}>
+      <div className="card compact-card req-mt-12">
         <div className="section-title-row">
           <h3>进度视图</h3>
           <span className="muted">风险等级：{riskText}</span>
         </div>
-        <div className="panel-header" style={{ marginBottom: 0 }}>
+        <div className="panel-header schedule-panel-header">
           <div className="muted">切换不同展示方式查看任务状态</div>
           <div className="panel-actions">
             {viewMode === 'list' && (
-              <button className="btn theme-btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+              <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
                 {compactTable ? '标准密度' : '紧凑密度'}
               </button>
             )}
-            <button className={viewMode === 'list' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
-            <button className={viewMode === 'gantt' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
-            <button className={viewMode === 'calendar' ? 'btn theme-btn active' : 'btn theme-btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
+            <button className={viewMode === 'list' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
+            <button className={viewMode === 'gantt' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
+            <button className={viewMode === 'calendar' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
           </div>
         </div>
         {scheduleLoading && <p>Loading...</p>}
@@ -375,9 +376,9 @@ export default function ScheduleView({
 
       {viewMode === 'list' && (
         <>
-          <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>进度同步仅展示飞书数据，请在飞书记录模块新增或编辑。</p>
+          <p className="schedule-sync-hint">进度同步仅展示飞书数据，请在飞书记录模块新增或编辑。</p>
 
-          <div className="card" style={{ marginTop: 12 }}>
+          <div className="card req-mt-12">
             <div className="section-title-row">
               <h3>任务列表</h3>
               <span className="muted">来自飞书记录同步</span>
@@ -403,7 +404,7 @@ export default function ScheduleView({
             </div>
           </div>
 
-          <div className="card" style={{ marginTop: 12 }}>
+          <div className="card req-mt-12">
             <div className="section-title-row">
               <h3>里程碑</h3>
               <span className="muted">按计划与实际日期追踪</span>
@@ -429,16 +430,16 @@ export default function ScheduleView({
             </div>
           </div>
 
-          <div className="card" style={{ marginTop: 12 }}>
+          <div className="card req-mt-12">
             <div className="section-title-row">
               <h3>任务依赖（WBS）</h3>
               <span className="muted">支持 FS / SS / FF 关系</span>
             </div>
             {scheduleDependenciesError && <p className="warn">{scheduleDependenciesError}</p>}
-            <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', alignItems: 'end' }}>
+            <div className="form schedule-dependency-form">
               <div>
                 <label>任务</label>
-                <select
+                <ThemedSelect
                   value={dependencyForm.taskRecordId}
                   onChange={(e) => setDependencyForm((prev) => ({ ...prev, taskRecordId: e.target.value }))}
                 >
@@ -446,22 +447,22 @@ export default function ScheduleView({
                   {tasks.map((task) => (
                     <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </div>
               <div>
                 <label>依赖关系</label>
-                <select
+                <ThemedSelect
                   value={dependencyForm.type}
                   onChange={(e) => setDependencyForm((prev) => ({ ...prev, type: e.target.value as 'FS' | 'SS' | 'FF' }))}
                 >
                   <option value="FS">FS 完成→开始</option>
                   <option value="SS">SS 开始→开始</option>
                   <option value="FF">FF 完成→完成</option>
-                </select>
+                </ThemedSelect>
               </div>
               <div>
                 <label>前置任务</label>
-                <select
+                <ThemedSelect
                   value={dependencyForm.dependsOnRecordId}
                   onChange={(e) => setDependencyForm((prev) => ({ ...prev, dependsOnRecordId: e.target.value }))}
                 >
@@ -469,11 +470,11 @@ export default function ScheduleView({
                   {tasks.map((task) => (
                     <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
                   ))}
-                </select>
+                </ThemedSelect>
               </div>
               <div>
                 <button
-                  className="btn theme-btn"
+                  className="btn"
                   type="button"
                   disabled={!canWrite || !dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId}
                   onClick={() => {
@@ -491,7 +492,7 @@ export default function ScheduleView({
               </div>
             </div>
 
-            <table className={`table ${compactTable ? 'table-compact' : ''}`} style={{ marginTop: 10 }}>
+            <table className={`table schedule-dependency-table ${compactTable ? 'table-compact' : ''}`}>
               <thead><tr><th>任务</th><th>关系</th><th>前置任务</th><th>操作</th></tr></thead>
               <tbody>
                 {scheduleDependencies.map((dep) => {
@@ -506,14 +507,14 @@ export default function ScheduleView({
                       <td>{dependsOnLabel}</td>
                       <td>
                         {canWrite ? (
-                          <button className="btn theme-btn-danger" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
+                          <button className="btn btn-danger" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
                         ) : '-'}
                       </td>
                     </tr>
                   );
                 })}
                 {scheduleDependencies.length === 0 && (
-                  <tr><td colSpan={4} style={{ color: 'var(--text-muted)' }}>暂无任务依赖</td></tr>
+                  <tr><td colSpan={4} className="req-muted-cell">暂无任务依赖</td></tr>
                 )}
               </tbody>
             </table>
@@ -588,7 +589,7 @@ export default function ScheduleView({
                     >
                       <div className="gantt-cell gantt-label">
                         <div>{row.任务名称 || row.任务ID}</div>
-                        {depLabel && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{depLabel}</div>}
+                        {depLabel && <div className="schedule-dep-label">{depLabel}</div>}
                         {overdue && <div className="gantt-overdue">关键任务已延期</div>}
                       </div>
                       <div
@@ -612,10 +613,10 @@ export default function ScheduleView({
             <h3>日历视图</h3>
             <span className="muted">任务与里程碑按日分布</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <button className="btn theme-btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
+          <div className="schedule-calendar-nav">
+            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))}>上个月</button>
             <strong>{calendarMonth.getFullYear()}年{calendarMonth.getMonth() + 1}月</strong>
-            <button className="btn theme-btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>下个月</button>
+            <button className="btn" type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))}>下个月</button>
           </div>
           <div className="calendar-grid">
             {['日', '一', '二', '三', '四', '五', '六'].map((label) => (

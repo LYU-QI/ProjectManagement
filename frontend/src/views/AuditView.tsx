@@ -76,10 +76,10 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
   };
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
+    <div className="audit-page">
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <h3 style={{ margin: 0 }}>Chatbot 操作审计</h3>
+        <div className="audit-head-row">
+          <h3 className="audit-title">Chatbot 操作审计</h3>
           <button className="btn btn-small" onClick={() => onRefresh?.()}>刷新</button>
         </div>
         <div className="audit-toolbar">
@@ -115,7 +115,7 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
               </tr>
             ))}
             {filteredChatbotLogs.length === 0 && (
-              <tr><td colSpan={6} style={{ color: 'var(--text-muted)' }}>暂无 chatbot 操作审计记录</td></tr>
+              <tr><td colSpan={6} className="audit-empty-cell">暂无 chatbot 操作审计记录</td></tr>
             )}
           </tbody>
         </table>
@@ -123,14 +123,14 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
 
       {selected && (
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <h3 style={{ margin: 0 }}>ReAct 流程可视化（#{selected.id}）</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
+          <div className="audit-head-row">
+            <h3 className="audit-title">ReAct 流程可视化（#{selected.id}）</h3>
+            <div className="audit-actions">
               <button className="btn btn-small" onClick={exportSelectedFlow}>导出 JSON</button>
               <button className="btn btn-small" onClick={() => setSelectedId(null)}>收起流程</button>
             </div>
           </div>
-          <div style={{ marginBottom: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          <div className="audit-summary">
             <div>问题：{selected.message}</div>
             <div>范围：{selected.detailScope || '-'}</div>
             <div>命中项目：{selected.scopedProjectNames?.join('、') || '-'}</div>
@@ -164,7 +164,7 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
               </div>
             ))}
             {timelineNodes.length === 0 && (
-              <div style={{ color: 'var(--text-muted)' }}>该会话没有记录到流程节点。</div>
+              <div className="audit-empty-text">该会话没有记录到流程节点。</div>
             )}
           </div>
         </div>

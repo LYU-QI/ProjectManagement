@@ -7,6 +7,7 @@ import { comparePrdVersions, createPrdDocument, deletePrdVersion, listPrdDocumen
 import type { Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -39,6 +40,7 @@ type Props = {
   selectedRequirementForChanges: Requirement | null;
   selectedProjectId?: number | null;
   selectedProjectName?: string;
+  selectedProjectAlias?: string;
   onImportSuccess?: () => void;
 };
 
@@ -62,6 +64,7 @@ export default function RequirementsView({
   selectedRequirementForChanges,
   selectedProjectId,
   selectedProjectName,
+  selectedProjectAlias,
   onImportSuccess
 }: Props) {
   const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
@@ -329,22 +332,25 @@ export default function RequirementsView({
       </section>
 
       {canWrite && (
-        <div className="card compact-card" style={{ marginTop: 12 }}>
+        <div className="card compact-card req-create-card">
           <div className="section-title-row">
             <h3>新增与导入</h3>
             <span className="muted">支持手动新增和 AI 智能导入</span>
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <form className="form" onSubmit={onSubmitRequirement} style={{ flex: 1 }}>
+          <div className="req-create-row">
+          <form className="form req-create-form" onSubmit={onSubmitRequirement}>
             <input name="title" placeholder="需求标题" required />
-            <select name="priority" defaultValue="medium"><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+            <ThemedSelect name="priority" defaultValue="medium">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </ThemedSelect>
             <input name="description" placeholder="需求描述" required />
             <button className="btn btn-primary" type="submit">新增需求</button>
           </form>
           <button
-            className="btn theme-btn"
+            className="btn req-import-btn"
             type="button"
-            style={{ padding: '8px 16px' }}
             onClick={() => {
               if (!selectedProjectId) return alert('请先在顶部选择项目！');
               setImportModal({ open: true, file: null, loading: false, error: '', result: null });
@@ -355,16 +361,16 @@ export default function RequirementsView({
         </div>
         </div>
       )}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="card req-list-card">
         <div className="panel-header">
-          <h3 style={{ margin: 0 }}>需求列表</h3>
+          <h3 className="req-title">需求列表</h3>
           <div className="panel-actions">
             <span className="muted">共 {requirements.length} 条</span>
-            <button className="btn theme-btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
+            <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
               {compactTable ? '标准密度' : '紧凑密度'}
             </button>
             {canWrite && (
-              <button className="btn theme-btn-danger" type="button" disabled={selectedRequirementIds.length === 0} onClick={onDeleteSelectedRequirements}>
+              <button className="btn btn-danger" type="button" disabled={selectedRequirementIds.length === 0} onClick={onDeleteSelectedRequirements}>
                 批量删除 ({selectedRequirementIds.length})
               </button>
             )}
@@ -383,7 +389,7 @@ export default function RequirementsView({
                     />
                   </th>
                 )}
-                  <th>项目-编号</th><th>标题</th><th>描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th className="operation-head">操作</th>}
+                  <th>项目-编号</th><th>标题</th><th className="req-desc-col">描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th className="operation-head">操作</th>}
               </tr>
             </thead>
             <tbody>
@@ -402,7 +408,7 @@ export default function RequirementsView({
                       />
                     </td>
                   )}
-                  <td>{`${selectedProjectName || `项目${r.projectId}`}-${r.projectSeq ?? r.id}`}</td>
+                  <td>{`${selectedProjectAlias || selectedProjectName || `项目${r.projectId}`}-${r.id}`}</td>
                   <td
                     className={isEditing && requirementEdit.editingField === 'title' ? 'editing' : ''}
                     onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'title')}
@@ -420,7 +426,7 @@ export default function RequirementsView({
                     )}
                   </td>
                   <td
-                    className={isEditing && requirementEdit.editingField === 'description' ? 'editing' : ''}
+                    className={`req-desc-col ${isEditing && requirementEdit.editingField === 'description' ? 'editing' : ''}`.trim()}
                     onDoubleClick={() => canWrite && requirementEdit.startEdit(r, 'description')}
                   >
                     {isEditing && requirementEdit.editingField === 'description' ? (
@@ -479,7 +485,7 @@ export default function RequirementsView({
                   {canWrite && (
                     <td className="operation-cell">
                       {isEditing && isDirty ? (
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div className="req-inline-actions">
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveRequirement(r)}>保存</button>
                           <button className="btn" type="button" onClick={requirementEdit.cancel}>取消</button>
                         </div>
@@ -536,19 +542,18 @@ export default function RequirementsView({
       </div>
 
       {changeHistoryDrawer.open && changeHistoryDrawer.req && (
-        <>
-          <div
-            className="drawer-backdrop"
-            onClick={() => {
-              setChangeHistoryDrawer({ open: false, req: null, loading: false });
-              onCloseRequirementChanges();
-            }}
-          />
-          <div className="drawer">
-            <div className="drawer-header">
+        <div
+          className="modal-overlay req-modal-overlay req-action-overlay"
+          onClick={() => {
+            setChangeHistoryDrawer({ open: false, req: null, loading: false });
+            onCloseRequirementChanges();
+          }}
+        >
+          <div className="modal-content req-action-modal req-change-history-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header">
               <div>
-                <h3 style={{ margin: 0 }}>变更时间线</h3>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                <h3 className="req-title">变更时间线</h3>
+                <div className="req-subtitle">
                   {changeHistoryDrawer.req.title}
                 </div>
               </div>
@@ -563,15 +568,15 @@ export default function RequirementsView({
                 关闭
               </button>
             </div>
-            <div className="drawer-body">
-              <div className="panel-actions" style={{ marginBottom: 10 }}>
+            <div className="drawer-body req-action-modal-body">
+              <div className="panel-actions req-drawer-actions">
                 <span className="muted">最近 {visibleChangeRows.length} 条</span>
                 <button className="btn" type="button" onClick={() => setChangeFiltersOpen((prev) => !prev)}>
                   {changeFiltersOpen ? '收起筛选' : '展开筛选'}
                 </button>
               </div>
               {changeFiltersOpen && (
-                <div className="filters-grid" style={{ marginBottom: 10 }}>
+                <div className="filters-grid req-filters-grid">
                   <input
                     placeholder="关键词（原因/说明）"
                     value={changeFilters.keyword}
@@ -590,26 +595,26 @@ export default function RequirementsView({
                 </div>
               )}
               {changeHistoryDrawer.loading ? (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px 0' }}>加载中...</div>
+                <div className="req-loading">加载中...</div>
               ) : (
                 <div className="table-wrap">
-                  <table className={`table ${compactTable ? 'table-compact' : ''}`} style={{ tableLayout: 'fixed', width: '100%' }}>
+                  <table className={`table req-change-table ${compactTable ? 'table-compact' : ''}`}>
                     <colgroup>
-                      <col style={{ width: 160 }} />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 100 }} />
-                      <col style={{ width: 170 }} />
+                      <col className="req-col-160" />
+                      <col className="req-col-90" />
+                      <col className="req-col-100" />
+                      <col className="req-col-170" />
                       <col />
                     </colgroup>
-                    <thead><tr><th style={{ whiteSpace: 'nowrap' }}>时间</th><th style={{ whiteSpace: 'nowrap' }}>版本</th><th style={{ whiteSpace: 'nowrap' }}>变更人</th><th style={{ whiteSpace: 'nowrap' }}>原因</th><th style={{ whiteSpace: 'nowrap' }}>变更字段</th></tr></thead>
+                    <thead><tr><th className="req-nowrap">时间</th><th className="req-nowrap">版本</th><th className="req-nowrap">变更人</th><th className="req-nowrap">原因</th><th className="req-nowrap">变更字段</th></tr></thead>
                     <tbody>
                       {visibleChangeRows.map((change) => (
                         <tr key={change.id}>
-                          <td style={{ verticalAlign: 'middle' }}>{new Date(change.createdAt).toLocaleString()}</td>
-                          <td style={{ verticalAlign: 'middle' }}>{change.version || '-'}</td>
-                          <td style={{ verticalAlign: 'middle' }}>{change.changedBy || '-'}</td>
-                          <td style={{ whiteSpace: 'pre-wrap', verticalAlign: 'middle' }}>{change.reason || '-'}</td>
-                          <td style={{ whiteSpace: 'pre-wrap', verticalAlign: 'middle' }}>
+                          <td className="req-vmid">{new Date(change.createdAt).toLocaleString()}</td>
+                          <td className="req-vmid">{change.version || '-'}</td>
+                          <td className="req-vmid">{change.changedBy || '-'}</td>
+                          <td className="req-vmid req-prewrap">{change.reason || '-'}</td>
+                          <td className="req-vmid req-prewrap">
                             {['title', 'description', 'priority', 'status', 'version'].map((key) => {
                               const before = (change.before as any)?.[key];
                               const after = (change.after as any)?.[key];
@@ -627,7 +632,7 @@ export default function RequirementsView({
                         </tr>
                       ))}
                       {visibleChangeRows.length === 0 && (
-                        <tr><td colSpan={5} style={{ color: 'var(--text-muted)' }}>暂无变更记录</td></tr>
+                        <tr><td colSpan={5} className="req-muted-cell">暂无变更记录</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -635,22 +640,21 @@ export default function RequirementsView({
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {changeDrawer.open && changeDrawer.req && (
-        <>
-          <div
-            className="drawer-backdrop"
-            onClick={() => setChangeDrawer({ open: false, req: null })}
-          />
-          <div className="drawer">
-            <div className="drawer-header">
+        <div
+          className="modal-overlay req-modal-overlay req-action-overlay"
+          onClick={() => setChangeDrawer({ open: false, req: null })}
+        >
+          <div className="modal-content req-action-modal req-change-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header">
               <h3>需求变更</h3>
               <button className="btn" type="button" onClick={() => setChangeDrawer({ open: false, req: null })}>关闭</button>
             </div>
-            <div className="drawer-body">
-              <div className="form" style={{ gridTemplateColumns: '1fr' }}>
+            <div className="drawer-body req-action-modal-body">
+              <div className="form req-single-col-form">
                 <div>
                   <label>需求</label>
                   <input value={changeDrawer.req.title} readOnly />
@@ -673,14 +677,14 @@ export default function RequirementsView({
                 <div>
                   <label>变更原因</label>
                   <textarea
-                    rows={4}
+                    rows={5}
                     value={changeForm.reason}
                     onChange={(e) => setChangeForm((prev) => ({ ...prev, reason: e.target.value }))}
                   />
                 </div>
               </div>
             </div>
-            <div className="drawer-footer">
+            <div className="drawer-footer req-action-modal-footer">
               <button
                 className="btn"
                 type="button"
@@ -698,40 +702,35 @@ export default function RequirementsView({
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* AI 评审结果抽屉 */}
       {aiReviewDrawer.open && (
-        <>
-          <div className="drawer-backdrop" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })} />
-          <div className="drawer">
-            <div className="drawer-header">
+        <div
+          className="modal-overlay req-modal-overlay req-action-overlay"
+          onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}
+        >
+          <div className="modal-content req-action-modal req-ai-review-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header">
               <div>
-                <h3 style={{ margin: 0 }}>🤖 AI 需求评审</h3>
+                <h3 className="req-title">🤖 AI 需求评审</h3>
                 {aiReviewDrawer.req && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                  <div className="req-subtitle">
                     {aiReviewDrawer.req.title}
                   </div>
                 )}
               </div>
               <button className="btn" type="button" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}>关闭</button>
             </div>
-            <div className="drawer-body">
+            <div className="drawer-body req-action-modal-body">
               {aiReviewDrawer.loading ? (
-                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
-                  <div style={{ fontSize: 32, marginBottom: 12 }}>🤖</div>
+                <div className="req-loading">
+                  <div className="req-loading-icon">🤖</div>
                   <div>AI 正在评审需求质量，请稍候...</div>
                 </div>
               ) : (
-                <div style={{
-                  background: 'var(--color-bg-surface)',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 4,
-                  color: 'var(--color-text-primary)',
-                  lineHeight: '1.6',
-                  fontFamily: 'system-ui, -apple-system, sans-serif',
-                }} className="markdown-body">
+                <div className="markdown-body req-ai-review-markdown">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {aiReviewDrawer.result || '暂无评审结果'}
                   </ReactMarkdown>
@@ -739,49 +738,27 @@ export default function RequirementsView({
               )}
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {/* 智能导入向导弹窗 */}
       {importModal.open && (
-        <div
-          className="modal-overlay"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1100,
-            padding: 16,
-            background: 'rgba(3, 7, 18, 0.52)',
-            backdropFilter: 'blur(2px)'
-          }}
-        >
+        <div className="modal-overlay req-modal-overlay">
           <div
-            className="modal-content"
-            style={{
-              width: '100%',
-              height: '100%',
-              maxWidth: 'none',
-              maxHeight: 'none',
-              display: 'flex',
-              flexDirection: 'column',
-              background: 'var(--color-bg-surface)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 12,
-              padding: 20
-            }}
+            className="modal-content req-import-modal"
           >
-            <h3 style={{ marginTop: 0 }}>📄 AI 智能导入需求</h3>
+            <h3 className="req-import-title">📄 AI 智能导入需求</h3>
 
-            <div style={{ padding: '20px 0', borderBottom: '1px solid var(--color-border)' }}>
-              <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+            <div className="req-import-upload">
+              <div className="req-import-hint">
                 支持上传 Excel、Word、PDF 或 TXT 格式的文件，AI 将自动分析文件内容并提取为标准需求列表。
               </div>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div className="req-import-row">
                 <input
                   type="file"
                   ref={fileInputRef}
                   accept=".xlsx,.xls,.doc,.docx,.pdf,.txt,.md"
-                  style={{ display: 'none' }}
+                  className="req-hidden-input"
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) setImportModal(p => ({ ...p, file, result: null, error: '' }));
@@ -791,13 +768,12 @@ export default function RequirementsView({
                 <button className="btn" type="button" onClick={() => fileInputRef.current?.click()}>
                   选择文件
                 </button>
-                <span style={{ fontSize: 13, flex: 1, color: importModal.file ? 'var(--color-text-primary)' : 'var(--text-muted)' }}>
+                <span className={`req-import-file ${importModal.file ? 'has-file' : ''}`}>
                   {importModal.file ? importModal.file.name : '未选择任何文件'}
                 </span>
                 <button
-                  className="btn"
+                  className="btn req-import-parse-btn"
                   type="button"
-                  style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
                   disabled={!importModal.file || importModal.loading}
                   onClick={() => void handleImportUpload()}
                 >
@@ -805,24 +781,24 @@ export default function RequirementsView({
                 </button>
               </div>
               {importModal.error && (
-                <div style={{ color: 'var(--color-danger)', fontSize: 13, marginTop: 10, padding: 8, background: 'var(--color-danger-soft)', border: '1px solid var(--color-danger)', borderRadius: 4 }}>
+                <div className="req-import-error">
                   ⚠️ {importModal.error}
                 </div>
               )}
             </div>
 
             {importModal.result && (
-              <div style={{ flex: 1, overflow: 'auto', padding: '20px 0' }}>
-                <div style={{ marginBottom: 10, fontSize: 13, color: 'var(--color-success)' }}>
+              <div className="req-import-result">
+                <div className="req-import-success">
                   ✅ 成功识别到 {importModal.result.length} 条需求，请检查或修改确认：
                 </div>
                 <table className="table">
                   <thead>
                     <tr>
-                      <th style={{ width: '25%' }}>需求标题</th>
-                      <th style={{ width: '50%' }}>需求描述</th>
-                      <th style={{ width: '15%' }}>优先级</th>
-                      <th style={{ width: '10%' }}>操作</th>
+                      <th className="req-col-p25">需求标题</th>
+                      <th className="req-col-p50">需求描述</th>
+                      <th className="req-col-p15">优先级</th>
+                      <th className="req-col-p10">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -836,7 +812,7 @@ export default function RequirementsView({
                               newList[idx].title = e.target.value;
                               setImportModal(p => ({ ...p, result: newList }));
                             }}
-                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit' }}
+                            className="req-import-cell-input"
                           />
                         </td>
                         <td>
@@ -848,23 +824,23 @@ export default function RequirementsView({
                               newList[idx].description = e.target.value;
                               setImportModal(p => ({ ...p, result: newList }));
                             }}
-                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit', resize: 'vertical' }}
+                            className="req-import-cell-input req-import-cell-textarea"
                           />
                         </td>
                         <td>
-                          <select
+                          <ThemedSelect
                             value={req.priority}
                             onChange={(e) => {
                               const newList = [...importModal.result!];
                               newList[idx].priority = e.target.value;
                               setImportModal(p => ({ ...p, result: newList }));
                             }}
-                            style={{ width: '100%', padding: '4px 8px', background: 'transparent', border: 'none', color: 'inherit' }}
+                            className="req-import-cell-input"
                           >
                             <option value="low">low</option>
                             <option value="medium">medium</option>
                             <option value="high">high</option>
-                          </select>
+                          </ThemedSelect>
                         </td>
                         <td>
                           <button
@@ -883,7 +859,7 @@ export default function RequirementsView({
                     ))}
                     {importModal.result.length === 0 && (
                       <tr>
-                        <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>没有需求数据</td>
+                        <td colSpan={4} className="req-import-empty">没有需求数据</td>
                       </tr>
                     )}
                   </tbody>
@@ -891,7 +867,7 @@ export default function RequirementsView({
               </div>
             )}
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 'auto', paddingTop: 20 }}>
+            <div className="req-import-footer">
               <button
                 className="btn"
                 type="button"
@@ -925,15 +901,15 @@ export default function RequirementsView({
           <>
             <div className="row">
               <label>PRD：</label>
-              <select
-                value={selectedPrdId ?? ''}
+              <ThemedSelect
+                value={selectedPrdId == null ? '' : String(selectedPrdId)}
                 onChange={(e) => setSelectedPrdId(e.target.value ? Number(e.target.value) : null)}
               >
                 <option value="">请选择 PRD</option>
                 {prdDocs.map((doc) => (
                   <option key={doc.id} value={doc.id}>{doc.title}</option>
                 ))}
-              </select>
+              </ThemedSelect>
               <input
                 type="text"
                 placeholder="新 PRD 名称"
@@ -959,7 +935,7 @@ export default function RequirementsView({
                 ref={prdFileInputRef}
                 type="file"
                 accept=".docx,.pdf"
-                style={{ display: 'none' }}
+                className="req-hidden-input"
                 onChange={(e) => setPrdUpload((p) => ({ ...p, file: e.target.files?.[0] ?? null }))}
               />
               <button
@@ -969,7 +945,7 @@ export default function RequirementsView({
               >
                 选择文件
               </button>
-              <span className="muted" style={{ minWidth: 160 }}>
+              <span className="muted req-minw-160">
                 {prdUpload.file ? prdUpload.file.name : '未选择任何文件'}
               </span>
               <input
@@ -991,8 +967,8 @@ export default function RequirementsView({
 
             <div className="row">
               <label>对比：</label>
-              <select
-                value={comparePick.leftId ?? ''}
+              <ThemedSelect
+                value={comparePick.leftId == null ? '' : String(comparePick.leftId)}
                 onChange={(e) => setComparePick((p) => ({ ...p, leftId: e.target.value ? Number(e.target.value) : null }))}
               >
                 <option value="">选择旧版本</option>
@@ -1001,9 +977,9 @@ export default function RequirementsView({
                     {v.versionLabel || v.fileName} ({new Date(v.createdAt).toLocaleString()})
                   </option>
                 ))}
-              </select>
-              <select
-                value={comparePick.rightId ?? ''}
+              </ThemedSelect>
+              <ThemedSelect
+                value={comparePick.rightId == null ? '' : String(comparePick.rightId)}
                 onChange={(e) => setComparePick((p) => ({ ...p, rightId: e.target.value ? Number(e.target.value) : null }))}
               >
                 <option value="">选择新版本</option>
@@ -1012,7 +988,7 @@ export default function RequirementsView({
                     {v.versionLabel || v.fileName} ({new Date(v.createdAt).toLocaleString()})
                   </option>
                 ))}
-              </select>
+              </ThemedSelect>
               <button className="btn prd-btn-strong" type="button" disabled={!comparePick.leftId || !comparePick.rightId} onClick={() => void handleComparePrd()}>
                 开始对比
               </button>
@@ -1027,7 +1003,7 @@ export default function RequirementsView({
               )}
             </div>
 
-            <div className="card" style={{ marginTop: 12 }}>
+            <div className="card req-mt-12">
               <h3>版本列表</h3>
               <table className="table">
                 <thead><tr><th>版本</th><th>文件</th><th>上传时间</th><th>操作</th></tr></thead>

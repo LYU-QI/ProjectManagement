@@ -1,10 +1,11 @@
-import type { FormEvent, KeyboardEvent } from 'react';
+import { useRef, type FormEvent, type KeyboardEvent } from 'react';
 import type { FeishuRecord } from '../api/feishu';
 import type { FeishuFormState } from '../types';
 import { FEISHU_FIELDS } from '../feishuConfig';
 import TableToolbar from '../components/TableToolbar';
 import PaginationBar from '../components/PaginationBar';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   canWrite: boolean;
@@ -119,17 +120,50 @@ export default function FeishuView({
   formatProgressValue,
   getAssigneeName
 }: Props) {
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const columnHintMap: Partial<Record<keyof FeishuFormState, string>> = {
+    任务ID: '唯一任务标识',
+    任务名称: '任务标题展示',
+    状态: '任务状态筛选',
+    优先级: '优先级分层',
+    负责人: '责任人展示',
+    开始时间: '计划开始时间',
+    截止时间: '计划截止时间',
+    进度: '进度百分比',
+    所属项目: '项目归属',
+    是否阻塞: '阻塞状态',
+    阻塞原因: '阻塞说明',
+    风险等级: '风险分级',
+    里程碑: '关键节点标识'
+  };
+
+  const toggleAllColumns = (checked: boolean) => {
+    if (checked) {
+      FEISHU_FIELDS.forEach((field) => onToggleColumn(field.key, true));
+      return;
+    }
+    FEISHU_FIELDS.forEach((field) => onToggleColumn(field.key, false));
+    onToggleColumn('任务名称', true);
+  };
+
+  const fieldCellClassMap: Partial<Record<keyof FeishuFormState, string>> = {
+    任务名称: 'feishu-col-task-name',
+    所属项目: 'feishu-col-project',
+    阻塞原因: 'feishu-col-block-reason',
+    任务ID: 'feishu-col-id',
+    负责人: 'feishu-col-assignee'
+  };
   const [filtersOpen, setFiltersOpen] = usePersistentBoolean('ui:feishu:filtersOpen', true);
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:feishu:compactTable', false);
   const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card feishu-config-card">
         <h3>飞书多维表格</h3>
-        <div style={{ marginTop: 10 }}>
+        <div className="feishu-config-block">
           <details>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>字段配置（只读）</summary>
-            <table className="table" style={{ marginTop: 10 }}>
+            <summary className="feishu-summary">字段配置（只读）</summary>
+            <table className="table feishu-config-table">
               <thead>
                 <tr>
                   <th>字段</th>
@@ -156,25 +190,37 @@ export default function FeishuView({
             </table>
           </details>
         </div>
-        <div style={{ marginTop: 10 }}>
+        <div className="feishu-config-block">
           <details>
-            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: 12 }}>列显示配置</summary>
-            <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', marginTop: 8 }}>
-              {FEISHU_FIELDS.map((field) => (
-                <label key={String(field.key)} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={visibleColumns.includes(field.key)}
-                    onChange={(e) => onToggleColumn(field.key, e.target.checked)}
-                  />
-                  <span>{field.label}</span>
-                </label>
-              ))}
+            <summary className="feishu-summary">列显示配置</summary>
+            <div className="feishu-columns-panel">
+              <div className="feishu-columns-head">
+                <h4 className="feishu-columns-title">列开关</h4>
+                <div className="feishu-columns-actions">
+                  <button className="btn" type="button" onClick={() => toggleAllColumns(true)}>全选显示</button>
+                  <button className="btn" type="button" onClick={() => toggleAllColumns(false)}>全选隐藏</button>
+                </div>
+              </div>
+              <div className="feishu-columns-grid">
+                {FEISHU_FIELDS.map((field) => (
+                  <label key={String(field.key)} className="feishu-column-item">
+                    <div className="feishu-column-item-main">
+                      <span className="feishu-column-item-title">{field.label}</span>
+                      <span className="feishu-column-item-subtitle">{columnHintMap[field.key] || '列显示开关'}</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns.includes(field.key)}
+                      onChange={(e) => onToggleColumn(field.key, e.target.checked)}
+                    />
+                  </label>
+                ))}
+              </div>
             </div>
           </details>
         </div>
         {canWrite && (
-          <form className="form" onSubmit={onSubmitFeishu} style={{ marginTop: 8 }}>
+          <form className="form feishu-submit-form" onSubmit={onSubmitFeishu}>
             {FEISHU_FIELDS.map((field) => {
               const value = feishuForm[field.key] ?? '';
               const options = field.key === '所属项目'
@@ -184,7 +230,7 @@ export default function FeishuView({
                   : field.options ?? [];
               if (field.type === 'select') {
                 return (
-                  <select
+                  <ThemedSelect
                     key={String(field.key)}
                     value={value}
                     onChange={(e) => onUpdateFeishuField(field.key, e.target.value)}
@@ -194,7 +240,7 @@ export default function FeishuView({
                     {options.map((option) => (
                       <option key={option} value={option}>{option}</option>
                     ))}
-                  </select>
+                  </ThemedSelect>
                 );
               }
               return (
@@ -243,49 +289,50 @@ export default function FeishuView({
                 value={feishuSearchFields}
                 onChange={(e) => onSetFeishuSearchFields(e.target.value)}
               />
-              <select value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
+              <ThemedSelect value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
                 <option value="">所属项目(全部)</option>
                 {feishuProjectOptions.map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
-              </select>
-              <select value={feishuFilterStatus} onChange={(e) => onSetFeishuFilterStatus(e.target.value)}>
+              </ThemedSelect>
+              <ThemedSelect value={feishuFilterStatus} onChange={(e) => onSetFeishuFilterStatus(e.target.value)}>
                 <option value="">状态(全部)</option>
                 {['待办', '进行中', '已完成'].map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
-              </select>
+              </ThemedSelect>
               <input
                 placeholder="负责人(包含匹配)"
                 value={feishuFilterAssignee}
                 onChange={(e) => onSetFeishuFilterAssignee(e.target.value)}
               />
-              <select value={feishuFilterRisk} onChange={(e) => onSetFeishuFilterRisk(e.target.value)}>
+              <ThemedSelect value={feishuFilterRisk} onChange={(e) => onSetFeishuFilterRisk(e.target.value)}>
                 <option value="">风险等级(全部)</option>
                 {['低', '中', '高'].map((option) => (
                   <option key={option} value={option}>{option}</option>
                 ))}
-              </select>
-              <select value={feishuPageSize} onChange={(e) => onSetFeishuPageSize(Number(e.target.value))}>
+              </ThemedSelect>
+              <ThemedSelect value={String(feishuPageSize)} onChange={(e) => onSetFeishuPageSize(Number(e.target.value))}>
                 {[10, 20, 50, 100].map((size) => (
                   <option key={size} value={size}>每页 {size}</option>
                 ))}
-              </select>
+              </ThemedSelect>
               <button className="btn" type="button" onClick={onLoadFeishu}>查询/刷新</button>
               <button className="btn" type="button" onClick={onExportFeishu}>导出CSV</button>
-              <label className="btn" style={{ display: 'inline-flex', alignItems: 'center' }}>
+              <button className="btn feishu-import-btn" type="button" onClick={() => importInputRef.current?.click()}>
                 导入CSV
-                <input
-                  type="file"
-                  accept=".csv"
-                  style={{ display: 'none' }}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) onImportFeishu(file);
-                    e.currentTarget.value = '';
-                  }}
-                />
-              </label>
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".csv"
+                className="feishu-import-input"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) onImportFeishu(file);
+                  e.currentTarget.value = '';
+                }}
+              />
               {canWrite && (
                 <button className="btn" type="button" disabled={selectedFeishuIds.length === 0} onClick={onDeleteSelectedFeishu}>
                   批量删除 ({selectedFeishuIds.length})
@@ -297,7 +344,7 @@ export default function FeishuView({
 
         {feishuLoading && <p>Loading...</p>}
         <div className="table-wrap">
-          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+          <table className={`table feishu-records-table ${visibleFields.length <= 2 ? 'feishu-records-table--narrow' : ''} ${compactTable ? 'table-compact' : ''}`}>
             <thead>
               <tr>
                 {canWrite && (
@@ -310,7 +357,7 @@ export default function FeishuView({
                   </th>
                 )}
                 {visibleFields.map((field) => (
-                  <th key={String(field.key)}>{field.label}</th>
+                  <th key={String(field.key)} className={fieldCellClassMap[field.key] || ''}>{field.label}</th>
                 ))}
                 {canWrite && <th>操作</th>}
               </tr>
@@ -360,7 +407,7 @@ export default function FeishuView({
                           : field.options ?? [];
                       if (field.type === 'select') {
                         return (
-                          <td key={String(field.key)} className="editing">
+                          <td key={String(field.key)} className={`${fieldCellClassMap[field.key] || ''} editing`.trim()}>
                             <select
                               data-feishu-edit={`${record.record_id}-${String(field.key)}`}
                               value={cellValue ?? ''}
@@ -376,7 +423,7 @@ export default function FeishuView({
                         );
                       }
                       return (
-                        <td key={String(field.key)} className="editing">
+                        <td key={String(field.key)} className={`${fieldCellClassMap[field.key] || ''} editing`.trim()}>
                           <input
                             data-feishu-edit={`${record.record_id}-${String(field.key)}`}
                             type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
@@ -392,6 +439,7 @@ export default function FeishuView({
                     return (
                       <td
                         key={String(field.key)}
+                        className={fieldCellClassMap[field.key] || ''}
                         onDoubleClick={() => canWrite && onStartInlineEdit(record, field.key)}
                       >
                         {displayValue}
@@ -399,7 +447,7 @@ export default function FeishuView({
                     );
                   })}
                   {canWrite && (
-                    <td style={{ display: 'flex', gap: 6 }}>
+                    <td className="feishu-row-actions">
                       {isEditing && isDirty ? (
                         <>
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveInlineEdit(record)}>保存</button>

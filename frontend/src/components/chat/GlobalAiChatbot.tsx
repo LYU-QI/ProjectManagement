@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, X, Send, LayoutDashboard, Search, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import { Bot, X, Send, Search, Sparkles, Loader2, Trash2 } from 'lucide-react';
 import type { ViewKey } from '../AstraeaLayout';
 import { chatWithAi, type ChatMessage } from '../../api/ai';
 import ReactMarkdown from 'react-markdown';
@@ -275,14 +275,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
             {/* Quick Chips */}
             <div className="chatbot-chips">
-              <button onClick={() => executeAction('dashboard', '带我去总览大屏瞧瞧')}>
-                <LayoutDashboard size={12} /> 指挥中心
-              </button>
-              <button onClick={() => executeAction('requirements', '我想写一个新需求')}>
-                <Search size={12} /> 需求流
-              </button>
-              <button onClick={() => executeAction('ai', '帮我跑一份深度体检报告')}>
-                <Bot size={12} /> 项目体检
+              <button onClick={() => executeAction('global', '带我去全局检索')}>
+                <Search size={12} /> 全局搜索
               </button>
             </div>
 
@@ -332,8 +326,11 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           width: 56px;
           height: 56px;
           border-radius: 50%;
-          background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
-          box-shadow: 0 8px 20px rgba(21, 94, 239, 0.28);
+          background:
+            linear-gradient(160deg, color-mix(in srgb, var(--glass-specular) 52%, transparent 48%), transparent 46%),
+            linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
+          box-shadow: 0 10px 24px color-mix(in srgb, var(--glow-blue) 34%, transparent 66%);
+          border: 1px solid color-mix(in srgb, var(--glass-border) 45%, #ffffff 55%);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -354,10 +351,14 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           width: 380px;
           height: 600px;
           max-height: calc(100vh - 48px);
-          background: var(--color-bg-surface);
-          border: 1px solid var(--color-border);
-          border-radius: 16px;
-          box-shadow: 0 16px 36px rgba(16, 24, 40, 0.16);
+          background:
+            linear-gradient(170deg, color-mix(in srgb, var(--glass-specular) 24%, transparent 76%), transparent 42%),
+            color-mix(in srgb, var(--glass-bg) 88%, var(--color-bg-surface) 12%);
+          border: 1px solid var(--glass-border);
+          border-radius: 18px;
+          box-shadow: var(--glass-shadow);
+          backdrop-filter: saturate(132%) blur(var(--glass-blur));
+          -webkit-backdrop-filter: saturate(132%) blur(var(--glass-blur));
           z-index: 9999;
           display: flex;
           flex-direction: column;
@@ -371,8 +372,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           align-items: center;
           justify-content: space-between;
           padding: 16px 20px;
-          border-bottom: 1px solid var(--color-border);
-          background: var(--color-bg-muted);
+          border-bottom: 1px solid var(--glass-border);
+          background: color-mix(in srgb, var(--glass-bg) 72%, transparent 28%);
           cursor: ${draggingType === 'panel' ? 'grabbing' : 'grab'};
           user-select: none;
         }
@@ -401,7 +402,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
         }
         .icon-btn:hover {
           color: var(--color-text-primary);
-          background: var(--color-bg-surface);
+          background: color-mix(in srgb, var(--glass-bg-hover) 72%, transparent 28%);
         }
 
         .chatbot-chips {
@@ -409,8 +410,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           gap: 8px;
           padding: 12px 20px;
           overflow-x: auto;
-          border-bottom: 1px solid var(--color-border);
-          background: var(--color-bg-muted);
+          border-bottom: 1px solid var(--glass-border);
+          background: color-mix(in srgb, var(--glass-bg) 64%, transparent 36%);
         }
         .chatbot-chips::-webkit-scrollbar {
           display: none;
@@ -421,8 +422,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           align-items: center;
           gap: 6px;
           white-space: nowrap;
-          background: var(--color-primary-soft);
-          border: 1px solid #bfd1ff;
+          background: color-mix(in srgb, var(--glass-tint-primary) 64%, var(--glass-bg) 36%);
+          border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--glass-border) 65%);
           color: var(--color-primary);
           padding: 6px 12px;
           border-radius: 100px;
@@ -431,7 +432,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           transition: all 0.2s;
         }
         .chatbot-chips button:hover {
-          background: #dbe7ff;
+          background: color-mix(in srgb, var(--glass-tint-primary) 78%, var(--glass-bg) 22%);
         }
 
         .chatbot-messages {
@@ -516,18 +517,20 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
         .chat-ai {
           align-self: flex-start;
-          background: var(--color-bg-muted);
+          background: color-mix(in srgb, var(--glass-bg) 72%, var(--color-bg-muted) 28%);
           color: var(--color-text-primary);
           border-bottom-left-radius: 2px;
-          border: 1px solid var(--color-border);
+          border: 1px solid var(--glass-border);
         }
 
         .chat-user {
           align-self: flex-end;
-          background: var(--glow-blue);
+          background:
+            linear-gradient(155deg, color-mix(in srgb, #ffffff 36%, transparent 64%), transparent 42%),
+            linear-gradient(135deg, var(--glow-blue), color-mix(in srgb, var(--glow-blue) 72%, #8dbdff 28%));
           color: #fff;
           border-bottom-right-radius: 2px;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+          box-shadow: 0 8px 18px color-mix(in srgb, var(--glow-blue) 28%, transparent 72%);
         }
 
         .chat-loading {
@@ -550,16 +553,16 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
         .chatbot-input-area {
           padding: 16px;
-          background: var(--color-bg-muted);
-          border-top: 1px solid var(--color-border);
+          background: color-mix(in srgb, var(--glass-bg) 68%, transparent 32%);
+          border-top: 1px solid var(--glass-border);
           display: flex;
           gap: 12px;
         }
 
         .chatbot-input-area input {
           flex: 1;
-          background: var(--color-bg-surface);
-          border: 1px solid var(--color-border);
+          background: color-mix(in srgb, var(--glass-bg) 80%, var(--color-bg-surface) 20%);
+          border: 1px solid var(--glass-border);
           border-radius: 8px;
           padding: 10px 16px;
           color: var(--color-text-primary);
@@ -575,7 +578,9 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           width: 40px;
           height: 40px;
           border-radius: 8px;
-          background: var(--glow-blue);
+          background:
+            linear-gradient(155deg, color-mix(in srgb, #ffffff 40%, transparent 60%), transparent 44%),
+            linear-gradient(135deg, var(--glow-blue), color-mix(in srgb, var(--glow-blue) 70%, #8dbdff 30%));
           border: none;
           color: #fff;
           display: flex;

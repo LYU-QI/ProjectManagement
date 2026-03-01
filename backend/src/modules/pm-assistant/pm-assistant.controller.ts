@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsBoolean, IsIn, IsOptional, IsString, IsNumber } from 'class-validator';
+import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { IsBoolean, IsIn, IsOptional, IsString, IsNumber, IsObject } from 'class-validator';
 import { PmAssistantService } from './pm-assistant.service';
 import { PmAssistantScheduler } from './pm-assistant.scheduler';
 import type { PmJobId } from './pm-assistant.types';
@@ -46,11 +46,19 @@ class UpdateScheduleDto {
 
   @IsString()
   cron!: string;
+
+  @IsOptional()
+  @IsNumber()
+  projectId?: number;
 }
 
 class UpdateTimezoneDto {
   @IsString()
   timezone!: string;
+
+  @IsOptional()
+  @IsNumber()
+  projectId?: number;
 }
 
 class UpdateJobConfigDto {
@@ -73,6 +81,18 @@ class UpdateJobConfigDto {
 
   @IsBoolean()
   enabled!: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  projectId?: number;
+}
+
+class UpdatePromptConfigsDto {
+  @IsNumber()
+  projectId!: number;
+
+  @IsObject()
+  prompts!: Record<string, string>;
 }
 
 @Controller('api/v1/pm-assistant')
@@ -81,6 +101,15 @@ export class PmAssistantController {
     private readonly pmAssistantService: PmAssistantService,
     private readonly scheduler: PmAssistantScheduler
   ) {}
+
+  private parseProjectId(value?: string) {
+    if (!value) return undefined;
+    const id = Number(value);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException('projectId 必须是正整数');
+    }
+    return id;
+  }
 
   @Get('jobs')
   @Public()
@@ -92,6 +121,22 @@ export class PmAssistantController {
   @Public()
   listDefaultPrompts() {
     return this.pmAssistantService.getDefaultSystemPrompts();
+  }
+
+  @Get('prompt-configs')
+  @Public()
+  getPromptConfigs(@Query('projectId') projectIdRaw?: string) {
+    const projectId = this.parseProjectId(projectIdRaw);
+    return this.pmAssistantService.getPromptConfigs(projectId);
+  }
+
+  @Post('prompt-configs')
+  @Public()
+  updatePromptConfigs(@Body() body: UpdatePromptConfigsDto) {
+    if (!body.prompts || typeof body.prompts !== 'object') {
+      throw new BadRequestException('prompts 必须是对象');
+    }
+    return this.pmAssistantService.updatePromptConfigs(body.projectId, body.prompts);
   }
 
   @Post('run')
@@ -108,37 +153,40 @@ export class PmAssistantController {
 
   @Get('logs')
   @Public()
-  async getLogs() {
-    return this.pmAssistantService.getLogs();
+  async getLogs(@Query('projectId') projectIdRaw?: string) {
+    const projectId = this.parseProjectId(projectIdRaw);
+    return this.pmAssistantService.getLogs(100, projectId);
   }
 
   @Get('schedules')
   @Public()
-  getSchedules() {
-    return this.scheduler.getSchedules();
+  getSchedules(@Query('projectId') projectIdRaw?: string) {
+    const projectId = this.parseProjectId(projectIdRaw);
+    return this.scheduler.getSchedules(projectId);
   }
 
   @Post('schedules')
   @Public()
   updateSchedule(@Body() body: UpdateScheduleDto) {
-    return this.scheduler.updateSchedule(body.id, body.cron);
+    return this.scheduler.updateSchedule(body.id, body.cron, body.projectId);
   }
 
   @Post('schedules/timezone')
   @Public()
   updateTimezone(@Body() body: UpdateTimezoneDto) {
-    return this.scheduler.updateTimezone(body.timezone);
+    return this.scheduler.updateTimezone(body.timezone, body.projectId);
   }
 
   @Get('configs')
   @Public()
-  getConfigs() {
-    return this.pmAssistantService.getJobConfigs();
+  getConfigs(@Query('projectId') projectIdRaw?: string) {
+    const projectId = this.parseProjectId(projectIdRaw);
+    return this.pmAssistantService.getJobConfigs(projectId);
   }
 
   @Post('configs')
   @Public()
   updateConfig(@Body() body: UpdateJobConfigDto) {
-    return this.pmAssistantService.updateJobConfig(body.jobId, body.enabled);
+    return this.pmAssistantService.updateJobConfig(body.jobId, body.enabled, body.projectId);
   }
 }

@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '../config/config.service';
 import { FeishuService } from '../feishu/feishu.service';
 import { PrismaService } from '../../database/prisma.service';
-import type { PmAssistantLog, PmAssistantJobConfig } from '@prisma/client';
+import type { PmAssistantLog } from '@prisma/client';
 import type { FeishuTaskRecord, PmJobId, PmJobMeta, PmRunLog, PmRunResult } from './pm-assistant.types';
 
 const JOBS: PmJobMeta[] = [
@@ -48,13 +48,15 @@ export class PmAssistantService {
     return JOBS;
   }
 
-  async getLogs(limit = 100): Promise<PmRunLog[]> {
+  async getLogs(limit = 100, projectId?: number): Promise<PmRunLog[]> {
     const rows = await this.prisma.pmAssistantLog.findMany({
+      where: projectId ? { projectId } : undefined,
       take: Math.min(limit, 200),
       orderBy: { createdAt: 'desc' }
     });
     return rows.map((row: PmAssistantLog) => ({
       id: String(row.id),
+      projectId: row.projectId ?? undefined,
       jobId: row.jobId as PmJobId,
       triggeredBy: row.triggeredBy as 'manual' | 'schedule',
       status: row.status as 'success' | 'failed' | 'dry-run' | 'skipped',
@@ -66,29 +68,89 @@ export class PmAssistantService {
     }));
   }
 
-  async getJobConfigs() {
-    const existing = await this.prisma.pmAssistantJobConfig.findMany();
-    const existingMap = new Map(existing.map((item: PmAssistantJobConfig) => [item.jobId, item]));
-    const missing = JOBS.filter((job) => !existingMap.has(job.id)).map((job) => ({
-      jobId: job.id,
-      enabled: true
-    }));
-    if (missing.length > 0) {
-      await this.prisma.pmAssistantJobConfig.createMany({ data: missing });
+  async getJobConfigs(projectId?: number) {
+    if (!projectId) {
+      const existing = await this.prisma.pmAssistantJobConfig.findMany();
+      const existingMap = new Map(existing.map((item) => [item.jobId, item]));
+      const missing = JOBS.filter((job) => !existingMap.has(job.id)).map((job) => ({
+        jobId: job.id,
+        enabled: true
+      }));
+      if (missing.length > 0) {
+        await this.prisma.pmAssistantJobConfig.createMany({ data: missing });
+      }
+      const rows = await this.prisma.pmAssistantJobConfig.findMany({ orderBy: { jobId: 'asc' } });
+      return rows.map((row) => ({
+        jobId: row.jobId,
+        enabled: row.enabled
+      }));
     }
-    const rows = await this.prisma.pmAssistantJobConfig.findMany({ orderBy: { jobId: 'asc' } });
-    return rows.map((row: PmAssistantJobConfig) => ({
-      jobId: row.jobId,
-      enabled: row.enabled
+    await this.ensureProjectExists(projectId);
+    const scopedRows = await this.prisma.pmAssistantProjectJobConfig.findMany({
+      where: { projectId },
+      orderBy: { jobId: 'asc' }
+    });
+    const scopedMap = new Map(scopedRows.map((item) => [item.jobId, item.enabled]));
+    const globalRows = await this.prisma.pmAssistantJobConfig.findMany({ orderBy: { jobId: 'asc' } });
+    const globalMap = new Map(globalRows.map((item) => [item.jobId, item.enabled]));
+    return JOBS.map((job) => ({
+      jobId: job.id,
+      enabled: scopedMap.has(job.id) ? scopedMap.get(job.id)! : (globalMap.get(job.id) ?? true)
     }));
   }
 
-  async updateJobConfig(jobId: PmJobId, enabled: boolean) {
-    await this.prisma.pmAssistantJobConfig.upsert({
-      where: { jobId },
+  async updateJobConfig(jobId: PmJobId, enabled: boolean, projectId?: number) {
+    if (!projectId) {
+      await this.prisma.pmAssistantJobConfig.upsert({
+        where: { jobId },
+        update: { enabled },
+        create: { jobId, enabled }
+      });
+      return { success: true };
+    }
+    await this.ensureProjectExists(projectId);
+    await this.prisma.pmAssistantProjectJobConfig.upsert({
+      where: {
+        projectId_jobId: {
+          projectId,
+          jobId
+        }
+      },
       update: { enabled },
-      create: { jobId, enabled }
+      create: { projectId, jobId, enabled }
     });
+    return { success: true };
+  }
+
+  async getPromptConfigs(projectId?: number) {
+    if (!projectId) return {};
+    await this.ensureProjectExists(projectId);
+    const rows = await this.prisma.pmAssistantProjectPrompt.findMany({ where: { projectId } });
+    const result: Record<string, string> = {};
+    rows.forEach((row) => {
+      result[row.jobId] = row.prompt;
+    });
+    return result;
+  }
+
+  async updatePromptConfigs(projectId: number, prompts: Record<string, string>) {
+    await this.ensureProjectExists(projectId);
+    const allowedJobIds = new Set(JOBS.map((item) => item.id));
+    const entries = Object.entries(prompts).filter(([jobId]) => allowedJobIds.has(jobId as PmJobId));
+    await this.prisma.$transaction(
+      entries.map(([jobId, prompt]) =>
+        this.prisma.pmAssistantProjectPrompt.upsert({
+          where: {
+            projectId_jobId: {
+              projectId,
+              jobId
+            }
+          },
+          update: { prompt: String(prompt ?? '') },
+          create: { projectId, jobId, prompt: String(prompt ?? '') }
+        })
+      )
+    );
     return { success: true };
   }
 
@@ -98,9 +160,21 @@ export class PmAssistantService {
   ): Promise<PmRunResult> {
     const job = this.getJob(jobId);
     const triggeredBy = opts?.triggeredBy ?? 'manual';
-    const config = await this.prisma.pmAssistantJobConfig.findUnique({ where: { jobId } });
-    if (config && !config.enabled) {
+    const globalConfig = await this.prisma.pmAssistantJobConfig.findUnique({ where: { jobId } });
+    const scopedConfig = opts?.projectId
+      ? await this.prisma.pmAssistantProjectJobConfig.findUnique({
+        where: {
+          projectId_jobId: {
+            projectId: opts.projectId,
+            jobId
+          }
+        }
+      })
+      : null;
+    const enabled = scopedConfig?.enabled ?? globalConfig?.enabled ?? true;
+    if (!enabled) {
       await this.pushLog({
+        projectId: opts?.projectId,
         jobId,
         triggeredBy,
         status: 'skipped',
@@ -133,7 +207,7 @@ export class PmAssistantService {
         budget: project.budget
       } : undefined;
       const { headerTitle, template, summary, mentions, todayStr, aiContext, fallbackMentionText } = await this.buildCard(jobId, projectInfo);
-      const summarized = await this.summarizeWithAi(jobId, summary, aiContext);
+      const summarized = await this.summarizeWithAi(jobId, summary, aiContext, opts?.projectId);
       let finalText = summarized || summary;
       if (this.shouldMention(jobId) && fallbackMentionText && !finalText.includes('<at id=')) {
         finalText = `${finalText}\n- 负责人：${fallbackMentionText}`;
@@ -142,6 +216,7 @@ export class PmAssistantService {
 
       if (opts?.dryRun) {
         await this.pushLog({
+          projectId: opts?.projectId,
           jobId,
           triggeredBy,
           status: 'dry-run',
@@ -176,6 +251,7 @@ export class PmAssistantService {
       })));
 
       await this.pushLog({
+        projectId: opts?.projectId,
         jobId,
         triggeredBy,
         status: 'success',
@@ -187,6 +263,7 @@ export class PmAssistantService {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       await this.pushLog({
+        projectId: opts?.projectId,
         jobId,
         triggeredBy,
         status: 'failed',
@@ -303,14 +380,25 @@ export class PmAssistantService {
     return `FEISHU_PM_ASSISTANT_PROMPT_${jobId.toUpperCase().replace(/-/g, '_')}`;
   }
 
-  private async summarizeWithAi(jobId: PmJobId, summary: string, context?: string) {
+  private async summarizeWithAi(jobId: PmJobId, summary: string, context?: string, projectId?: number) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
     const aiApiKey = this.configService.getRawValue('AI_API_KEY');
     const aiModel = this.configService.getRawValue('AI_MODEL');
     if (!aiApiUrl || !aiApiKey || !aiModel) {
       return summary;
     }
+    const scopedPrompt = projectId
+      ? await this.prisma.pmAssistantProjectPrompt.findUnique({
+        where: {
+          projectId_jobId: {
+            projectId,
+            jobId
+          }
+        }
+      })
+      : null;
     const systemPrompt =
+      scopedPrompt?.prompt?.trim() ||
       this.configService.getRawValue(this.getPromptKey(jobId)) ||
       this.getDefaultSystemPrompt(jobId);
     const mentionRule = this.shouldMention(jobId)
@@ -738,6 +826,7 @@ export class PmAssistantService {
   }
 
   private async pushLog(input: {
+    projectId?: number;
     jobId: PmJobId;
     triggeredBy: 'manual' | 'schedule';
     status: 'success' | 'failed' | 'dry-run' | 'skipped';
@@ -749,6 +838,7 @@ export class PmAssistantService {
     try {
       await this.prisma.pmAssistantLog.create({
         data: {
+          projectId: input.projectId,
           jobId: input.jobId,
           triggeredBy: input.triggeredBy,
           status: input.status,
@@ -769,5 +859,15 @@ export class PmAssistantService {
     await this.prisma.pmAssistantLog.deleteMany({
       where: { createdAt: { lt: cutoff } }
     });
+  }
+
+  private async ensureProjectExists(projectId: number) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true }
+    });
+    if (!project) {
+      throw new BadRequestException(`项目不存在: ${projectId}`);
+    }
   }
 }

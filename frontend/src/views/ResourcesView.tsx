@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Worklog, FeishuFormState, UserItem } from '../types';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   worklogs: Worklog[];
@@ -123,17 +124,17 @@ export default function ResourcesView({
 
   return (
     <div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div className="card resources-header-card">
+        <div className="resources-header-row">
           <h3>资源负载</h3>
-          <span style={{ color: 'var(--text-muted)' }}>项目: {selectedProjectName}</span>
+          <span className="resources-project-name">项目: {selectedProjectName}</span>
         </div>
-        <div className="form" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', marginTop: 10 }}>
-          <select value={preset} onChange={(e) => setPreset(e.target.value as RangePreset)}>
+        <div className="form resources-filter-form">
+          <ThemedSelect value={preset} onChange={(e) => setPreset(e.target.value as RangePreset)}>
             <option value="week">本周</option>
             <option value="month">本月</option>
             <option value="custom">自定义</option>
-          </select>
+          </ThemedSelect>
           <input type="date" value={formatDateInput(rangeStart)} disabled={preset !== 'custom'} onChange={(e) => setCustomStart(e.target.value)} />
           <input type="date" value={formatDateInput(rangeEnd)} disabled={preset !== 'custom'} onChange={(e) => setCustomEnd(e.target.value)} />
         </div>
@@ -154,7 +155,7 @@ export default function ResourcesView({
               </tr>
             ))}
             {loadRows.length === 0 && (
-              <tr><td colSpan={4} style={{ color: 'var(--text-muted)' }}>暂无匹配数据</td></tr>
+              <tr><td colSpan={4} className="resources-empty-cell">暂无匹配数据</td></tr>
             )}
           </tbody>
         </table>
