@@ -341,7 +341,9 @@ function App() {
           budget,
           startDate: String(form.get('startDate') || ''),
           endDate: String(form.get('endDate') || ''),
-          feishuChatIds: String(form.get('feishuChatIds') || '')
+          feishuChatIds: String(form.get('feishuChatIds') || ''),
+          feishuAppToken: String(form.get('feishuAppToken') || '') || undefined,
+          feishuTableId: String(form.get('feishuTableId') || '') || undefined
         });
         createdId = created.id;
       });
@@ -512,7 +514,9 @@ function App() {
           budget,
           startDate: draft.startDate || null,
           endDate: draft.endDate || null,
-          feishuChatIds: draft.feishuChatIds || null
+          feishuChatIds: draft.feishuChatIds || null,
+          feishuAppToken: draft.feishuAppToken || null,
+          feishuTableId: draft.feishuTableId || null
         });
       });
       setMessage(`项目「${draft.name}」已更新。`);
@@ -641,7 +645,7 @@ function App() {
       const { recordId, ...form } = draft;
       const payload = buildFeishuFieldsPayload(form);
       await runWithRetry('更新进度同步记录', async () => {
-        await updateFeishuRecord(original.recordId, payload);
+        await updateFeishuRecord(original.recordId, payload, selectedProjectId ?? undefined);
       });
       setMessage('进度同步记录已更新。');
       scheduleEdit.cancel();
@@ -781,7 +785,7 @@ function App() {
       里程碑: '否'
     };
     await runWithRetry('新增任务', async () => {
-      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm));
+      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm), selectedProjectId ?? undefined);
     });
     formEl?.reset();
     await loadScheduleRecords();
@@ -811,7 +815,7 @@ function App() {
       里程碑: '是'
     };
     await runWithRetry('新增里程碑', async () => {
-      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm));
+      await createFeishuRecord(buildFeishuFieldsPayload(payloadForm), selectedProjectId ?? undefined);
     });
     formEl?.reset();
     await loadScheduleRecords();
@@ -825,7 +829,7 @@ function App() {
     setError('');
     try {
       await runWithRetry('删除进度同步记录', async () => {
-        await deleteFeishuRecord(row.recordId);
+        await deleteFeishuRecord(row.recordId, selectedProjectId ?? undefined);
       });
       setMessage('记录已删除。');
       await loadScheduleRecords();
@@ -1189,6 +1193,8 @@ function App() {
       || String(original.startDate ?? '') !== String(draft.startDate ?? '')
       || String(original.endDate ?? '') !== String(draft.endDate ?? '')
       || String(original.feishuChatIds ?? '') !== String(draft.feishuChatIds ?? '')
+      || String(original.feishuAppToken ?? '') !== String(draft.feishuAppToken ?? '')
+      || String(original.feishuTableId ?? '') !== String(draft.feishuTableId ?? '')
     ),
     selector: (id, field) => `[data-project-edit="${id}-${String(field)}"]`
   });
@@ -1408,7 +1414,8 @@ function App() {
           filterProject: feishuFilterProject || undefined,
           filterStatus: feishuFilterStatus || undefined,
           filterAssignee: feishuFilterAssignee || undefined,
-          filterRisk: feishuFilterRisk || undefined
+          filterRisk: feishuFilterRisk || undefined,
+          projectId: selectedProjectId ?? undefined
         });
         setFeishuRecords(res.items || []);
         setFeishuHasMore(Boolean(res.has_more));
@@ -1604,7 +1611,7 @@ function App() {
         return;
       }
       await runWithRetry('更新飞书记录', async () => {
-        await updateFeishuRecord(original.record_id, payload);
+        await updateFeishuRecord(original.record_id, payload, selectedProjectId ?? undefined);
       });
       setFeishuMessage('飞书记录已更新。');
       cancelInlineFeishuEdit();
@@ -1661,12 +1668,12 @@ function App() {
       const payload = buildFeishuFieldsPayload(feishuForm);
       if (feishuEditingId) {
         await runWithRetry('提交飞书记录', async () => {
-          await updateFeishuRecord(feishuEditingId, payload);
+          await updateFeishuRecord(feishuEditingId, payload, selectedProjectId ?? undefined);
         });
         setFeishuMessage('飞书记录已更新。');
       } else {
         await runWithRetry('提交飞书记录', async () => {
-          await createFeishuRecord(payload);
+          await createFeishuRecord(payload, selectedProjectId ?? undefined);
         });
         setFeishuMessage('飞书记录已创建。');
       }
@@ -1685,7 +1692,7 @@ function App() {
     setFeishuMessage('');
     try {
       await runWithRetry('删除飞书记录', async () => {
-        await deleteFeishuRecord(record.record_id);
+        await deleteFeishuRecord(record.record_id, selectedProjectId ?? undefined);
       });
       setFeishuMessage('飞书记录已删除。');
       await loadFeishuRecords();
@@ -1703,7 +1710,7 @@ function App() {
     try {
       await runWithRetry('批量删除飞书记录', async () => {
         for (const id of selectedFeishuIds) {
-          await deleteFeishuRecord(id);
+          await deleteFeishuRecord(id, selectedProjectId ?? undefined);
         }
       });
       setSelectedFeishuIds([]);
@@ -1778,7 +1785,7 @@ function App() {
             form[fieldKey] = String(row[index] ?? '').trim();
           });
           const payload = buildFeishuFieldsPayload(form);
-          await createFeishuRecord(payload);
+          await createFeishuRecord(payload, selectedProjectId ?? undefined);
         }
       });
       setFeishuMessage(`CSV 导入完成（${rows.length - 1} 条）。`);

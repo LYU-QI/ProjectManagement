@@ -29,6 +29,7 @@ export async function listFeishuRecords(params: {
   filterStatus?: string;
   filterAssignee?: string;
   filterRisk?: string;
+  projectId?: number;
 }) {
   const qs = new URLSearchParams();
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
@@ -47,18 +48,22 @@ export async function listFeishuRecords(params: {
   if (params.filterStatus) qs.set('filterStatus', params.filterStatus);
   if (params.filterAssignee) qs.set('filterAssignee', params.filterAssignee);
   if (params.filterRisk) qs.set('filterRisk', params.filterRisk);
+  if (params.projectId != null) qs.set('projectId', String(params.projectId));
 
   return apiGet<FeishuListResponse>(`/feishu/records?${qs.toString()}`);
 }
 
-export async function createFeishuRecord(fields: Record<string, unknown>) {
-  return apiPost<Record<string, unknown>>('/feishu/records', { fields });
+export async function createFeishuRecord(fields: Record<string, unknown>, projectId?: number) {
+  const qs = projectId != null ? `?projectId=${projectId}` : '';
+  return apiPost<Record<string, unknown>>(`/feishu/records${qs}`, { fields });
 }
 
-export async function updateFeishuRecord(recordId: string, fields: Record<string, unknown>) {
-  return apiPut<Record<string, unknown>>(`/feishu/records/${encodeURIComponent(recordId)}`, { fields });
+export async function updateFeishuRecord(recordId: string, fields: Record<string, unknown>, projectId?: number) {
+  const qs = projectId != null ? `?projectId=${projectId}` : '';
+  return apiPut<Record<string, unknown>>(`/feishu/records/${encodeURIComponent(recordId)}${qs}`, { fields });
 }
 
-export async function deleteFeishuRecord(recordId: string) {
-  await apiDelete(`/feishu/records/${encodeURIComponent(recordId)}`);
+export async function deleteFeishuRecord(recordId: string, projectId?: number) {
+  const qs = projectId != null ? `?projectId=${projectId}` : '';
+  await apiDelete(`/feishu/records/${encodeURIComponent(recordId)}${qs}`);
 }

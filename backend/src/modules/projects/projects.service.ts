@@ -9,6 +9,8 @@ interface CreateProjectInput {
   startDate?: string;
   endDate?: string;
   feishuChatIds?: string;
+  feishuAppToken?: string;
+  feishuTableId?: string;
 }
 
 interface UpdateProjectInput {
@@ -18,6 +20,8 @@ interface UpdateProjectInput {
   startDate?: string;
   endDate?: string;
   feishuChatIds?: string;
+  feishuAppToken?: string;
+  feishuTableId?: string;
 }
 
 @Injectable()

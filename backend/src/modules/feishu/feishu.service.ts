@@ -330,9 +330,10 @@ export class FeishuService {
     filterAssignee?: string;
     filterRisk?: string;
     allowedProjectNames?: Set<string> | null;
+    opts?: { appToken?: string; tableId?: string };
   }) {
-    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
-    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+    const appToken = query.opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = query.opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const params = new URLSearchParams();
 
     if (query.pageSize) params.set('page_size', String(query.pageSize));
@@ -469,9 +470,9 @@ export class FeishuService {
     };
   }
 
-  async getRecord(recordId: string) {
-    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
-    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+  async getRecord(recordId: string, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
     const data = await this.request<{ record: { record_id: string; fields: Record<string, unknown> } }>(
       `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`
@@ -482,9 +483,9 @@ export class FeishuService {
     };
   }
 
-  async createRecord(fields: Record<string, unknown>) {
-    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
-    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+  async createRecord(fields: Record<string, unknown>, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const normalized = await this.normalizeFields(fields);
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
     try {
@@ -521,9 +522,9 @@ export class FeishuService {
     }
   }
 
-  async updateRecord(recordId: string, fields: Record<string, unknown>) {
-    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
-    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+  async updateRecord(recordId: string, fields: Record<string, unknown>, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
     const normalized = await this.normalizeFields(fields, { partial: true });
     const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
     try {
@@ -576,9 +577,9 @@ export class FeishuService {
     }
   }
 
-  async deleteRecord(recordId: string) {
-    const appToken = this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
-    const tableId = this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+  async deleteRecord(recordId: string, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
 
     return this.request(
       `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}`,

@@ -25,6 +25,14 @@ class CreateProjectDto {
   @IsOptional()
   @IsString()
   feishuChatIds?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuAppToken?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuTableId?: string;
 }
 
 class UpdateProjectDto {
@@ -51,6 +59,14 @@ class UpdateProjectDto {
   @IsOptional()
   @IsString()
   feishuChatIds?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuAppToken?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuTableId?: string;
 }
 
 @Controller('api/v1/projects')

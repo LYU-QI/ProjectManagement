@@ -92,8 +92,10 @@ model Project {
   budget        Float
   startDate     String?
   endDate       String?
-  feishuChatIds String?
-  owner         User                @relation("ProjectOwner", fields: [ownerId], references: [id])
+  feishuChatIds  String?
+  feishuAppToken String?
+  feishuTableId  String?
+  owner          User                @relation("ProjectOwner", fields: [ownerId], references: [id])
   memberships   ProjectMembership[]
   requirements  Requirement[]
   costs         CostEntry[]

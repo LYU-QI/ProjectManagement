@@ -44,12 +44,28 @@ export class FeishuController {
     }
   }
 
+  private async resolveFeishuConfig(projectId?: string) {
+    if (!projectId) return {};
+    const id = Number(projectId);
+    if (!Number.isFinite(id)) return {};
+    const project = await this.prisma.project.findUnique({
+      where: { id },
+      select: { feishuAppToken: true, feishuTableId: true }
+    });
+    return {
+      appToken: project?.feishuAppToken || undefined,
+      tableId: project?.feishuTableId || undefined
+    };
+  }
+
   @Get('records')
   async listRecords(
     @Query() query: ListRecordsQueryDto,
+    @Query('projectId') projectId: string | undefined,
     @Req() req: { user?: { sub?: number; role?: string } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
+    const opts = await this.resolveFeishuConfig(projectId);
     return this.feishuService.listRecords({
       pageSize: query.pageSize ? Number(query.pageSize) : undefined,
       pageToken: query.pageToken,
@@ -67,7 +83,8 @@ export class FeishuController {
       filterStatus: query.filterStatus,
       filterAssignee: query.filterAssignee,
       filterRisk: query.filterRisk,
-      allowedProjectNames
+      allowedProjectNames,
+      opts
     });
   }
 
@@ -75,11 +92,13 @@ export class FeishuController {
   @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   async createRecord(
     @Body('fields') fields: Record<string, unknown>,
+    @Query('projectId') projectId: string | undefined,
     @Req() req: { user?: { sub?: number; role?: string } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
     this.assertProjectAllowed(fields?.['所属项目'], allowedProjectNames);
-    const result = await this.feishuService.createRecord(fields || {});
+    const opts = await this.resolveFeishuConfig(projectId);
+    const result = await this.feishuService.createRecord(fields || {}, opts);
     const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
     await this.risksService.triggerAutoNotify(project);
     return result;
@@ -90,15 +109,17 @@ export class FeishuController {
   async updateRecord(
     @Param('recordId') recordId: string,
     @Body('fields') fields: Record<string, unknown>,
+    @Query('projectId') projectId: string | undefined,
     @Req() req: { user?: { sub?: number; role?: string } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
-    const current = await this.feishuService.getRecord(recordId);
+    const opts = await this.resolveFeishuConfig(projectId);
+    const current = await this.feishuService.getRecord(recordId, opts);
     this.assertProjectAllowed(current?.fields?.['所属项目'], allowedProjectNames);
     if (fields && Object.prototype.hasOwnProperty.call(fields, '所属项目')) {
       this.assertProjectAllowed(fields['所属项目'], allowedProjectNames);
     }
-    const result = await this.feishuService.updateRecord(recordId, fields || {});
+    const result = await this.feishuService.updateRecord(recordId, fields || {}, opts);
     const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
     await this.risksService.triggerAutoNotify(project);
     return result;
@@ -108,11 +129,13 @@ export class FeishuController {
   @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
   async deleteRecord(
     @Param('recordId') recordId: string,
+    @Query('projectId') projectId: string | undefined,
     @Req() req: { user?: { sub?: number; role?: string } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
-    const current = await this.feishuService.getRecord(recordId);
+    const opts = await this.resolveFeishuConfig(projectId);
+    const current = await this.feishuService.getRecord(recordId, opts);
     this.assertProjectAllowed(current?.fields?.['所属项目'], allowedProjectNames);
-    return this.feishuService.deleteRecord(recordId);
+    return this.feishuService.deleteRecord(recordId, opts);
   }
 }

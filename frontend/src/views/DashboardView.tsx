@@ -87,6 +87,8 @@ export default function DashboardView({
             <input name="startDate" type="date" />
             <input name="endDate" type="date" />
             <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
+            <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
+            <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
             <button className="btn btn-primary" type="submit">新增项目</button>
           </form>
         </div>
@@ -217,6 +219,8 @@ export default function DashboardView({
               <th>开始</th>
               <th>结束</th>
               <th>群聊 ChatID</th>
+              <th>飞书 App Token</th>
+              <th>飞书 Table ID</th>
               {canWrite && <th>操作</th>}
             </tr>
           </thead>
@@ -342,6 +346,44 @@ export default function DashboardView({
                       />
                     ) : (
                       rowDraft.feishuChatIds || '-'
+                    )}
+                  </td>
+
+                  <td
+                    className={isEditing && projectEdit.editingField === 'feishuAppToken' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'feishuAppToken')}
+                  >
+                    {isEditing && projectEdit.editingField === 'feishuAppToken' ? (
+                      <input
+                        data-project-edit={`${project.id}-feishuAppToken`}
+                        value={rowDraft.feishuAppToken ?? ''}
+                        onChange={(e) => projectEdit.updateDraft('feishuAppToken', e.target.value)}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                        onBlur={() => projectEdit.finalize(project)}
+                      />
+                    ) : (
+                      rowDraft.feishuAppToken
+                        ? <span title={rowDraft.feishuAppToken ?? ''}>已配置</span>
+                        : <span className="muted">-</span>
+                    )}
+                  </td>
+
+                  <td
+                    className={isEditing && projectEdit.editingField === 'feishuTableId' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'feishuTableId')}
+                  >
+                    {isEditing && projectEdit.editingField === 'feishuTableId' ? (
+                      <input
+                        data-project-edit={`${project.id}-feishuTableId`}
+                        value={rowDraft.feishuTableId ?? ''}
+                        onChange={(e) => projectEdit.updateDraft('feishuTableId', e.target.value)}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                        onBlur={() => projectEdit.finalize(project)}
+                      />
+                    ) : (
+                      rowDraft.feishuTableId
+                        ? <span title={rowDraft.feishuTableId ?? ''}>已配置</span>
+                        : <span className="muted">-</span>
                     )}
                   </td>
 

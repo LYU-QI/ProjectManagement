@@ -162,6 +162,8 @@ export interface ProjectItem {
   startDate?: string | null;
   endDate?: string | null;
   feishuChatIds?: string | null;
+  feishuAppToken?: string | null;
+  feishuTableId?: string | null;
 }
 
 export interface CostEntryItem {
