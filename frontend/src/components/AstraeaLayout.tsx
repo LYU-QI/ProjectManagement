@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -35,6 +35,17 @@ export type ViewKey =
   | 'project-access'
   | 'milestone-board';
 export type PlatformMode = 'workspace' | 'admin';
+export type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
+
+const THEME_OPTIONS: Array<{ value: ThemeMode; emoji: string; label: string; desc: string }> = [
+  { value: 'light',  emoji: '☀️', label: '极光白', desc: 'Light'  },
+  { value: 'dark',   emoji: '🌊', label: '深海蓝', desc: 'Dark'   },
+  { value: 'nebula', emoji: '🔮', label: '星云紫', desc: 'Nebula' },
+  { value: 'forest', emoji: '🌿', label: '翠林绿', desc: 'Forest' },
+  { value: 'sunset', emoji: '🌅', label: '落日橙', desc: 'Sunset' },
+  { value: 'sakura', emoji: '🌸', label: '樱花粉', desc: 'Sakura' },
+  { value: 'metal',  emoji: '⚙️', label: '金属黑', desc: 'Metal'  },
+];
 
 interface AstraeaLayoutProps {
   currentView: ViewKey;
@@ -46,6 +57,8 @@ interface AstraeaLayoutProps {
   user: any;
   onLogout: () => void;
   unreadCount?: number;
+  theme: ThemeMode;
+  onThemeChange: (theme: ThemeMode) => void;
 }
 
 const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; adminOnly?: boolean }> = [
@@ -74,13 +87,29 @@ export default function AstraeaLayout({
   children,
   user,
   onLogout,
-  unreadCount = 0
+  unreadCount = 0,
+  theme,
+  onThemeChange
 }: AstraeaLayoutProps) {
   const role = String(user?.role || '');
   const displayName = String(user?.username || user?.name || '未知用户');
   const displayRole = role || 'unknown';
   const canManageAdmin = canAccessAdmin || ['super_admin', 'project_director', 'lead'].includes(role);
   const visibleNavItems = navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true));
+
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showThemeMenu) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setShowThemeMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showThemeMenu]);
 
   return (
     <div className="astraea-root">
@@ -133,13 +162,50 @@ export default function AstraeaLayout({
           })}
         </div>
 
-        <div className="astraea-user-profile">
-          <div className="user-avatar">{displayName.charAt(0).toUpperCase() || 'U'}</div>
-          <div className="user-info">
-            <span className="user-name">{displayName}</span>
-            <span className="user-role">角色：{displayRole}</span>
+        <div className="astraea-user-profile-wrap" ref={profileRef}>
+          <AnimatePresence>
+            {showThemeMenu && (
+              <motion.div
+                className="user-theme-menu"
+                initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                transition={{ duration: 0.16 }}
+              >
+                <div className="user-theme-menu-label">界面主题</div>
+                {THEME_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    className={`user-theme-menu-item ${theme === opt.value ? 'is-active' : ''}`}
+                    onClick={() => { onThemeChange(opt.value); setShowThemeMenu(false); }}
+                    type="button"
+                  >
+                    <span className="user-theme-emoji">{opt.emoji}</span>
+                    <span className="user-theme-name">{opt.label}</span>
+                    <span className="user-theme-desc">{opt.desc}</span>
+                    {theme === opt.value && <span className="user-theme-check">✓</span>}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div
+            className={`astraea-user-profile ${showThemeMenu ? 'is-open' : ''}`}
+            onClick={() => setShowThemeMenu((v) => !v)}
+            title="点击切换界面主题"
+            style={{ cursor: 'pointer' }}
+          >
+            <div className="user-avatar">{displayName.charAt(0).toUpperCase() || 'U'}</div>
+            <div className="user-info">
+              <span className="user-name">{displayName}</span>
+              <span className="user-role">角色：{displayRole}</span>
+            </div>
+            <button
+              className="logout-btn"
+              onClick={(e) => { e.stopPropagation(); onLogout(); }}
+              title="退出登录"
+            >退出</button>
           </div>
-          <button className="logout-btn" onClick={onLogout}>退出</button>
         </div>
       </nav>
 

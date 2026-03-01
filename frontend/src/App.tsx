@@ -50,7 +50,8 @@ import ThemedSelect from './components/ui/ThemedSelect';
 
 type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
-type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
+const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
 const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users'];
 
@@ -147,7 +148,7 @@ function App() {
   });
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const raw = localStorage.getItem('ui:theme');
-    return raw === 'dark' ? 'dark' : 'light';
+    return VALID_THEMES.includes(raw as ThemeMode) ? (raw as ThemeMode) : 'light';
   });
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
@@ -2009,6 +2010,8 @@ function App() {
       user={user}
       onLogout={logout}
       unreadCount={notifications.filter((n) => !n.readAt).length}
+      theme={theme}
+      onThemeChange={setTheme}
     >
       <div className="page-content">
         <div className="app-view-head">

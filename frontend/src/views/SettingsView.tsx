@@ -17,8 +17,8 @@ const GROUP_ORDER = ['database', 'security', 'feishu', 'ai'];
 interface SettingsViewProps {
     onError: (msg: string) => void;
     onMessage: (msg: string) => void;
-    theme: 'light' | 'dark';
-    onThemeChange: (theme: 'light' | 'dark') => void;
+    theme: 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
+    onThemeChange: (theme: 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal') => void;
 }
 
 export default function SettingsView({ onError, onMessage, theme, onThemeChange }: SettingsViewProps) {
@@ -210,11 +210,16 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                     <div className="settings-actions">
                         <ThemedSelect
                             value={theme}
-                            onChange={(e) => onThemeChange(e.target.value as 'light' | 'dark')}
+                            onChange={(e) => onThemeChange(e.target.value as 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal')}
                             className="settings-theme-select"
                         >
-                            <option value="light">Light Theme</option>
-                            <option value="dark">Dark Theme</option>
+                            <option value="light">☀️ 极光白（Light）</option>
+                            <option value="dark">🌊 深海蓝（Dark）</option>
+                            <option value="nebula">🔮 星云紫（Nebula）</option>
+                            <option value="forest">🌿 翠林绿（Forest）</option>
+                            <option value="sunset">🌅 落日橙（Sunset）</option>
+                            <option value="sakura">🌸 樱花粉（Sakura）</option>
+                            <option value="metal">⚙️ 金属黑（Metal）</option>
                         </ThemedSelect>
                         <button
                             className="btn settings-mini-btn"

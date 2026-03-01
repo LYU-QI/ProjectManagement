@@ -1,16 +1,26 @@
+/* ── Shimmer animation for primary glass elements ─────────── */
+@keyframes glassShimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
 /* Base glass surfaces */
 .glass-surface,
 .card,
 .project-area,
 .module-card {
   background:
-    linear-gradient(160deg, color-mix(in srgb, var(--glass-specular) 28%, transparent 72%), transparent 42%),
+    radial-gradient(ellipse 72% 56% at 78% 18%, color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 70%),
+    linear-gradient(155deg, color-mix(in srgb, var(--glass-specular) 34%, transparent 66%), transparent 38%),
     var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--glass-shadow);
-  backdrop-filter: saturate(130%) blur(var(--glass-blur));
-  -webkit-backdrop-filter: saturate(130%) blur(var(--glass-blur));
+  box-shadow:
+    var(--glass-shadow),
+    0 2px 6px color-mix(in srgb, #000000 18%, transparent 82%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 48%, transparent 52%);
+  backdrop-filter: saturate(140%) blur(var(--glass-blur));
+  -webkit-backdrop-filter: saturate(140%) blur(var(--glass-blur));
 }
 
 .glass-surface--muted {
@@ -26,8 +36,17 @@
 }
 
 .glass-surface--interactive:hover {
-  background: var(--glass-bg-hover);
-  border-color: color-mix(in srgb, var(--color-primary) 36%, var(--glass-border) 64%);
+  background:
+    radial-gradient(ellipse 60% 50% at 75% 20%, color-mix(in srgb, var(--glass-specular) 32%, transparent 68%), transparent 70%),
+    linear-gradient(155deg, color-mix(in srgb, var(--glass-specular) 44%, transparent 56%), transparent 40%),
+    var(--glass-bg-hover);
+  border-color: color-mix(in srgb, var(--color-primary) 48%, var(--glass-border) 52%);
+  box-shadow:
+    var(--glass-shadow),
+    0 6px 18px color-mix(in srgb, var(--color-primary) 14%, transparent 86%),
+    0 2px 6px color-mix(in srgb, #000000 22%, transparent 78%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 56%, transparent 44%);
+  transform: translateY(-2px);
 }
 
 /* Controls: input/select/textarea */
@@ -39,6 +58,9 @@ textarea {
   color: var(--text-on-glass-primary);
   border-radius: var(--radius-md);
   min-height: var(--control-height-md);
+  box-shadow: inset 0 1px 3px color-mix(in srgb, #000000 14%, transparent 86%);
+  backdrop-filter: saturate(120%) blur(8px);
+  -webkit-backdrop-filter: saturate(120%) blur(8px);
   transition:
     border-color var(--motion-fast) ease,
     box-shadow var(--motion-fast) ease,
@@ -82,6 +104,36 @@ optgroup {
   color: #0f172a;
 }
 
+:root[data-theme="nebula"] option,
+:root[data-theme="nebula"] optgroup {
+  background: #170d2e;
+  color: #ede8ff;
+}
+
+:root[data-theme="forest"] option,
+:root[data-theme="forest"] optgroup {
+  background: #0d2518;
+  color: #d1fae5;
+}
+
+:root[data-theme="sunset"] option,
+:root[data-theme="sunset"] optgroup {
+  background: #261708;
+  color: #fff7ed;
+}
+
+:root[data-theme="metal"] option,
+:root[data-theme="metal"] optgroup {
+  background: #151820;
+  color: #dde3ed;
+}
+
+:root[data-theme="sakura"] option,
+:root[data-theme="sakura"] optgroup {
+  background: #fff5f8;
+  color: #1a0a10;
+}
+
 option:checked,
 option:hover {
   background: color-mix(in srgb, var(--color-primary-soft) 86%, transparent 14%);
@@ -99,8 +151,12 @@ input:not([type="checkbox"]):not([type="radio"]):focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: color-mix(in srgb, var(--color-primary) 46%, var(--glass-border) 54%);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 24%, transparent 76%);
+  border-color: color-mix(in srgb, var(--color-primary) 60%, var(--glass-border) 40%);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-primary) 28%, transparent 72%),
+    0 0 14px color-mix(in srgb, var(--color-primary) 16%, transparent 84%),
+    inset 0 1px 3px color-mix(in srgb, #000000 10%, transparent 90%);
+  background: color-mix(in srgb, var(--glass-bg-hover) 90%, var(--color-primary-soft) 10%);
 }
 
 /* Buttons */
@@ -110,6 +166,7 @@ button.btn,
 .btn-danger,
 .btn-warning {
   position: relative;
+  overflow: hidden;
   border-radius: var(--radius-md);
   min-height: var(--control-height-md);
   padding: 0 16px;
@@ -117,6 +174,9 @@ button.btn,
   background:
     linear-gradient(170deg, color-mix(in srgb, var(--glass-specular) 46%, transparent 54%), transparent 48%),
     color-mix(in srgb, var(--glass-bg) 80%, var(--color-bg-surface) 20%);
+  box-shadow:
+    0 2px 8px color-mix(in srgb, #000000 16%, transparent 84%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 44%, transparent 56%);
   color: var(--text-on-glass-primary);
   transition:
     border-color var(--motion-fast) ease,
@@ -127,11 +187,14 @@ button.btn,
 
 .btn:hover:not(:disabled),
 button.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--color-primary) 32%, var(--glass-border) 68%);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-primary) 16%, transparent 84%);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--glass-border) 60%);
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--color-primary) 20%, transparent 80%),
+    0 4px 10px color-mix(in srgb, #000000 20%, transparent 80%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 56%, transparent 44%);
   background:
-    linear-gradient(170deg, color-mix(in srgb, var(--glass-specular) 58%, transparent 42%), transparent 46%),
+    linear-gradient(170deg, color-mix(in srgb, var(--glass-specular) 62%, transparent 38%), transparent 46%),
     var(--glass-bg-hover);
 }
 
@@ -153,12 +216,36 @@ button.btn:disabled {
     linear-gradient(155deg, color-mix(in srgb, #ffffff 38%, transparent 62%), transparent 42%),
     linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 72%, #8dbdff 28%));
   border-color: color-mix(in srgb, var(--color-primary) 58%, #ffffff 42%);
+  box-shadow:
+    0 4px 14px color-mix(in srgb, var(--color-primary) 36%, transparent 64%),
+    0 1px 4px color-mix(in srgb, #000000 20%, transparent 80%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
   color: #ffffff;
+}
+
+.btn-primary::after,
+.btn.active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: glassShimmer 3.2s linear infinite;
+  pointer-events: none;
 }
 
 .btn-primary:hover:not(:disabled),
 .btn.active:hover:not(:disabled) {
-  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-primary) 34%, transparent 66%);
+  box-shadow:
+    0 12px 28px color-mix(in srgb, var(--color-primary) 44%, transparent 56%),
+    0 4px 10px color-mix(in srgb, #000000 22%, transparent 78%),
+    inset 0 1px 0 rgba(255, 255, 255, 0.34);
 }
 
 .btn-danger {
@@ -234,19 +321,23 @@ button.btn:disabled {
   textarea {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: color-mix(in srgb, var(--color-bg-surface) 90%, transparent 10%);
+    background: color-mix(in srgb, var(--color-bg-surface) 94%, transparent 6%);
+    box-shadow: none;
   }
 }
 
 /* Layout shell */
 .astraea-sidebar {
   background:
-    linear-gradient(175deg, color-mix(in srgb, var(--glass-specular) 26%, transparent 74%), transparent 32%),
+    radial-gradient(ellipse 80% 40% at 50% 5%, color-mix(in srgb, var(--glass-specular) 24%, transparent 76%), transparent 60%),
+    linear-gradient(175deg, color-mix(in srgb, var(--glass-specular) 30%, transparent 70%), transparent 32%),
     color-mix(in srgb, var(--glass-bg) 88%, transparent 12%);
   border-right: 1px solid var(--glass-border);
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--glass-specular) 26%, transparent 74%);
-  backdrop-filter: saturate(128%) blur(var(--glass-blur));
-  -webkit-backdrop-filter: saturate(128%) blur(var(--glass-blur));
+  box-shadow:
+    inset -1px 0 0 color-mix(in srgb, var(--glass-specular) 30%, transparent 70%),
+    4px 0 24px color-mix(in srgb, #000000 14%, transparent 86%);
+  backdrop-filter: saturate(140%) blur(var(--glass-blur));
+  -webkit-backdrop-filter: saturate(140%) blur(var(--glass-blur));
 }
 
 .astraea-brand h1 {
@@ -284,10 +375,14 @@ button.btn:disabled {
 
 .astraea-active-indicator {
   background:
+    radial-gradient(ellipse 70% 55% at 70% 20%, color-mix(in srgb, var(--glass-specular) 52%, transparent 48%), transparent 65%),
     linear-gradient(160deg, color-mix(in srgb, var(--glass-specular) 44%, transparent 56%), transparent 48%),
     color-mix(in srgb, var(--glass-bg-hover) 80%, transparent 20%);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--glass-border) 60%);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--color-primary) 20%, transparent 80%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 46%, var(--glass-border) 54%);
+  box-shadow:
+    0 8px 24px color-mix(in srgb, var(--color-primary) 26%, transparent 74%),
+    0 2px 6px color-mix(in srgb, #000000 16%, transparent 84%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 50%, transparent 50%);
 }
 
 .astraea-platform-btn {
@@ -315,14 +410,17 @@ button.btn:disabled {
 .table-toolbar,
 .audit-toolbar {
   background:
-    linear-gradient(168deg, color-mix(in srgb, var(--glass-specular) 24%, transparent 76%), transparent 50%),
+    linear-gradient(168deg, color-mix(in srgb, var(--glass-specular) 28%, transparent 72%), transparent 50%),
     color-mix(in srgb, var(--glass-bg) 64%, transparent 36%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   margin-bottom: 12px;
-  backdrop-filter: saturate(126%) blur(calc(var(--glass-blur) * 0.7));
-  -webkit-backdrop-filter: saturate(126%) blur(calc(var(--glass-blur) * 0.7));
+  box-shadow:
+    0 2px 8px color-mix(in srgb, #000000 12%, transparent 88%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 36%, transparent 64%);
+  backdrop-filter: saturate(130%) blur(calc(var(--glass-blur) * 0.75));
+  -webkit-backdrop-filter: saturate(130%) blur(calc(var(--glass-blur) * 0.75));
 }
 
 .panel-actions,
@@ -338,20 +436,28 @@ button.btn:disabled {
 /* Metrics / cards / drawer */
 .metric-card {
   background:
-    linear-gradient(165deg, color-mix(in srgb, var(--glass-specular) 18%, transparent 82%), transparent 54%),
+    radial-gradient(ellipse 65% 50% at 80% 15%, color-mix(in srgb, var(--glass-specular) 20%, transparent 80%), transparent 65%),
+    linear-gradient(165deg, color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 54%),
     color-mix(in srgb, var(--glass-bg) 72%, var(--color-bg-surface) 28%);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
+  box-shadow:
+    0 4px 14px color-mix(in srgb, #000000 14%, transparent 86%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 40%, transparent 60%);
 }
 
 .drawer {
   background:
-    linear-gradient(175deg, color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 36%),
+    radial-gradient(ellipse 80% 30% at 50% 4%, color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 55%),
+    linear-gradient(175deg, color-mix(in srgb, var(--glass-specular) 26%, transparent 74%), transparent 36%),
     color-mix(in srgb, var(--glass-bg) 88%, var(--color-bg-surface) 12%);
   border-left: 1px solid var(--glass-border);
-  box-shadow: -12px 0 30px color-mix(in srgb, #000000 24%, transparent 76%);
-  backdrop-filter: saturate(130%) blur(var(--glass-blur));
-  -webkit-backdrop-filter: saturate(130%) blur(var(--glass-blur));
+  box-shadow:
+    -16px 0 40px color-mix(in srgb, #000000 28%, transparent 72%),
+    -4px 0 12px color-mix(in srgb, #000000 14%, transparent 86%),
+    inset 1px 0 0 color-mix(in srgb, var(--glass-specular) 28%, transparent 72%);
+  backdrop-filter: saturate(140%) blur(var(--glass-blur));
+  -webkit-backdrop-filter: saturate(140%) blur(var(--glass-blur));
 }
 
 .drawer-header,
@@ -2557,4 +2663,149 @@ button.btn:disabled {
 .compact-card:has(.themed-select.is-open) {
   position: relative;
   z-index: 3000;
+}
+
+/* ── Theme Switcher Popover ────────────────────────────────── */
+
+.astraea-user-profile-wrap {
+  position: relative;
+}
+
+.user-theme-menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  min-width: 226px;
+  background:
+    radial-gradient(ellipse 80% 45% at 50% 0%,
+      color-mix(in srgb, var(--glass-specular) 36%, transparent 64%), transparent 65%),
+    var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 -2px 40px color-mix(in srgb, #000000 30%, transparent 70%),
+    0 -1px 12px color-mix(in srgb, #000000 16%, transparent 84%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 52%, transparent 48%);
+  backdrop-filter: saturate(170%) blur(24px);
+  -webkit-backdrop-filter: saturate(170%) blur(24px);
+  padding: 8px;
+  z-index: 9900;
+  overflow: hidden;
+}
+
+/* subtle inner shimmer line at top of the popover */
+.user-theme-menu::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--glass-specular) 24%, transparent 76%) 0%,
+    transparent 20%);
+  pointer-events: none;
+}
+
+.user-theme-menu-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 4px 8px 10px;
+  opacity: 0.65;
+}
+
+.user-theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-on-glass-primary);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--motion-fast) ease,
+    border-color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    transform var(--motion-fast) ease;
+}
+
+.user-theme-menu-item:hover {
+  background: color-mix(in srgb, var(--glass-bg-hover) 65%, transparent 35%);
+  border-color: color-mix(in srgb, var(--color-primary) 28%, var(--glass-border) 72%);
+  transform: translateX(3px);
+}
+
+.user-theme-menu-item.is-active {
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--glass-specular) 30%, transparent 70%), transparent 48%),
+    color-mix(in srgb, var(--glass-tint-primary) 70%, var(--glass-bg) 30%);
+  border-color: color-mix(in srgb, var(--color-primary) 64%, var(--glass-border) 36%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent 80%),
+    inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 44%, transparent 56%);
+}
+
+.user-theme-emoji {
+  font-size: 16px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 55%),
+    color-mix(in srgb, var(--glass-bg) 72%, var(--color-bg-muted) 28%);
+  border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent 20%);
+  flex-shrink: 0;
+  line-height: 1;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--glass-specular) 32%, transparent 68%);
+}
+
+.user-theme-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-on-glass-primary);
+  flex: 1;
+  letter-spacing: 0.01em;
+}
+
+.user-theme-desc {
+  font-size: 11px;
+  color: var(--text-on-glass-secondary);
+  opacity: 0.6;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.user-theme-check {
+  font-size: 12px;
+  color: var(--color-primary);
+  font-weight: 800;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 60%, transparent 40%));
+}
+
+/* Profile card: open state highlight */
+.astraea-user-profile.is-open {
+  border-color: color-mix(in srgb, var(--color-primary) 52%, var(--glass-border) 48%);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent 82%),
+    var(--glass-shadow);
+  background:
+    linear-gradient(155deg,
+      color-mix(in srgb, var(--glass-specular) 42%, transparent 58%), transparent 42%),
+    var(--glass-bg-hover);
 }

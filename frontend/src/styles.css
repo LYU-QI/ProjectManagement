@@ -53,8 +53,9 @@ body {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.18) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.10) 0%, transparent 45%);
   filter: blur(60px);
   animation: auroraBreath 15s ease-in-out infinite alternate;
 }
@@ -62,11 +63,16 @@ body {
 @keyframes auroraBreath {
   0% {
     transform: scale(1) translateY(0);
-    opacity: 0.7;
+    opacity: 0.76;
+  }
+
+  50% {
+    transform: scale(1.04) translateY(10px);
+    opacity: 0.92;
   }
 
   100% {
-    transform: scale(1.1) translateY(20px);
+    transform: scale(1.10) translateY(20px);
     opacity: 1;
   }
 }
@@ -1407,8 +1413,9 @@ select option {
   --sidebar-bg: rgba(255, 255, 255, 0.78);
   --header-gradient: linear-gradient(to bottom, rgba(246, 248, 251, 0.95) 35%, rgba(246, 248, 251, 0));
   --aurora-bg:
-    radial-gradient(circle at 20% 0%, rgba(21, 94, 239, 0.12) 0%, transparent 40%),
-    radial-gradient(circle at 85% 10%, rgba(5, 150, 105, 0.08) 0%, transparent 35%);
+    radial-gradient(circle at 20% 0%, rgba(21, 94, 239, 0.15) 0%, transparent 42%),
+    radial-gradient(circle at 85% 10%, rgba(5, 150, 105, 0.10) 0%, transparent 38%),
+    radial-gradient(circle at 50% 85%, rgba(147, 51, 234, 0.08) 0%, transparent 40%);
   --app-background:
     radial-gradient(circle at 2% 0%, #dbe7ff 0, transparent 32%),
     radial-gradient(circle at 100% 0%, #ecf3ff 0, transparent 24%),
@@ -1455,8 +1462,9 @@ select option {
   --sidebar-bg: rgba(13, 20, 32, 0.86);
   --header-gradient: linear-gradient(to bottom, rgba(10, 15, 26, 0.95) 35%, rgba(10, 15, 26, 0));
   --aurora-bg:
-    radial-gradient(circle at 20% 0%, rgba(110, 168, 255, 0.2) 0%, transparent 40%),
-    radial-gradient(circle at 85% 10%, rgba(52, 211, 153, 0.13) 0%, transparent 35%);
+    radial-gradient(circle at 20% 0%, rgba(110, 168, 255, 0.24) 0%, transparent 42%),
+    radial-gradient(circle at 85% 10%, rgba(52, 211, 153, 0.16) 0%, transparent 38%),
+    radial-gradient(circle at 50% 88%, rgba(167, 139, 250, 0.12) 0%, transparent 40%);
   --app-background:
     radial-gradient(circle at 2% 0%, rgba(24, 43, 78, 0.85) 0, transparent 34%),
     radial-gradient(circle at 100% 0%, rgba(18, 34, 61, 0.8) 0, transparent 24%),
@@ -1478,6 +1486,256 @@ select option {
   --btn-disabled-bg: #94a3b8;
   --btn-disabled-text: #334155;
   --btn-disabled-border: #94a3b8;
+}
+
+/* ── 金属黑 Metal（冷钢暗色）────────────────────────────── */
+:root[data-theme='metal'] {
+  --color-bg-app: #07080b;
+  --color-bg-surface: #0f1117;
+  --color-bg-muted: #151820;
+  --color-text-primary: #dde3ed;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #5c6b7e;
+  --color-border: #1c2230;
+  --color-border-strong: #2e3d52;
+  --color-primary: #b0c2d4;
+  --color-primary-soft: #182030;
+  --color-success: #34d399;
+  --color-success-soft: #062a1e;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2a1e06;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+  --table-border: #1c2230;
+  --table-row-hover: #111520;
+  --sidebar-bg: rgba(7, 8, 11, 0.94);
+  --header-gradient: linear-gradient(to bottom, rgba(7, 8, 11, 0.96) 35%, rgba(7, 8, 11, 0));
+  --aurora-bg:
+    radial-gradient(circle at 20% 15%, rgba(148, 163, 184, 0.14) 0%, transparent 50%),
+    radial-gradient(circle at 80% 30%, rgba(100, 120, 150, 0.10) 0%, transparent 45%),
+    radial-gradient(circle at 50% 80%, rgba(60, 80, 110, 0.08) 0%, transparent 42%);
+  --app-background:
+    radial-gradient(circle at 2% 0%, rgba(30, 40, 60, 0.55) 0, transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(20, 28, 45, 0.45) 0, transparent 24%),
+    var(--color-bg-app);
+  --kbd-bg: #1c2230;
+  --kbd-text: #94a3b8;
+  --control-bg: #0f1117;
+  --control-bg-hover: #151820;
+  --control-bg-focus: #0f1117;
+  --control-text: #dde3ed;
+  --control-placeholder: #5c6b7e;
+  --control-border: #2e3d52;
+  --control-border-strong: #b0c2d4;
+  --btn-bg: #f8fafc;
+  --btn-text: #0f172a;
+  --btn-border: #e2e8f0;
+  --btn-hover-bg: #e2e8f0;
+  --btn-border-hover: #cbd5e1;
+  --btn-disabled-bg: #94a3b8;
+  --btn-disabled-text: #334155;
+  --btn-disabled-border: #94a3b8;
+}
+
+/* ── 星云 Nebula（深紫暗色）─────────────────────────────── */
+:root[data-theme='nebula'] {
+  --color-bg-app: #07030f;
+  --color-bg-surface: #100822;
+  --color-bg-muted: #170d2e;
+  --color-text-primary: #ede8ff;
+  --color-text-secondary: #c4b5fd;
+  --color-text-muted: #8b78c0;
+  --color-border: #2a1a52;
+  --color-border-strong: #4a2f82;
+  --color-primary: #a78bfa;
+  --color-primary-soft: #28145c;
+  --color-success: #34d399;
+  --color-success-soft: #062a1e;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2a1e06;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+  --table-border: #2a1a52;
+  --table-row-hover: #180e30;
+  --sidebar-bg: rgba(12, 5, 30, 0.88);
+  --header-gradient: linear-gradient(to bottom, rgba(7, 3, 15, 0.95) 35%, rgba(7, 3, 15, 0));
+  --aurora-bg:
+    radial-gradient(circle at 20% 10%, rgba(139, 92, 246, 0.26) 0%, transparent 45%),
+    radial-gradient(circle at 82% 20%, rgba(192, 132, 252, 0.20) 0%, transparent 42%),
+    radial-gradient(circle at 50% 80%, rgba(109, 40, 217, 0.15) 0%, transparent 40%);
+  --app-background:
+    radial-gradient(circle at 2% 0%, rgba(60, 20, 120, 0.55) 0, transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(40, 10, 90, 0.45) 0, transparent 24%),
+    var(--color-bg-app);
+  --kbd-bg: #2a1a52;
+  --kbd-text: #c4b5fd;
+  --control-bg: #130a28;
+  --control-bg-hover: #1e1040;
+  --control-bg-focus: #130a28;
+  --control-text: #ede8ff;
+  --control-placeholder: #8b78c0;
+  --control-border: #4a2f82;
+  --control-border-strong: #7c5fc0;
+  --btn-bg: #f8fafc;
+  --btn-text: #0f172a;
+  --btn-border: #e2e8f0;
+  --btn-hover-bg: #e2e8f0;
+  --btn-border-hover: #cbd5e1;
+  --btn-disabled-bg: #94a3b8;
+  --btn-disabled-text: #334155;
+  --btn-disabled-border: #94a3b8;
+}
+
+/* ── 翠林 Forest（深绿暗色）─────────────────────────────── */
+:root[data-theme='forest'] {
+  --color-bg-app: #020c08;
+  --color-bg-surface: #071a10;
+  --color-bg-muted: #0d2518;
+  --color-text-primary: #d1fae5;
+  --color-text-secondary: #6ee7b7;
+  --color-text-muted: #4a9e7a;
+  --color-border: #143d28;
+  --color-border-strong: #226040;
+  --color-primary: #34d399;
+  --color-primary-soft: #0a2e1e;
+  --color-success: #4ade80;
+  --color-success-soft: #052e16;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2d2008;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1520;
+  --table-border: #143d28;
+  --table-row-hover: #0a2018;
+  --sidebar-bg: rgba(2, 12, 8, 0.90);
+  --header-gradient: linear-gradient(to bottom, rgba(2, 12, 8, 0.95) 35%, rgba(2, 12, 8, 0));
+  --aurora-bg:
+    radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.22) 0%, transparent 48%),
+    radial-gradient(circle at 85% 25%, rgba(6, 182, 212, 0.16) 0%, transparent 44%),
+    radial-gradient(circle at 50% 85%, rgba(4, 120, 87, 0.14) 0%, transparent 42%);
+  --app-background:
+    radial-gradient(circle at 2% 0%, rgba(10, 50, 30, 0.60) 0, transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(6, 36, 22, 0.50) 0, transparent 24%),
+    var(--color-bg-app);
+  --kbd-bg: #143d28;
+  --kbd-text: #6ee7b7;
+  --control-bg: #071a10;
+  --control-bg-hover: #0d2518;
+  --control-bg-focus: #071a10;
+  --control-text: #d1fae5;
+  --control-placeholder: #4a9e7a;
+  --control-border: #226040;
+  --control-border-strong: #34d399;
+  --btn-bg: #f8fafc;
+  --btn-text: #0f172a;
+  --btn-border: #e2e8f0;
+  --btn-hover-bg: #e2e8f0;
+  --btn-border-hover: #cbd5e1;
+  --btn-disabled-bg: #94a3b8;
+  --btn-disabled-text: #334155;
+  --btn-disabled-border: #94a3b8;
+}
+
+/* ── 落日 Sunset（暖橙暗色）─────────────────────────────── */
+:root[data-theme='sunset'] {
+  --color-bg-app: #0d0702;
+  --color-bg-surface: #1c1005;
+  --color-bg-muted: #261708;
+  --color-text-primary: #fff7ed;
+  --color-text-secondary: #fed7aa;
+  --color-text-muted: #b07b4a;
+  --color-border: #3d2208;
+  --color-border-strong: #6b3f14;
+  --color-primary: #fb923c;
+  --color-primary-soft: #3d1a06;
+  --color-success: #34d399;
+  --color-success-soft: #0a2e21;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #3a2608;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+  --table-border: #3d2208;
+  --table-row-hover: #1e1004;
+  --sidebar-bg: rgba(13, 7, 2, 0.90);
+  --header-gradient: linear-gradient(to bottom, rgba(13, 7, 2, 0.95) 35%, rgba(13, 7, 2, 0));
+  --aurora-bg:
+    radial-gradient(circle at 20% 15%, rgba(251, 146, 60, 0.24) 0%, transparent 48%),
+    radial-gradient(circle at 80% 25%, rgba(239, 68, 68, 0.18) 0%, transparent 44%),
+    radial-gradient(circle at 50% 85%, rgba(245, 158, 11, 0.16) 0%, transparent 42%);
+  --app-background:
+    radial-gradient(circle at 2% 0%, rgba(80, 30, 5, 0.55) 0, transparent 34%),
+    radial-gradient(circle at 100% 0%, rgba(60, 20, 5, 0.45) 0, transparent 24%),
+    var(--color-bg-app);
+  --kbd-bg: #3d2208;
+  --kbd-text: #fed7aa;
+  --control-bg: #1c1005;
+  --control-bg-hover: #2a1808;
+  --control-bg-focus: #1c1005;
+  --control-text: #fff7ed;
+  --control-placeholder: #b07b4a;
+  --control-border: #6b3f14;
+  --control-border-strong: #fb923c;
+  --btn-bg: #f8fafc;
+  --btn-text: #0f172a;
+  --btn-border: #e2e8f0;
+  --btn-hover-bg: #e2e8f0;
+  --btn-border-hover: #cbd5e1;
+  --btn-disabled-bg: #94a3b8;
+  --btn-disabled-text: #334155;
+  --btn-disabled-border: #94a3b8;
+}
+
+/* ── 樱花 Sakura（粉彩浅色）─────────────────────────────── */
+:root[data-theme='sakura'] {
+  --color-bg-app: #fdf2f6;
+  --color-bg-surface: #fff5f8;
+  --color-bg-muted: #fce7ef;
+  --color-text-primary: #1a0a10;
+  --color-text-secondary: #5c2035;
+  --color-text-muted: #a05070;
+  --color-border: #f0b8cc;
+  --color-border-strong: #e07898;
+  --color-primary: #e11d48;
+  --color-primary-soft: #ffe4ec;
+  --color-success: #059669;
+  --color-success-soft: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-strong: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+  --table-border: #f0b8cc;
+  --table-row-hover: #fff0f5;
+  --sidebar-bg: rgba(255, 245, 250, 0.82);
+  --header-gradient: linear-gradient(to bottom, rgba(253, 242, 246, 0.96) 35%, rgba(253, 242, 246, 0));
+  --aurora-bg:
+    radial-gradient(circle at 20% 10%, rgba(251, 113, 133, 0.22) 0%, transparent 48%),
+    radial-gradient(circle at 82% 20%, rgba(244, 114, 182, 0.18) 0%, transparent 44%),
+    radial-gradient(circle at 50% 80%, rgba(225, 29, 72, 0.10) 0%, transparent 40%);
+  --app-background:
+    radial-gradient(circle at 2% 0%, #fce7ef 0, transparent 32%),
+    radial-gradient(circle at 100% 0%, #fff0f5 0, transparent 24%),
+    var(--color-bg-app);
+  --kbd-bg: #fce7ef;
+  --kbd-text: #5c2035;
+  --control-bg: #ffffff;
+  --control-bg-hover: #fff5f8;
+  --control-bg-focus: #ffffff;
+  --control-text: #1a0a10;
+  --control-placeholder: #a05070;
+  --control-border: #f0b8cc;
+  --control-border-strong: #e07898;
+  --btn-bg: #fff5f8;
+  --btn-text: #1a0a10;
+  --btn-border: #f0b8cc;
+  --btn-hover-bg: #fce7ef;
+  --btn-border-hover: #e07898;
+  --btn-disabled-bg: #fce7ef;
+  --btn-disabled-text: #a05070;
+  --btn-disabled-border: #f0b8cc;
 }
 
 body {

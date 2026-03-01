@@ -89,6 +89,216 @@
   --text-on-glass-secondary: #c6d5ea;
 }
 
+/* ── 星云 Nebula（深紫暗色）─────────────────────────────── */
+:root[data-theme="nebula"] {
+  color-scheme: dark;
+
+  --color-bg-app: #07030f;
+  --color-bg-surface: #100822;
+  --color-bg-muted: #170d2e;
+
+  --color-text-primary: #ede8ff;
+  --color-text-secondary: #c4b5fd;
+  --color-text-muted: #8b78c0;
+
+  --color-border: #2a1a52;
+  --color-border-strong: #4a2f82;
+  --color-primary: #a78bfa;
+  --color-primary-soft: #28145c;
+  --color-success: #34d399;
+  --color-success-soft: #062a1e;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2a1e06;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+
+  --glass-bg: rgba(20, 8, 48, 0.58);
+  --glass-bg-hover: rgba(34, 14, 78, 0.76);
+  --glass-border: rgba(167, 139, 250, 0.22);
+  --glass-shadow: 0 16px 36px rgba(80, 20, 200, 0.32);
+  --glass-specular: rgba(210, 180, 255, 0.20);
+  --glass-tint-primary: rgba(167, 139, 250, 0.16);
+  --glass-blur: 18px;
+
+  --text-on-glass-primary: #f0ecff;
+  --text-on-glass-secondary: #c4b5fd;
+
+  --glow-blue: #a78bfa;
+  --glow-purple: #c084fc;
+  --glow-green: #34d399;
+  --glow-red: #f87171;
+  --glow-alert: #fbbf24;
+}
+
+/* ── 翠林 Forest（深绿暗色）─────────────────────────────── */
+:root[data-theme="forest"] {
+  color-scheme: dark;
+
+  --color-bg-app: #020c08;
+  --color-bg-surface: #071a10;
+  --color-bg-muted: #0d2518;
+
+  --color-text-primary: #d1fae5;
+  --color-text-secondary: #6ee7b7;
+  --color-text-muted: #4a9e7a;
+
+  --color-border: #143d28;
+  --color-border-strong: #226040;
+  --color-primary: #34d399;
+  --color-primary-soft: #0a2e1e;
+  --color-success: #4ade80;
+  --color-success-soft: #052e16;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2d2008;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1520;
+
+  --glass-bg: rgba(4, 22, 12, 0.58);
+  --glass-bg-hover: rgba(8, 36, 20, 0.76);
+  --glass-border: rgba(52, 211, 153, 0.20);
+  --glass-shadow: 0 16px 36px rgba(0, 80, 40, 0.34);
+  --glass-specular: rgba(150, 250, 200, 0.18);
+  --glass-tint-primary: rgba(52, 211, 153, 0.14);
+  --glass-blur: 16px;
+
+  --text-on-glass-primary: #ecfdf5;
+  --text-on-glass-secondary: #a7f3d0;
+
+  --glow-blue: #34d399;
+  --glow-purple: #6ee7b7;
+  --glow-green: #4ade80;
+  --glow-red: #f87171;
+  --glow-alert: #fbbf24;
+}
+
+/* ── 落日 Sunset（暖橙暗色）─────────────────────────────── */
+:root[data-theme="sunset"] {
+  color-scheme: dark;
+
+  --color-bg-app: #0d0702;
+  --color-bg-surface: #1c1005;
+  --color-bg-muted: #261708;
+
+  --color-text-primary: #fff7ed;
+  --color-text-secondary: #fed7aa;
+  --color-text-muted: #b07b4a;
+
+  --color-border: #3d2208;
+  --color-border-strong: #6b3f14;
+  --color-primary: #fb923c;
+  --color-primary-soft: #3d1a06;
+  --color-success: #34d399;
+  --color-success-soft: #0a2e21;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #3a2608;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+
+  --glass-bg: rgba(30, 12, 4, 0.58);
+  --glass-bg-hover: rgba(50, 22, 6, 0.76);
+  --glass-border: rgba(251, 146, 60, 0.22);
+  --glass-shadow: 0 16px 36px rgba(150, 50, 0, 0.34);
+  --glass-specular: rgba(255, 200, 140, 0.20);
+  --glass-tint-primary: rgba(251, 146, 60, 0.16);
+  --glass-blur: 16px;
+
+  --text-on-glass-primary: #fff7ed;
+  --text-on-glass-secondary: #fed7aa;
+
+  --glow-blue: #fb923c;
+  --glow-purple: #f97316;
+  --glow-green: #34d399;
+  --glow-red: #f87171;
+  --glow-alert: #fbbf24;
+}
+
+/* ── 金属黑 Metal（冷钢暗色）────────────────────────────── */
+:root[data-theme="metal"] {
+  color-scheme: dark;
+
+  --color-bg-app: #07080b;
+  --color-bg-surface: #0f1117;
+  --color-bg-muted: #151820;
+
+  --color-text-primary: #dde3ed;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #5c6b7e;
+
+  --color-border: #1c2230;
+  --color-border-strong: #2e3d52;
+  --color-primary: #b0c2d4;
+  --color-primary-soft: #182030;
+  --color-success: #34d399;
+  --color-success-soft: #062a1e;
+  --color-warning: #fbbf24;
+  --color-warning-strong: #d97706;
+  --color-warning-soft: #2a1e06;
+  --color-danger: #f87171;
+  --color-danger-soft: #3a1220;
+
+  --glass-bg: rgba(14, 18, 26, 0.62);
+  --glass-bg-hover: rgba(22, 28, 42, 0.80);
+  --glass-border: rgba(148, 163, 184, 0.18);
+  --glass-shadow: 0 16px 40px rgba(0, 0, 0, 0.50);
+  --glass-specular: rgba(200, 220, 240, 0.22);
+  --glass-tint-primary: rgba(176, 194, 212, 0.12);
+  --glass-blur: 20px;
+
+  --text-on-glass-primary: #dde3ed;
+  --text-on-glass-secondary: #94a3b8;
+
+  --glow-blue: #b0c2d4;
+  --glow-purple: #7b98b8;
+  --glow-green: #34d399;
+  --glow-red: #f87171;
+  --glow-alert: #fbbf24;
+}
+
+/* ── 樱花 Sakura（粉彩浅色）─────────────────────────────── */
+:root[data-theme="sakura"] {
+  color-scheme: light;
+
+  --color-bg-app: #fdf2f6;
+  --color-bg-surface: #fff5f8;
+  --color-bg-muted: #fce7ef;
+
+  --color-text-primary: #1a0a10;
+  --color-text-secondary: #5c2035;
+  --color-text-muted: #a05070;
+
+  --color-border: #f0b8cc;
+  --color-border-strong: #e07898;
+  --color-primary: #e11d48;
+  --color-primary-soft: #ffe4ec;
+  --color-success: #059669;
+  --color-success-soft: #dcfce7;
+  --color-warning: #d97706;
+  --color-warning-strong: #b45309;
+  --color-warning-soft: #fef3c7;
+  --color-danger: #dc2626;
+  --color-danger-soft: #fee2e2;
+
+  --glass-bg: rgba(255, 240, 248, 0.68);
+  --glass-bg-hover: rgba(255, 225, 240, 0.84);
+  --glass-border: rgba(225, 29, 72, 0.20);
+  --glass-shadow: 0 10px 28px rgba(200, 30, 80, 0.14);
+  --glass-specular: rgba(255, 255, 255, 0.74);
+  --glass-tint-primary: rgba(225, 29, 72, 0.10);
+  --glass-blur: 14px;
+
+  --text-on-glass-primary: #1a0a10;
+  --text-on-glass-secondary: #5c2035;
+
+  --glow-blue: #e11d48;
+  --glow-purple: #db2777;
+  --glow-green: #059669;
+  --glow-red: #dc2626;
+  --glow-alert: #d97706;
+}
+
 :root {
   --bg-primary: var(--color-bg-app);
   --bg-glass: var(--glass-bg);
