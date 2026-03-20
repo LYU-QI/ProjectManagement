@@ -130,13 +130,30 @@ export class SchedulesService {
       select: { name: true }
     });
     const allowedProjectNames = new Set(projects.map((p) => p.name));
-    return this.prisma.feishuDependency.findMany({
-      where: {
-        ...(projectName ? { projectName } : {}),
-        ...(accessible === null ? {} : { projectName: { in: Array.from(allowedProjectNames.values()) } })
-      },
+    console.log('[DEBUG listDependencies] requested:', projectName, '| allowed:', Array.from(allowedProjectNames));
+
+    // 如果指定了项目名，检查用户是否有权访问
+    const targetProjectName = projectName && allowedProjectNames.has(projectName) ? projectName : undefined;
+    console.log('[DEBUG] targetProjectName:', targetProjectName);
+
+    // 构建查询条件
+    const where: Record<string, unknown> = {};
+    if (targetProjectName) {
+      // 指定了项目且有权限，只查该项目
+      where.projectName = targetProjectName;
+    } else if (accessible !== null) {
+      // 没有指定项目或无权访问，限制为权限内的项目
+      where.projectName = { in: Array.from(allowedProjectNames.values()) };
+    }
+    console.log('[DEBUG] where:', JSON.stringify(where));
+
+    const deps = await this.prisma.feishuDependency.findMany({
+      where,
       orderBy: { id: 'asc' }
     });
+    console.log('[DEBUG] returned:', deps.length, 'deps');
+
+    return deps;
   }
 
   async createDependency(actor: AuthActor | undefined, input: CreateDependencyInput) {

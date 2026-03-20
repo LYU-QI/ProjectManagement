@@ -37,6 +37,7 @@ export interface Requirement {
   priority: string;
   status: string;
   changeCount: number;
+  lastReviewDecision?: 'approved' | 'rejected' | null;
 }
 
 export interface RequirementChange {
@@ -260,4 +261,75 @@ export interface ProjectMembershipItem {
     id: number;
     name: string;
   };
+}
+
+export interface WorkItem {
+  id: number;
+  projectId?: number | null;
+  title: string;
+  description?: string | null;
+  type: 'todo' | 'issue';
+  priority: 'low' | 'medium' | 'high';
+  status: 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  creatorId: number;
+  dueDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project?: {
+    id: number;
+    name: string;
+    alias?: string | null;
+  } | null;
+  creator?: {
+    id: number;
+    name: string;
+    username?: string | null;
+  };
+  assignee?: {
+    id: number;
+    name: string;
+    username?: string | null;
+  } | null;
+}
+
+export interface WorkItemHistory {
+  id: number;
+  workItemId: number;
+  field: 'status' | 'assignee' | 'dueDate' | 'description';
+  beforeValue?: string | null;
+  afterValue?: string | null;
+  changedById: number;
+  createdAt: string;
+  changedBy?: {
+    id: number;
+    name: string;
+    username?: string | null;
+  };
+}
+
+export interface MilestoneBoardDeliverable {
+  id: number;
+  milestoneId: number;
+  content: string;
+  done: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MilestoneBoardItem {
+  id: number;
+  projectId: number;
+  title: string;
+  owner: string;
+  due: string;
+  status: 'upcoming' | 'in_progress' | 'completed';
+  risk: 'low' | 'medium' | 'high';
+  progress: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  deliverables: MilestoneBoardDeliverable[];
 }

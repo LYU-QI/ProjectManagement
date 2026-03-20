@@ -73,6 +73,44 @@ enum DependencyType {
   FF
 }
 
+enum WorkItemType {
+  todo
+  issue
+}
+
+enum WorkItemPriority {
+  low
+  medium
+  high
+}
+
+enum WorkItemStatus {
+  todo
+  in_progress
+  in_review
+  done
+  closed
+}
+
+enum WorkItemHistoryField {
+  status
+  assignee
+  dueDate
+  description
+}
+
+enum MilestoneBoardStatus {
+  upcoming
+  in_progress
+  completed
+}
+
+enum MilestoneBoardRisk {
+  low
+  medium
+  high
+}
+
 model User {
   id          Int                 @id @default(autoincrement())
   name        String
@@ -82,6 +120,9 @@ model User {
   projects    Project[]           @relation("ProjectOwner")
   memberships ProjectMembership[]
   worklogs    Worklog[]
+  createdWorkItems  WorkItem[]        @relation("WorkItemCreator")
+  assignedWorkItems WorkItem[]        @relation("WorkItemAssignee")
+  workItemHistories WorkItemHistory[] @relation("WorkItemHistoryChangedBy")
 }
 
 model Project {
@@ -108,6 +149,49 @@ model Project {
   pmPrompts     PmAssistantProjectPrompt[]
   pmSchedules   PmAssistantProjectSchedule[]
   pmLogs        PmAssistantLog[]
+  workItems     WorkItem[]
+  milestoneBoardItems MilestoneBoardItem[]
+}
+
+model WorkItem {
+  id          Int              @id @default(autoincrement())
+  projectId   Int?
+  title       String
+  description String?
+  type        WorkItemType
+  priority    WorkItemPriority @default(medium)
+  status      WorkItemStatus   @default(todo)
+  assigneeId  Int?
+  assigneeName String?
+  creatorId   Int
+  dueDate     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  project     Project?         @relation(fields: [projectId], references: [id])
+  creator     User             @relation("WorkItemCreator", fields: [creatorId], references: [id])
+  assignee    User?            @relation("WorkItemAssignee", fields: [assigneeId], references: [id])
+  histories   WorkItemHistory[]
+
+  @@index([projectId, status, priority])
+  @@index([creatorId, status])
+  @@index([assigneeId, status])
+  @@index([assigneeName, status])
+  @@index([dueDate])
+}
+
+model WorkItemHistory {
+  id          Int                  @id @default(autoincrement())
+  workItemId  Int
+  field       WorkItemHistoryField
+  beforeValue String?
+  afterValue  String?
+  changedById Int
+  createdAt   DateTime             @default(now())
+  workItem    WorkItem             @relation(fields: [workItemId], references: [id])
+  changedBy   User                 @relation("WorkItemHistoryChangedBy", fields: [changedById], references: [id])
+
+  @@index([workItemId, id])
+  @@index([changedById, createdAt])
 }
 
 model ProjectMembership {
@@ -210,6 +294,38 @@ model Milestone {
   plannedDate String
   actualDate  String?
   project     Project @relation(fields: [projectId], references: [id])
+}
+
+model MilestoneBoardItem {
+  id          Int                 @id @default(autoincrement())
+  projectId   Int
+  title       String
+  owner       String
+  due         String
+  status      MilestoneBoardStatus @default(upcoming)
+  risk        MilestoneBoardRisk   @default(low)
+  progress    Int                 @default(0)
+  sortOrder   Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  deliverables MilestoneBoardDeliverable[]
+
+  @@index([projectId, status, due])
+  @@index([projectId, sortOrder])
+}
+
+model MilestoneBoardDeliverable {
+  id          Int               @id @default(autoincrement())
+  milestoneId Int
+  content     String
+  done        Boolean           @default(false)
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  milestone   MilestoneBoardItem @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+
+  @@index([milestoneId, sortOrder])
 }
 
 model Task {

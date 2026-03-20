@@ -43,10 +43,11 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
 
-  // 开放 CORS 以支持 Electron 静态文件访问 (file://)
+  // 强化 CORS 配置以支持带授权头的请求
   app.enableCors({
-    origin: '*',
+    origin: true, // 允许所有来源
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'],
     credentials: true,
   });
 
@@ -55,7 +56,7 @@ async function bootstrap() {
   app.useGlobalGuards(new JwtAuthGuard(reflector, app.get(JwtService)), new RolesGuard(reflector));
 
   const port = process.env.PORT || 3000;
-  const host = process.env.HOST || '127.0.0.1';
+  const host = process.env.HOST || '0.0.0.0';
   await app.listen(port, host);
   console.log(`Nest application successfully started on port ${port}`);
 }
