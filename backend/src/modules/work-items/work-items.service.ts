@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, WorkItemHistoryField, WorkItemPriority, WorkItemStatus, WorkItemType } from '@prisma/client';
+import { Prisma, WorkItemPriority, WorkItemStatus, WorkItemType } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
 
@@ -14,10 +14,7 @@ interface ListWorkItemsInput {
   search?: string;
   page?: number;
   pageSize?: number;
-  parentId?: number;
-  hasParent?: string;
 }
-
 
 interface CreateWorkItemInput {
   projectId?: number;
@@ -28,7 +25,6 @@ interface CreateWorkItemInput {
   assigneeId?: number;
   assigneeName?: string;
   dueDate?: string;
-  parentId?: number;
 }
 
 interface UpdateWorkItemInput {
@@ -40,15 +36,6 @@ interface UpdateWorkItemInput {
   assigneeId?: number | null;
   assigneeName?: string | null;
   dueDate?: string | null;
-  parentId?: number | null;
-}
-
-interface BatchUpdateWorkItemInput {
-  ids: number[];
-  status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
-  assigneeId?: number | null;
-  assigneeName?: string | null;
-  parentId?: number | null;
 }
 
 @Injectable()
@@ -121,7 +108,6 @@ export class WorkItemsService {
   }
 
   async list(actor: AuthActor | undefined, query: ListWorkItemsInput) {
-    const scope = query.scope ?? 'all';
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.max(1, Math.min(200, Number(query.pageSize) || 20));
     const actorId = Number(actor?.sub) || null;
@@ -147,7 +133,7 @@ export class WorkItemsService {
     }
 
     let scopeWhere: Prisma.WorkItemWhereInput;
-    if (scope === 'project') {
+    if (query.scope === 'project') {
       if (isSuperAdmin) {
         scopeWhere = query.projectId ? { projectId: query.projectId } : { projectId: { not: null } };
       } else {
@@ -162,7 +148,7 @@ export class WorkItemsService {
           scopeWhere = ids.length > 0 ? { projectId: { in: ids } } : { id: -1 };
         }
       }
-    } else if (scope === 'personal') {
+    } else if (query.scope === 'personal') {
       if (isSuperAdmin) {
         scopeWhere = { projectId: null };
       } else {
@@ -202,62 +188,21 @@ export class WorkItemsService {
       ? { AND: [scopeWhere, ...baseFilters] }
       : scopeWhere;
 
-    // Apply parentId and hasParent filters
-    if (query.parentId !== undefined) {
-      where.parentId = query.parentId;
-    }
-    if (query.hasParent === 'true') {
-      where.parentId = { not: null };
-    } else if (query.hasParent === 'false') {
-      where.parentId = null;
-    }
-
     const rows = await this.prisma.workItem.findMany({
       where,
       include: {
         project: { select: { id: true, name: true, alias: true } },
         creator: { select: { id: true, name: true, username: true } },
-        assignee: { select: { id: true, name: true, username: true } },
-        _count: { select: { subTasks: true } }
+        assignee: { select: { id: true, name: true, username: true } }
       }
     });
-
-    // Get sub-task counts for parent items
-    const parentIds = rows.filter(r => !r.parentId).map(r => r.id);
-    const subTaskCounts = await this.prisma.workItem.groupBy({
-      by: ['parentId'],
-      where: { parentId: { in: parentIds } },
-      _count: { id: true }
-    });
-    const subTaskDoneCounts = await this.prisma.workItem.groupBy({
-      by: ['parentId'],
-      where: { parentId: { in: parentIds }, status: WorkItemStatus.done },
-      _count: { id: true }
-    });
-    const countMap = new Map(subTaskCounts.map(c => [c.parentId, { total: c._count.id, done: 0 }]));
-    for (const c of subTaskDoneCounts) {
-      const entry = countMap.get(c.parentId);
-      if (entry) entry.done = c._count.id;
-    }
 
     const sorted = this.sortItems(rows);
     const total = sorted.length;
     const start = (page - 1) * pageSize;
-    const items = sorted.slice(start, start + pageSize).map(item => {
-      const counts = item.parentId ? undefined : countMap.get(item.id);
-      return {
-        ...item,
-        subTaskCount: counts?.total ?? 0,
-        completedSubTaskCount: counts?.done ?? 0
-      };
-    });
+    const items = sorted.slice(start, start + pageSize);
 
-    return {
-      items,
-      total,
-      page,
-      pageSize
-    };
+    return { items, total, page, pageSize };
   }
 
   async create(actor: AuthActor | undefined, input: CreateWorkItemInput) {
@@ -287,14 +232,12 @@ export class WorkItemsService {
         assigneeId: input.assigneeId ?? null,
         assigneeName,
         creatorId,
-        dueDate: input.dueDate ?? null,
-        parentId: input.parentId ?? null
+        dueDate: input.dueDate ?? null
       },
       include: {
         project: { select: { id: true, name: true, alias: true } },
         creator: { select: { id: true, name: true, username: true } },
-        assignee: { select: { id: true, name: true, username: true } },
-        _count: { select: { subTasks: true } }
+        assignee: { select: { id: true, name: true, username: true } }
       }
     });
   }
@@ -311,8 +254,7 @@ export class WorkItemsService {
         assigneeId: true,
         assigneeName: true,
         description: true,
-        dueDate: true,
-        parentId: true
+        dueDate: true
       }
     });
     if (!target) {
@@ -327,21 +269,6 @@ export class WorkItemsService {
       assigneeName = user.name;
     }
 
-    // Prevent circular reference: cannot set parentId to self or to an existing sub-task
-    if (input.parentId !== undefined && input.parentId !== null) {
-      if (input.parentId === id) {
-        throw new ForbiddenException('Cannot set parent to self');
-      }
-      // Check if the target is already a parent of the proposed parent
-      const existingSubs = await this.prisma.workItem.findMany({
-        where: { parentId: input.parentId },
-        select: { id: true }
-      });
-      if (existingSubs.some(s => s.id === id)) {
-        throw new ForbiddenException('Circular reference detected');
-      }
-    }
-
     const nextData: Prisma.WorkItemUpdateInput = {
       ...(typeof input.title === 'undefined' ? {} : { title: input.title }),
       ...(typeof input.description === 'undefined' ? {} : { description: input.description }),
@@ -350,60 +277,41 @@ export class WorkItemsService {
       ...(typeof input.status === 'undefined' ? {} : { status: input.status as WorkItemStatus }),
       ...(typeof input.assigneeId === 'undefined' ? {} : { assigneeId: input.assigneeId }),
       ...(typeof assigneeName === 'undefined' ? {} : { assigneeName }),
-      ...(typeof input.dueDate === 'undefined' ? {} : { dueDate: input.dueDate }),
-      ...(typeof input.parentId === 'undefined' ? {} : { parentId: input.parentId })
+      ...(typeof input.dueDate === 'undefined' ? {} : { dueDate: input.dueDate })
     };
 
-    const histories: Array<{ field: WorkItemHistoryField; beforeValue: string | null; afterValue: string | null }> = [];
+    const histories: Array<{ field: string; beforeValue: string | null; afterValue: string | null }> = [];
     if (typeof input.status !== 'undefined' && input.status !== target.status) {
-      histories.push({
-        field: WorkItemHistoryField.status,
-        beforeValue: target.status,
-        afterValue: input.status
-      });
+      histories.push({ field: 'status', beforeValue: target.status, afterValue: input.status });
     }
     const nextAssigneeId = typeof input.assigneeId === 'undefined' ? target.assigneeId : (input.assigneeId ?? null);
     const nextAssigneeName = typeof assigneeName === 'undefined' ? (target.assigneeName ?? null) : assigneeName;
     if (nextAssigneeId !== target.assigneeId || nextAssigneeName !== (target.assigneeName ?? null)) {
       histories.push({
-        field: WorkItemHistoryField.assignee,
+        field: 'assignee',
         beforeValue: target.assigneeName ?? (target.assigneeId == null ? null : String(target.assigneeId)),
         afterValue: nextAssigneeName ?? (nextAssigneeId == null ? null : String(nextAssigneeId))
       });
     }
     if (typeof input.dueDate !== 'undefined' && (input.dueDate ?? null) !== target.dueDate) {
-      histories.push({
-        field: WorkItemHistoryField.dueDate,
-        beforeValue: target.dueDate,
-        afterValue: input.dueDate
-      });
+      histories.push({ field: 'dueDate', beforeValue: target.dueDate, afterValue: input.dueDate });
     }
     if (typeof input.description !== 'undefined' && (input.description ?? null) !== (target.description ?? null)) {
       histories.push({
-        field: WorkItemHistoryField.description,
+        field: 'description',
         beforeValue: target.description ?? null,
         afterValue: input.description ?? null
       });
     }
-    // Track parentId changes
-    const nextParentId = typeof input.parentId === 'undefined' ? target.parentId : input.parentId;
-    if (typeof input.parentId !== 'undefined' && input.parentId !== target.parentId) {
-      histories.push({
-        field: WorkItemHistoryField.parentId,
-        beforeValue: target.parentId == null ? null : String(target.parentId),
-        afterValue: input.parentId == null ? null : String(input.parentId)
-      });
-    }
 
-    const updated = await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       const updated = await tx.workItem.update({
         where: { id },
         data: nextData,
         include: {
           project: { select: { id: true, name: true, alias: true } },
           creator: { select: { id: true, name: true, username: true } },
-          assignee: { select: { id: true, name: true, username: true } },
-          _count: { select: { subTasks: true } }
+          assignee: { select: { id: true, name: true, username: true } }
         }
       });
 
@@ -411,7 +319,7 @@ export class WorkItemsService {
         await tx.workItemHistory.createMany({
           data: histories.map((entry) => ({
             workItemId: id,
-            field: entry.field,
+            field: entry.field as any,
             beforeValue: entry.beforeValue,
             afterValue: entry.afterValue,
             changedById: actorId
@@ -419,60 +327,8 @@ export class WorkItemsService {
         });
       }
 
-      // Auto-derive parent status from subtask completion
-      if (typeof input.status !== 'undefined' && target.parentId) {
-        await this.deriveParentStatus(tx, target.parentId, actorId);
-      }
-
       return updated;
     });
-  }
-
-  private async deriveParentStatus(
-    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
-    parentId: number,
-    actorId: number
-  ) {
-    const subTasks = await tx.workItem.findMany({
-      where: { parentId },
-      select: { id: true, status: true }
-    });
-
-    if (subTasks.length === 0) return;
-
-    const allDone = subTasks.every((s) => s.status === WorkItemStatus.done || s.status === WorkItemStatus.closed);
-    const anyInProgress = subTasks.some((s) => s.status === WorkItemStatus.in_progress || s.status === WorkItemStatus.in_review);
-
-    const parent = await tx.workItem.findUnique({
-      where: { id: parentId },
-      select: { id: true, status: true, parentId: true }
-    });
-    if (!parent) return;
-
-    let newStatus: WorkItemStatus | null = null;
-    if (allDone) {
-      newStatus = WorkItemStatus.done;
-    } else if (anyInProgress || subTasks.some((s) => s.status !== WorkItemStatus.todo)) {
-      newStatus = WorkItemStatus.in_progress;
-    } else {
-      newStatus = WorkItemStatus.todo;
-    }
-
-    if (newStatus !== null && newStatus !== parent.status) {
-      await tx.workItemHistory.create({
-        data: {
-          workItemId: parentId,
-          field: WorkItemHistoryField.status,
-          beforeValue: parent.status,
-          afterValue: newStatus,
-          changedById: actorId
-        }
-      });
-      await tx.workItem.update({
-        where: { id: parentId },
-        data: { status: newStatus }
-      });
-    }
   }
 
   async remove(actor: AuthActor | undefined, id: number) {
@@ -484,14 +340,6 @@ export class WorkItemsService {
       throw new NotFoundException('Work item not found');
     }
     await this.assertWorkItemWriteAccess(actor, target);
-
-    // Check for sub-tasks
-    const subTaskCount = await this.prisma.workItem.count({
-      where: { parentId: id }
-    });
-    if (subTaskCount > 0) {
-      throw new ForbiddenException(`Cannot delete: this item has ${subTaskCount} sub-task(s). Please delete or reassign them first.`);
-    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.workItemHistory.deleteMany({ where: { workItemId: id } });
@@ -520,54 +368,5 @@ export class WorkItemsService {
         }
       }
     });
-  }
-
-  async batchUpdate(actor: AuthActor | undefined, input: BatchUpdateWorkItemInput) {
-    const actorId = this.requireActorId(actor);
-
-    const items = await this.prisma.workItem.findMany({
-      where: { id: { in: input.ids } },
-      select: { id: true, projectId: true, creatorId: true, parentId: true }
-    });
-    if (items.length === 0) {
-      throw new NotFoundException('No work items found');
-    }
-
-    // Check write access for all items
-    for (const item of items) {
-      await this.assertWorkItemWriteAccess(actor, item);
-    }
-
-    const parentIds = [...new Set(items.map((i) => i.parentId).filter((p): p is number => p != null))];
-
-    const nextData: Prisma.WorkItemUpdateInput = {};
-    if (input.status !== undefined) nextData.status = input.status as WorkItemStatus;
-    if (input.assigneeId !== undefined) {
-      nextData.assignee = input.assigneeId == null
-        ? { disconnect: true }
-        : { connect: { id: input.assigneeId } };
-    }
-    if (input.assigneeName !== undefined) nextData.assigneeName = input.assigneeName;
-    if (input.parentId !== undefined) {
-      nextData.parent = input.parentId == null
-        ? { disconnect: true }
-        : { connect: { id: input.parentId } };
-    }
-
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const results = await tx.workItem.updateMany({
-        where: { id: { in: input.ids } },
-        data: nextData
-      });
-
-      // Derive parent status for all affected parents
-      for (const parentId of parentIds) {
-        await this.deriveParentStatus(tx, parentId, actorId);
-      }
-
-      return results;
-    });
-
-    return { updated: updated.count, ids: input.ids };
   }
 }

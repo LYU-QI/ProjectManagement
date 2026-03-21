@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min, ValidateIf } from 'class-validator';
 
 export class CreateWorkItemDto {
   @IsOptional()
@@ -32,10 +32,6 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   dueDate?: string;
-
-  @IsOptional()
-  @IsNumber()
-  parentId?: number;
 }
 
 export class UpdateWorkItemDto {
@@ -71,10 +67,6 @@ export class UpdateWorkItemDto {
   @IsOptional()
   @IsString()
   dueDate?: string | null;
-
-  @IsOptional()
-  @IsNumber()
-  parentId?: number | null;
 }
 
 export class ListWorkItemsQueryDto {
@@ -112,14 +104,6 @@ export class ListWorkItemsQueryDto {
 
   @IsOptional()
   @IsNumber()
-  parentId?: number;
-
-  @IsOptional()
-  @IsIn(['true', 'false'])
-  hasParent?: 'true' | 'false';
-
-  @IsOptional()
-  @IsNumber()
   @Min(1)
   page?: number;
 
@@ -128,28 +112,4 @@ export class ListWorkItemsQueryDto {
   @Min(1)
   @Max(200)
   pageSize?: number;
-}
-
-export class BatchUpdateWorkItemDto {
-  @IsArray()
-  @ArrayMinSize(1)
-  @ArrayMaxSize(50)
-  @IsNumber({}, { each: true })
-  ids!: number[];
-
-  @IsOptional()
-  @IsIn(['todo', 'in_progress', 'in_review', 'done', 'closed'])
-  status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
-
-  @IsOptional()
-  @IsNumber()
-  assigneeId?: number | null;
-
-  @IsOptional()
-  @IsString()
-  assigneeName?: string | null;
-
-  @IsOptional()
-  @IsNumber()
-  parentId?: number | null;
 }

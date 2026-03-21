@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseArrayPipe, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
-import { BatchUpdateWorkItemDto, CreateWorkItemDto, UpdateWorkItemDto } from './work-items.dto';
+import { CreateWorkItemDto, UpdateWorkItemDto } from './work-items.dto';
 import { WorkItemsService } from './work-items.service';
 
 @Controller('api/v1/work-items')
@@ -10,15 +10,13 @@ export class WorkItemsController {
   @Get()
   list(
     @Query('projectId') projectId: string | undefined,
-    @Query('scope') scope: 'project' | 'personal' | 'all' | undefined,
+    @Query('scope') scope: string | undefined,
     @Query('status') status: string | undefined,
     @Query('type') type: string | undefined,
     @Query('priority') priority: string | undefined,
     @Query('assigneeId') assigneeId: string | undefined,
     @Query('assigneeName') assigneeName: string | undefined,
     @Query('search') search: string | undefined,
-    @Query('parentId') parentId: string | undefined,
-    @Query('hasParent') hasParent: string | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @Req() req?: { user?: { sub?: number; role?: string } }
@@ -32,8 +30,6 @@ export class WorkItemsController {
       assigneeId: assigneeId ? Number(assigneeId) : undefined,
       assigneeName,
       search,
-      parentId: parentId ? Number(parentId) : undefined,
-      hasParent,
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined
     });
@@ -73,14 +69,5 @@ export class WorkItemsController {
     @Req() req?: { user?: { sub?: number; role?: string } }
   ) {
     return this.workItemsService.remove(req?.user, id);
-  }
-
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
-  @Patch('batch')
-  batchUpdate(
-    @Body() body: BatchUpdateWorkItemDto,
-    @Req() req?: { user?: { sub?: number; role?: string } }
-  ) {
-    return this.workItemsService.batchUpdate(req?.user, body);
   }
 }

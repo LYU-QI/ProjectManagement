@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ThemedSelect from '../components/ui/ThemedSelect';
-import { createWorkItem, deleteWorkItem, getWorkItemHistory, listWorkItems, updateWorkItem, batchUpdateWorkItems } from '../api/work-items';
+import { createWorkItem, deleteWorkItem, getWorkItemHistory, listWorkItems, updateWorkItem } from '../api/work-items';
 import type { ProjectItem, UserItem, WorkItem, WorkItemHistory } from '../types';
 
 type Props = {
@@ -31,10 +31,10 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   closed: '已关闭',
 };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 export default function WorkItemsView({ canWrite, projects, users, feishuUserNames, selectedProjectId }: Props) {
-  const [rawItems, setRawItems] = useState<WorkItem[]>([]);
+  const [items, setItems] = useState<WorkItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -47,10 +47,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [priority, setPriority] = useState<'' | 'low' | 'medium' | 'high'>('');
   const [assigneeNameFilter, setAssigneeNameFilter] = useState('');
   const [search, setSearch] = useState('');
-  const [showSubtasks, setShowSubtasks] = useState(false);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [bulkAction, setBulkAction] = useState<'' | WorkItemStatus>('');
 
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -58,7 +54,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [histories, setHistories] = useState<WorkItemHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
-  const [parentCandidates, setParentCandidates] = useState<WorkItem[]>([]);
 
   const [form, setForm] = useState({
     scope: 'project' as 'project' | 'personal',
@@ -68,8 +63,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     type: 'todo' as 'todo' | 'issue',
     priority: 'medium' as 'low' | 'medium' | 'high',
     assigneeName: '',
-    dueDate: '',
-    parentId: null as number | null
+    dueDate: ''
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -94,54 +88,10 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
 
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-  // Build parent → children map
-  const childrenMap = useMemo(() => {
-    const map = new Map<number, WorkItem[]>();
-    for (const item of rawItems) {
-      if (item.parentId != null) {
-        const arr = map.get(item.parentId) ?? [];
-        arr.push(item);
-        map.set(item.parentId, arr);
-      }
-    }
-    return map;
-  }, [rawItems]);
-
-  // Only top-level parents (no parentId)
-  const parents = useMemo(() => {
-    const ids = new Set<number>();
-    for (const item of rawItems) {
-      if (item.parentId != null) ids.add(item.parentId);
-    }
-    return rawItems.filter((item) => item.parentId == null && !ids.has(item.id));
-  }, [rawItems]);
-
-  // Flatten visible rows (expanded parents + their children)
-  const visibleRows = useMemo(() => {
-    const rows: Array<{ item: WorkItem; isChild: boolean; depth: number }> = [];
-    for (const parent of parents) {
-      const children = childrenMap.get(parent.id) ?? [];
-      rows.push({ item: parent, isChild: false, depth: 0 });
-      if (children.length > 0 && (showSubtasks || expandedIds.has(parent.id))) {
-        for (const child of children) {
-          rows.push({ item: child, isChild: true, depth: 1 });
-        }
-      }
-    }
-    return rows;
-  }, [parents, childrenMap, expandedIds, showSubtasks]);
-
-  // Paginated visible rows
-  const paginatedRows = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return visibleRows.slice(start, start + PAGE_SIZE);
-  }, [visibleRows, page]);
-
   async function load(opts?: { page?: number }) {
     const nextPage = opts?.page ?? page;
     setLoading(true);
     setError('');
-    setSelectedIds(new Set());
     try {
       const res = await listWorkItems({
         projectId: selectedProjectId ?? undefined,
@@ -151,11 +101,11 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         priority: priority || undefined,
         assigneeName: assigneeNameFilter || undefined,
         search: search || undefined,
-        page: 1,
-        pageSize: 200
+        page: nextPage,
+        pageSize: PAGE_SIZE
       });
-      setRawItems(res.items || []);
-      setTotal(res.items?.length || 0);
+      setItems(res.items || []);
+      setTotal(res.total || 0);
       if (page !== nextPage) {
         setPage(nextPage);
       }
@@ -167,26 +117,9 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     }
   }
 
-  // When showSubtasks toggles, auto-expand all parents that have children
-  useEffect(() => {
-    if (showSubtasks) {
-      // Expand all parents that have children
-      const toExpand = new Set<number>();
-      for (const item of rawItems) {
-        if (item.parentId == null) {
-          const hasSubs = rawItems.some((r) => r.parentId === item.id);
-          if (hasSubs) toExpand.add(item.id);
-        }
-      }
-      setExpandedIds(toExpand);
-    } else {
-      setExpandedIds(new Set());
-    }
-  }, [showSubtasks]);
-
   useEffect(() => {
     void load();
-  }, [scope, status, type, priority, assigneeNameFilter, page, selectedProjectId, showSubtasks]);
+  }, [scope, status, type, priority, assigneeNameFilter, page, selectedProjectId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -216,15 +149,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     };
   }, []);
 
-  function toggleExpand(id: number) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function openCreate() {
     setEditing(null);
     const defaultAssignee = feishuNameOptions[0] || '';
@@ -236,13 +160,9 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       type: 'todo',
       priority: 'medium',
       assigneeName: defaultAssignee,
-      dueDate: '',
-      parentId: null
+      dueDate: ''
     });
     setShowEditor(true);
-    const projId = selectedProjectId ?? 0;
-    const formScope = selectedProjectId ? 'project' : 'personal';
-    void loadParentCandidates(projId || undefined, formScope);
   }
 
   function openEdit(item: WorkItem) {
@@ -255,12 +175,9 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       type: item.type,
       priority: item.priority,
       assigneeName: item.assigneeName || item.assignee?.name || '',
-      dueDate: item.dueDate || '',
-      parentId: item.parentId ?? null
+      dueDate: item.dueDate || ''
     });
     setShowEditor(true);
-    const formScope = item.projectId ? 'project' : 'personal';
-    void loadParentCandidates(item.projectId ?? undefined, formScope, item.id);
   }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -287,8 +204,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           priority: form.priority,
           assigneeId: mappedAssignee?.id ?? null,
           assigneeName,
-          dueDate: form.dueDate || null,
-          parentId: form.parentId
+          dueDate: form.dueDate || null
         });
         setMessage('工作项已更新。');
       } else {
@@ -300,8 +216,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           priority: form.priority,
           assigneeId: mappedAssignee?.id,
           assigneeName,
-          dueDate: form.dueDate || undefined,
-          parentId: form.parentId ?? undefined
+          dueDate: form.dueDate || undefined
         });
         setMessage('工作项已创建。');
       }
@@ -358,20 +273,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     }
   }
 
-  async function loadParentCandidates(projectId: number | undefined, scope: 'project' | 'personal', excludeId?: number) {
-    try {
-      const res = await listWorkItems({
-        projectId: projectId && scope === 'project' ? projectId : undefined,
-        scope,
-        pageSize: 200
-      });
-      const parents = (res.items || []).filter((item) => item.id !== excludeId && !item.parentId);
-      setParentCandidates(parents);
-    } catch {
-      setParentCandidates([]);
-    }
-  }
-
   function renderHistoryValue(field: WorkItemHistory['field'], value?: string | null) {
     if (value == null || value === '') return '-';
     if (field === 'assignee') {
@@ -381,43 +282,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     if (field === 'status') {
       return STATUS_LABELS[value as WorkItemStatus] || value;
     }
-    if (field === 'parentId') {
-      return value ? `#${value}` : '无';
-    }
     return value;
-  }
-
-  function toggleSelect(id: number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    if (selectedIds.size === paginatedRows.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(paginatedRows.map((r) => r.item.id)));
-    }
-  }
-
-  async function execBulk() {
-    if (!bulkAction || selectedIds.size === 0) return;
-    setError('');
-    setMessage('');
-    try {
-      const res = await batchUpdateWorkItems({ ids: Array.from(selectedIds), status: bulkAction });
-      setMessage(`批量更新 ${res.updated} 条。`);
-      setSelectedIds(new Set());
-      setBulkAction('');
-      await load();
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`批量更新失败。（${detail}）`);
-    }
   }
 
   return (
@@ -462,10 +327,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
             </ThemedSelect>
           </div>
           <div className="workitems-search-row">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '0.85em' }}>
-              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); }} />
-              显示子任务
-            </label>
             <input
               value={search}
               placeholder="搜索标题/描述"
@@ -476,22 +337,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         </div>
       </div>
 
-      {selectedIds.size > 0 && (
-        <div className="workitems-bulk-bar">
-          <span>已选 {selectedIds.size} 项</span>
-          <ThemedSelect value={bulkAction} onChange={(e) => setBulkAction(e.target.value as '' | WorkItemStatus)}>
-            <option value="">批量操作</option>
-            <option value="todo">设为待办</option>
-            <option value="in_progress">设为进行中</option>
-            <option value="in_review">设为审核中</option>
-            <option value="done">设为已完成</option>
-            <option value="closed">设为已关闭</option>
-          </ThemedSelect>
-          <button className="btn btn-primary" type="button" onClick={execBulk} disabled={!bulkAction}>执行</button>
-          <button className="btn" type="button" onClick={() => setSelectedIds(new Set())}>取消</button>
-        </div>
-      )}
-
       {loading && <p>Loading...</p>}
       {message && <p>{message}</p>}
       {error && <p className="warn">{error}</p>}
@@ -500,14 +345,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         <table className="table table-wrap">
           <thead>
             <tr>
-              <th style={{ width: 32 }}>
-                <input
-                  type="checkbox"
-                  checked={paginatedRows.length > 0 && selectedIds.size === paginatedRows.length}
-                  onChange={selectAll}
-                />
-              </th>
-              <th style={{ width: 36 }}></th>
               <th>状态</th>
               <th>标题</th>
               <th>类型</th>
@@ -519,83 +356,55 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.length === 0 && (
+            {items.length === 0 && (
               <tr>
-                <td colSpan={10}>暂无记录</td>
+                <td colSpan={8}>暂无记录</td>
               </tr>
             )}
-            {paginatedRows.map(({ item, isChild }) => {
-              const children = childrenMap.get(item.id) ?? [];
-              const hasChildren = children.length > 0;
-              const isExpanded = expandedIds.has(item.id);
-              return (
-                <tr key={item.id} className={isChild ? 'workitems-subtask-row' : ''}>
-                  <td>
-                    <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
-                  </td>
-                  <td className="workitems-expand-cell">
-                    {hasChildren ? (
-                      <button
-                        className="workitems-expand-btn"
-                        type="button"
-                        onClick={() => toggleExpand(item.id)}
-                        title={isExpanded ? '折叠' : '展开'}
-                      >
-                        {isExpanded ? '▼' : '▶'}
-                      </button>
-                    ) : (
-                      <span className="workitems-expand-placeholder" />
-                    )}
-                  </td>
-                  <td>
-                    <select
-                      className={`status-badge status-${item.status}`}
-                      value={item.status}
-                      onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
-                      disabled={!canWrite}
-                      style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <select
+                    className={`status-badge status-${item.status}`}
+                    value={item.status}
+                    onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
+                    disabled={!canWrite}
+                    style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <strong>{item.title}</strong>
+                  {item.description ? <div className="text-secondary">{item.description}</div> : null}
+                </td>
+                <td>{item.type === 'todo' ? 'Todo' : 'Issue'}</td>
+                <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
+                <td>{item.assignee?.name || item.assigneeName || '-'}</td>
+                <td>{item.dueDate || '-'}</td>
+                <td>{item.project?.name || '个人'}</td>
+                <td className="operation-cell">
+                  <div className="req-action-menu">
+                    <button
+                      className="btn req-action-trigger"
+                      type="button"
+                      onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
                     >
-                      {STATUS_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className={isChild ? 'workitems-child-title' : ''}>
-                    {isChild && <span className="workitems-tree-connector">└─ </span>}
-                    <strong>{item.title}</strong>
-                    {hasChildren && !isChild && (
-                      <span className="workitems-subtask-badge">{children.length}</span>
+                      操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
+                    </button>
+                    {actionMenuRowId === item.id && (
+                      <div className="req-action-dropdown">
+                        <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
+                        {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
+                        {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
+                      </div>
                     )}
-                    {item.description && !isChild ? (
-                      <div className="text-secondary">{item.description}</div>
-                    ) : null}
-                  </td>
-                  <td>{item.type === 'todo' ? 'Todo' : 'Issue'}</td>
-                  <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
-                  <td>{item.assignee?.name || item.assigneeName || '-'}</td>
-                  <td>{item.dueDate || '-'}</td>
-                  <td>{item.project?.name || '个人'}</td>
-                  <td className="operation-cell">
-                    <div className="req-action-menu">
-                      <button
-                        className="btn req-action-trigger"
-                        type="button"
-                        onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
-                      >
-                        操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
-                      </button>
-                      {actionMenuRowId === item.id && (
-                        <div className="req-action-dropdown">
-                          <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
-                          {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
-                          {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -630,11 +439,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 {form.scope === 'project' && (
                   <div className="workitems-field">
                     <label>项目</label>
-                    <ThemedSelect value={String(form.projectId || '')} onChange={(e) => {
-                      const newProjId = Number(e.target.value) || 0;
-                      setForm((prev) => ({ ...prev, projectId: newProjId }));
-                      void loadParentCandidates(newProjId || undefined, 'project', editing?.id);
-                    }}>
+                    <ThemedSelect value={String(form.projectId || '')} onChange={(e) => setForm((prev) => ({ ...prev, projectId: Number(e.target.value) || 0 }))}>
                       <option value="">请选择项目</option>
                       {projects.map((project) => (
                         <option key={project.id} value={project.id}>{project.name} (#{project.id})</option>
@@ -642,20 +447,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                     </ThemedSelect>
                   </div>
                 )}
-                <div className="workitems-field">
-                  <label>父任务</label>
-                  <ThemedSelect
-                    value={String(form.parentId ?? '')}
-                    onChange={(e) => setForm((prev) => ({ ...prev, parentId: e.target.value ? Number(e.target.value) : null }))}
-                  >
-                    <option value="">无（顶层任务）</option>
-                    {parentCandidates
-                      .filter((p) => p.projectId === (form.scope === 'project' ? form.projectId : null) || (form.scope === 'personal' && !p.projectId))
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>{p.title} (#{p.id})</option>
-                      ))}
-                  </ThemedSelect>
-                </div>
                 <div className="workitems-field">
                   <label>标题</label>
                   <input value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} required />
@@ -729,7 +520,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                   {histories.map((entry) => (
                     <tr key={entry.id}>
                       <td>{new Date(entry.createdAt).toLocaleString()}</td>
-                      <td>{entry.field === 'status' ? '状态' : entry.field === 'assignee' ? '负责人' : entry.field === 'dueDate' ? '截止日期' : entry.field === 'parentId' ? '父任务' : '描述'}</td>
+                      <td>{entry.field === 'status' ? '状态' : entry.field === 'assignee' ? '负责人' : entry.field === 'dueDate' ? '截止日期' : '描述'}</td>
                       <td>{renderHistoryValue(entry.field, entry.beforeValue)}</td>
                       <td>{renderHistoryValue(entry.field, entry.afterValue)}</td>
                       <td>{entry.changedBy?.name || `#${entry.changedById}`}</td>
