@@ -1,4 +1,5 @@
-import { FormEvent, KeyboardEvent, useMemo } from 'react';
+import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { DashboardOverview, ProjectItem } from '../types';
 
 type InlineEditState<T, Id> = {
@@ -49,6 +50,15 @@ export default function DashboardView({
   onSaveProject,
   onInlineKeyDown
 }: Props) {
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [projectKeyword, setProjectKeyword] = useState('');
+  const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
+
+  async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
+    await Promise.resolve(onSubmitProject(e));
+    setShowCreateModal(false);
+  }
+
   const summary = useMemo(() => {
     const items = overview?.projects || [];
     const totalBudget = items.reduce((sum, item) => sum + (item.budget || 0), 0);
@@ -72,28 +82,17 @@ export default function DashboardView({
     return [...(overview?.projects || [])].sort((a, b) => a.projectId - b.projectId);
   }, [overview]);
 
+  const filteredProjects = useMemo(() => {
+    const keyword = projectKeyword.trim().toLowerCase();
+    if (!keyword) return projects;
+    return projects.filter((project) => {
+      const text = `${project.name || ''} ${project.alias || ''}`.toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [projectKeyword, projects]);
+
   return (
     <div>
-      {canWrite && (
-        <div className="card compact-card dashboard-create-card">
-          <div className="section-title-row">
-            <h3>快速创建项目</h3>
-            <span className="muted">填写基础信息后可在需求页继续完善</span>
-          </div>
-          <form className="form new-project-form" onSubmit={onSubmitProject}>
-            <input name="name" placeholder="项目名称" required />
-            <input name="alias" placeholder="项目别名（大写英文）" required />
-            <input name="budget" type="number" step="0.01" placeholder="预算" required />
-            <input name="startDate" type="date" />
-            <input name="endDate" type="date" />
-            <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
-            <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
-            <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
-            <button className="btn btn-primary" type="submit">新增项目</button>
-          </form>
-        </div>
-      )}
-
       <section className="metrics-grid">
         <article className="metric-card">
           <p className="metric-label">项目总数</p>
@@ -191,10 +190,22 @@ export default function DashboardView({
         <div className="section-title-row">
           <h3>项目管理</h3>
           {canWrite && (
-            <button className="btn" type="button" disabled={selectedProjectIds.length === 0} onClick={onDeleteSelectedProjects}>
-              批量删除 ({selectedProjectIds.length})
-            </button>
+            <div className="dashboard-project-actions">
+              <button className="btn btn-primary" type="button" onClick={() => setShowCreateModal(true)}>
+                新建项目
+              </button>
+              <button className="btn" type="button" disabled={selectedProjectIds.length === 0} onClick={onDeleteSelectedProjects}>
+                批量删除 ({selectedProjectIds.length})
+              </button>
+            </div>
           )}
+        </div>
+        <div className="filters-grid req-filters-grid">
+          <input
+            placeholder="筛选项目名称/别名"
+            value={projectKeyword}
+            onChange={(e) => setProjectKeyword(e.target.value)}
+          />
         </div>
 
         <table className="table">
@@ -204,15 +215,14 @@ export default function DashboardView({
                 <th>
                   <input
                     type="checkbox"
-                    checked={projects.length > 0 && selectedProjectIds.length === projects.length}
+                    checked={filteredProjects.length > 0 && filteredProjects.every((project) => selectedProjectIds.includes(project.id))}
                     onChange={(e) => {
                       const checked = e.target.checked;
-                      projects.forEach((project) => onToggleProjectSelection(project.id, checked));
+                      filteredProjects.forEach((project) => onToggleProjectSelection(project.id, checked));
                     }}
                   />
                 </th>
               )}
-              <th>ID</th>
               <th>名称</th>
               <th>别名</th>
               <th>预算</th>
@@ -225,7 +235,7 @@ export default function DashboardView({
             </tr>
           </thead>
           <tbody>
-            {projects.map((project) => {
+            {filteredProjects.map((project) => {
               const isEditing = projectEdit.editingId === project.id;
               const rowDraft = isEditing ? (projectEdit.draft ?? project) : project;
               const isDirty = isEditing && projectEdit.hasDirty(project);
@@ -241,8 +251,6 @@ export default function DashboardView({
                       />
                     </td>
                   )}
-                  <td>{project.id}</td>
-
                   <td
                     className={isEditing && projectEdit.editingField === 'name' ? 'editing' : ''}
                     onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'name')}
@@ -399,7 +407,7 @@ export default function DashboardView({
                           </button>
                         </>
                       ) : (
-                        <button className="btn" type="button" onClick={() => onDeleteProject(project)}>
+                        <button className="btn dashboard-project-delete-btn" type="button" onClick={() => onDeleteProject(project)}>
                           删除
                         </button>
                       )}
@@ -408,9 +416,39 @@ export default function DashboardView({
                 </tr>
               );
             })}
+            {filteredProjects.length === 0 && (
+              <tr>
+                <td colSpan={canWrite ? 10 : 9} className="req-muted-cell">没有匹配的项目</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
+
+      {showCreateModal && canUsePortal && createPortal(
+        <div className="req-modal-backdrop" onClick={() => setShowCreateModal(false)}>
+          <div className="req-modal dashboard-project-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <h3>新建项目</h3>
+              <div className="dashboard-project-modal-head-actions">
+                <button className="btn btn-primary" form="dashboard-project-create-form" type="submit">创建项目</button>
+                <button className="btn" type="button" onClick={() => setShowCreateModal(false)}>关闭</button>
+              </div>
+            </div>
+            <form id="dashboard-project-create-form" className="dashboard-project-modal-form" onSubmit={submitCreateProject}>
+              <input name="name" placeholder="项目名称" required />
+              <input name="alias" placeholder="项目别名（大写英文）" required />
+              <input name="budget" type="number" step="0.01" placeholder="预算" required />
+              <input name="startDate" type="date" />
+              <input name="endDate" type="date" />
+              <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
+              <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
+              <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

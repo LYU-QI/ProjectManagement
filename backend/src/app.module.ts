@@ -23,6 +23,8 @@ import { FeishuUsersModule } from './modules/feishu-users/feishu-users.module';
 import { PmAssistantModule } from './modules/pm-assistant/pm-assistant.module';
 import { PrdModule } from './modules/prd/prd.module';
 import { ProjectMembershipsModule } from './modules/project-memberships/project-memberships.module';
+import { WorkItemsModule } from './modules/work-items/work-items.module';
+import { MilestoneBoardModule } from './modules/milestone-board/milestone-board.module';
 
 @Module({
   imports: [
@@ -45,7 +47,9 @@ import { ProjectMembershipsModule } from './modules/project-memberships/project-
     FeishuUsersModule,
     PmAssistantModule,
     PrdModule,
-    ProjectMembershipsModule
+    ProjectMembershipsModule,
+    WorkItemsModule,
+    MilestoneBoardModule
   ],
   controllers: [AppController],
   providers: [

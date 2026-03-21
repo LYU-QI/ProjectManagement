@@ -1,6 +1,7 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
+import WorkItemsView from './views/WorkItemsView';
 import {
   createFeishuRecord,
   deleteFeishuRecord,
@@ -48,11 +49,11 @@ import MilestoneBoardView from './views/MilestoneBoardView';
 import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
 import ThemedSelect from './components/ui/ThemedSelect';
 
-type ViewKey = 'dashboard' | 'requirements' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
+type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users'];
 
 function focusInlineEditor(selector: string) {
@@ -139,7 +140,7 @@ function App() {
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [platform, setPlatform] = useState<PlatformMode>(() => {
@@ -154,7 +155,8 @@ function App() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const savedProjectId = typeof window !== 'undefined' ? Number(localStorage.getItem('ui:lastProjectId')) || null : null;
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(savedProjectId);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [feishuUsers, setFeishuUsers] = useState<FeishuUserItem[]>([]);
   const [requirementChanges, setRequirementChanges] = useState<RequirementChange[]>([]);
@@ -194,8 +196,9 @@ function App() {
         setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
         setNotifications(unreadNotifications);
 
-        const activeProjectId = projectIdOverride ?? selectedProjectId ?? projectList[0]?.id ?? null;
+        const activeProjectId = projectIdOverride ?? selectedProjectId ?? (projectList.find((p) => Number(localStorage.getItem('ui:lastProjectId')) === p.id)?.id) ?? projectList[0]?.id ?? null;
         setSelectedProjectId(activeProjectId);
+        if (activeProjectId) localStorage.setItem('ui:lastProjectId', String(activeProjectId));
 
         if (!activeProjectId) {
           setRequirements([]);
@@ -1037,6 +1040,7 @@ function App() {
   const [scheduleLoading, setScheduleLoading] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleDependencies, setScheduleDependencies] = useState<FeishuDependency[]>([]);
+  const [scheduleDependenciesLoading, setScheduleDependenciesLoading] = useState(false);
   const [scheduleDependenciesError, setScheduleDependenciesError] = useState('');
   const [riskAlerts, setRiskAlerts] = useState<RiskAlertsResponse | null>(null);
   const [riskLoading, setRiskLoading] = useState(false);
@@ -1402,6 +1406,9 @@ function App() {
         const pageToken = options?.resetPage ? undefined : feishuPageToken;
         if (options?.resetPage) {
           setFeishuPageStack([]);
+          setFeishuPageToken(undefined);
+          setFeishuNextToken(undefined);
+          setSelectedFeishuIds([]);
         }
         const res = await listFeishuRecords({
           pageSize: feishuPageSize,
@@ -1432,15 +1439,19 @@ function App() {
 
   async function loadScheduleRecords() {
     if (!token) return;
+    if (!selectedProjectId) {
+      setScheduleRecords([]);
+      setScheduleError('请先选择项目后再加载进度计划。');
+      return;
+    }
     setScheduleLoading(true);
     setScheduleError('');
     try {
       await runWithRetry('刷新进度同步记录', async () => {
-        const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
         const res = await listFeishuRecords({
           pageSize: 200,
           fieldNames: FEISHU_FIELD_NAMES,
-          filterProject: projectFilter
+          projectId: selectedProjectId
         });
         setScheduleRecords(res.items || []);
       });
@@ -1454,7 +1465,13 @@ function App() {
 
   async function loadScheduleDependencies() {
     if (!token) return;
+    if (!selectedProjectId) {
+      setScheduleDependencies([]);
+      setScheduleDependenciesError('请先选择项目后再加载任务依赖。');
+      return;
+    }
     setScheduleDependenciesError('');
+    setScheduleDependenciesLoading(true);
     try {
       const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
       const deps = await listDependencies(projectFilter);
@@ -1462,6 +1479,8 @@ function App() {
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setScheduleDependenciesError(`获取任务依赖失败。（${detail}）`);
+    } finally {
+      setScheduleDependenciesLoading(false);
     }
   }
 
@@ -1868,7 +1887,9 @@ function App() {
 
   function downloadCsv(filename: string, rows: string[][]) {
     const content = rows.map((row) => row.map((cell) => escapeCsvValue(String(cell ?? ''))).join(',')).join('\n');
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    // Prepend UTF-8 BOM so Excel/WPS can detect encoding and display Chinese correctly.
+    const bom = '\uFEFF';
+    const blob = new Blob([bom, content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -1927,12 +1948,29 @@ function App() {
 
   useEffect(() => {
     if (token && view === 'feishu') {
+      void loadFeishuRecords({ resetPage: true });
+    }
+  }, [
+    token,
+    view,
+    selectedProjectId,
+    feishuPageSize,
+    feishuSearch,
+    feishuSearchFields,
+    feishuFilterProject,
+    feishuFilterStatus,
+    feishuFilterAssignee,
+    feishuFilterRisk
+  ]);
+
+  useEffect(() => {
+    if (token && view === 'feishu') {
       void loadFeishuRecords();
     }
   }, [feishuPageToken]);
 
   useEffect(() => {
-    if (token && view === 'schedule') {
+    if (token && view === 'schedule' && !scheduleDependenciesLoading) {
       void loadScheduleRecords();
       void loadScheduleDependencies();
     }
@@ -2025,6 +2063,7 @@ function App() {
           <h2 className="app-view-title">
             {view === 'dashboard' ? '指挥中心' :
               view === 'requirements' ? '需求流' :
+                view === 'work-items' ? 'Todo / 问题池' :
                 view === 'costs' ? '成本池' :
                   view === 'schedule' ? '进度轴' :
                     view === 'resources' ? '资源阵列' :
@@ -2055,10 +2094,13 @@ function App() {
                   onChange={(e) => {
                     const value = e.target.value;
                     if (!value) {
+                      localStorage.removeItem('ui:lastProjectId');
                       void refreshAll(null);
                       return;
                     }
-                    void refreshAll(Number(value));
+                    const id = Number(value);
+                    localStorage.setItem('ui:lastProjectId', String(id));
+                    void refreshAll(id);
                   }}
                 >
                   {projects.length === 0 && <option value="">暂无项目</option>}
@@ -2285,6 +2327,16 @@ function App() {
           />
         )}
 
+        {view === 'work-items' && (
+          <WorkItemsView
+            canWrite={canWrite}
+            projects={projects}
+            users={users}
+            feishuUserNames={feishuUsers.map((u) => u.name)}
+            selectedProjectId={selectedProjectId}
+          />
+        )}
+
         {view === 'costs' && (
           <CostsView
             canWrite={canWrite}
@@ -2346,6 +2398,7 @@ function App() {
             feishuUserNames={feishuUsers.map((u) => u.name)}
             selectedProjectId={selectedProjectId}
             onSelectProject={(id) => { if (id) void refreshAll(id); }}
+            canWrite={canWrite}
           />
         )}
 
@@ -2374,6 +2427,8 @@ function App() {
         {view === 'feishu' && (
           <FeishuView
             canWrite={canWrite}
+            selectedProjectName={selectedProjectName}
+            selectedProjectId={selectedProjectId}
             feishuForm={feishuForm}
             feishuMessage={feishuMessage}
             feishuError={feishuError}

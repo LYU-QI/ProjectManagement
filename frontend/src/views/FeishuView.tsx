@@ -9,6 +9,8 @@ import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   canWrite: boolean;
+  selectedProjectName: string;
+  selectedProjectId: number | null;
   feishuForm: FeishuFormState;
   feishuMessage: string;
   feishuError: string;
@@ -66,6 +68,8 @@ type Props = {
 
 export default function FeishuView({
   canWrite,
+  selectedProjectName,
+  selectedProjectId,
   feishuForm,
   feishuMessage,
   feishuError,
@@ -155,11 +159,22 @@ export default function FeishuView({
   };
   const [filtersOpen, setFiltersOpen] = usePersistentBoolean('ui:feishu:filtersOpen', true);
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:feishu:compactTable', false);
+  const [submitFormOpen, setSubmitFormOpen] = usePersistentBoolean('ui:feishu:submitFormOpen', true);
   const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
+  const usingProjectScopedTable = selectedProjectId != null;
   return (
     <div>
       <div className="card feishu-config-card">
         <h3>飞书多维表格</h3>
+        <p className="muted">
+          当前读取数据源：
+          {usingProjectScopedTable ? ` 项目「${selectedProjectName}」绑定的飞书多维表` : ' 全局飞书多维表'}
+        </p>
+        {usingProjectScopedTable && (
+          <p className="muted">
+            当前已按项目绑定表读取数据，下面的列表不再显示“所属项目”筛选，避免和全局项目选择重复。
+          </p>
+        )}
         <div className="feishu-config-block">
           <details>
             <summary className="feishu-summary">字段配置（只读）</summary>
@@ -220,42 +235,50 @@ export default function FeishuView({
           </details>
         </div>
         {canWrite && (
-          <form className="form feishu-submit-form" onSubmit={onSubmitFeishu}>
-            {FEISHU_FIELDS.map((field) => {
-              const value = feishuForm[field.key] ?? '';
-              const options = field.key === '所属项目'
-                ? feishuProjectOptions
-                : field.key === '负责人'
-                  ? feishuUserOptions
-                  : field.options ?? [];
-              if (field.type === 'select') {
-                return (
-                  <ThemedSelect
-                    key={String(field.key)}
-                    value={value}
-                    onChange={(e) => onUpdateFeishuField(field.key, e.target.value)}
-                    required={field.required}
-                  >
-                    {!value && <option value="">请选择{field.label}</option>}
-                    {options.map((option) => (
-                      <option key={option} value={option}>{option}</option>
-                    ))}
-                  </ThemedSelect>
-                );
-              }
-              return (
-                <input
-                  key={String(field.key)}
-                  type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
-                  value={value}
-                  placeholder={field.label}
-                  required={field.required}
-                  onChange={(e) => onUpdateFeishuField(field.key, e.target.value)}
-                />
-              );
-            })}
-            <button className="btn" type="submit">提交记录</button>
-          </form>
+          <div className="feishu-config-block">
+            <details
+              open={submitFormOpen}
+              onToggle={(e) => setSubmitFormOpen((e.currentTarget as HTMLDetailsElement).open)}
+            >
+              <summary className="feishu-summary">提交记录</summary>
+              <form className="form feishu-submit-form" onSubmit={onSubmitFeishu}>
+                {FEISHU_FIELDS.map((field) => {
+                  const value = feishuForm[field.key] ?? '';
+                  const options = field.key === '所属项目'
+                    ? feishuProjectOptions
+                    : field.key === '负责人'
+                      ? feishuUserOptions
+                      : field.options ?? [];
+                  if (field.type === 'select') {
+                    return (
+                      <ThemedSelect
+                        key={String(field.key)}
+                        value={value}
+                        onChange={(e) => onUpdateFeishuField(field.key, e.target.value)}
+                        required={field.required}
+                      >
+                        {!value && <option value="">请选择{field.label}</option>}
+                        {options.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </ThemedSelect>
+                    );
+                  }
+                  return (
+                    <input
+                      key={String(field.key)}
+                      type={field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : 'text'}
+                      value={value}
+                      placeholder={field.label}
+                      required={field.required}
+                      onChange={(e) => onUpdateFeishuField(field.key, e.target.value)}
+                    />
+                  );
+                })}
+                <button className="btn" type="submit">提交记录</button>
+              </form>
+            </details>
+          </div>
         )}
         {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
         {feishuMessage && <p>{feishuMessage}</p>}
@@ -289,12 +312,14 @@ export default function FeishuView({
                 value={feishuSearchFields}
                 onChange={(e) => onSetFeishuSearchFields(e.target.value)}
               />
-              <ThemedSelect value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
-                <option value="">所属项目(全部)</option>
-                {feishuProjectOptions.map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </ThemedSelect>
+              {!usingProjectScopedTable && (
+                <ThemedSelect value={feishuFilterProject} onChange={(e) => onSetFeishuFilterProject(e.target.value)}>
+                  <option value="">所属项目(全部)</option>
+                  {feishuProjectOptions.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </ThemedSelect>
+              )}
               <ThemedSelect value={feishuFilterStatus} onChange={(e) => onSetFeishuFilterStatus(e.target.value)}>
                 <option value="">状态(全部)</option>
                 {['待办', '进行中', '已完成'].map((option) => (

@@ -70,6 +70,12 @@ export default function RequirementsView({
   const [changeDrawer, setChangeDrawer] = useState<{ open: boolean; req: Requirement | null }>({ open: false, req: null });
   const [changeForm, setChangeForm] = useState({ description: '', reason: '', version: '' });
   const [changeFilters, setChangeFilters] = useState({ keyword: '', author: '', version: '' });
+  const [listFilters, setListFilters] = useState({
+    keyword: '',
+    priority: '',
+    status: '',
+    reviewDecision: ''
+  });
   const [changeFiltersOpen, setChangeFiltersOpen] = usePersistentBoolean('ui:requirements:changeFiltersOpen', true);
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:requirements:compactTable', false);
   const [changeHistoryDrawer, setChangeHistoryDrawer] = useState<{ open: boolean; req: Requirement | null; loading: boolean }>({
@@ -77,6 +83,7 @@ export default function RequirementsView({
     req: null,
     loading: false
   });
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
 
   // AI 评审状态
@@ -94,6 +101,11 @@ export default function RequirementsView({
       const detail = err instanceof Error ? err.message : 'unknown';
       setAiReviewDrawer((prev) => ({ ...prev, loading: false, result: `评审失败：${detail}` }));
     }
+  }
+
+  async function submitRequirementInModal(e: FormEvent<HTMLFormElement>) {
+    await Promise.resolve(onSubmitRequirement(e));
+    setCreateModalOpen(false);
   }
 
   const filteredChanges = requirementChanges.filter((change) => {
@@ -117,6 +129,23 @@ export default function RequirementsView({
     const changed = requirements.filter((item) => item.changeCount > 0).length;
     return { total, highPriority, inReview, changed };
   }, [requirements]);
+
+  const filteredRequirements = useMemo(() => {
+    return requirements.filter((item) => {
+      const keyword = listFilters.keyword.trim().toLowerCase();
+      if (keyword) {
+        const text = `${item.title || ''} ${item.description || ''}`.toLowerCase();
+        if (!text.includes(keyword)) return false;
+      }
+      if (listFilters.priority && item.priority !== listFilters.priority) return false;
+      if (listFilters.status && item.status !== listFilters.status) return false;
+      if (listFilters.reviewDecision) {
+        const decision = item.lastReviewDecision || '';
+        if (decision !== listFilters.reviewDecision) return false;
+      }
+      return true;
+    });
+  }, [listFilters, requirements]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -304,6 +333,7 @@ export default function RequirementsView({
         });
       }
       setImportModal({ open: false, file: null, loading: false, error: '', result: null });
+      setCreateModalOpen(false);
       if (onImportSuccess) onImportSuccess();
     } catch (err) {
       setImportModal(p => ({ ...p, loading: false, error: `批量创建失败：${err instanceof Error ? err.message : String(err)}` }));
@@ -331,41 +361,16 @@ export default function RequirementsView({
         </article>
       </section>
 
-      {canWrite && (
-        <div className="card compact-card req-create-card">
-          <div className="section-title-row">
-            <h3>新增与导入</h3>
-            <span className="muted">支持手动新增和 AI 智能导入</span>
-          </div>
-          <div className="req-create-row">
-          <form className="form req-create-form" onSubmit={onSubmitRequirement}>
-            <input name="title" placeholder="需求标题" required />
-            <ThemedSelect name="priority" defaultValue="medium">
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </ThemedSelect>
-            <input name="description" placeholder="需求描述" required />
-            <button className="btn btn-primary" type="submit">新增需求</button>
-          </form>
-          <button
-            className="btn req-import-btn"
-            type="button"
-            onClick={() => {
-              if (!selectedProjectId) return alert('请先在顶部选择项目！');
-              setImportModal({ open: true, file: null, loading: false, error: '', result: null });
-            }}
-          >
-            📄 智能导入
-          </button>
-        </div>
-        </div>
-      )}
       <div className="card req-list-card">
         <div className="panel-header">
           <h3 className="req-title">需求列表</h3>
           <div className="panel-actions">
-            <span className="muted">共 {requirements.length} 条</span>
+            <span className="muted">共 {filteredRequirements.length} / {requirements.length} 条</span>
+            {canWrite && (
+              <button className="btn btn-primary" type="button" onClick={() => setCreateModalOpen(true)}>
+                新建需求
+              </button>
+            )}
             <button className="btn" type="button" onClick={() => setCompactTable((prev) => !prev)}>
               {compactTable ? '标准密度' : '紧凑密度'}
             </button>
@@ -376,6 +381,41 @@ export default function RequirementsView({
             )}
           </div>
         </div>
+        <div className="filters-grid req-filters-grid">
+          <input
+            placeholder="关键词（标题/描述）"
+            value={listFilters.keyword}
+            onChange={(e) => setListFilters((prev) => ({ ...prev, keyword: e.target.value }))}
+          />
+          <ThemedSelect
+            value={listFilters.priority}
+            onChange={(e) => setListFilters((prev) => ({ ...prev, priority: e.target.value }))}
+          >
+            <option value="">全部优先级</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </ThemedSelect>
+          <ThemedSelect
+            value={listFilters.status}
+            onChange={(e) => setListFilters((prev) => ({ ...prev, status: e.target.value }))}
+          >
+            <option value="">全部状态</option>
+            <option value="draft">draft</option>
+            <option value="in_review">in_review</option>
+            <option value="approved">approved</option>
+            <option value="planned">planned</option>
+            <option value="done">done</option>
+          </ThemedSelect>
+          <ThemedSelect
+            value={listFilters.reviewDecision}
+            onChange={(e) => setListFilters((prev) => ({ ...prev, reviewDecision: e.target.value }))}
+          >
+            <option value="">全部评审结果</option>
+            <option value="approved">已通过</option>
+            <option value="rejected">已驳回</option>
+          </ThemedSelect>
+        </div>
         <div className="table-wrap">
           <table className={`table requirement-table ${compactTable ? 'table-compact' : ''}`}>
             <thead>
@@ -384,16 +424,16 @@ export default function RequirementsView({
                   <th>
                     <input
                       type="checkbox"
-                      checked={requirements.length > 0 && selectedRequirementIds.length === requirements.length}
-                      onChange={(e) => onSelectAllRequirements(requirements.map((r) => r.id), e.target.checked)}
+                      checked={filteredRequirements.length > 0 && filteredRequirements.every((r) => selectedRequirementIds.includes(r.id))}
+                      onChange={(e) => onSelectAllRequirements(filteredRequirements.map((r) => r.id), e.target.checked)}
                     />
                   </th>
                 )}
-                  <th>项目-编号</th><th>标题</th><th className="req-desc-col">描述</th><th>优先级</th><th>状态</th><th>变更次数</th>{canWrite && <th className="operation-head">操作</th>}
+                  <th>项目-编号</th><th>标题</th><th className="req-desc-col">描述</th><th>优先级</th><th>状态</th><th>评审结果</th><th>变更次数</th>{canWrite && <th className="operation-head">操作</th>}
               </tr>
             </thead>
             <tbody>
-              {requirements.map((r) => {
+              {filteredRequirements.map((r) => {
               const isEditing = requirementEdit.editingId === r.id;
               const rowDraft = isEditing ? (requirementEdit.draft ?? r) : r;
               const isDirty = isEditing && requirementEdit.hasDirty(r);
@@ -481,6 +521,7 @@ export default function RequirementsView({
                       rowDraft.status
                     )}
                   </td>
+                  <td>{r.lastReviewDecision === 'approved' ? '已通过' : r.lastReviewDecision === 'rejected' ? '已驳回' : '-'}</td>
                   <td>{r.changeCount}</td>
                   {canWrite && (
                     <td className="operation-cell">
@@ -536,10 +577,48 @@ export default function RequirementsView({
                 </tr>
               );
             })}
+            {filteredRequirements.length === 0 && (
+              <tr>
+                <td colSpan={canWrite ? 8 : 7} className="req-muted-cell">没有匹配的需求</td>
+              </tr>
+            )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {createModalOpen && canWrite && (
+        <div className="req-modal-backdrop" onClick={() => setCreateModalOpen(false)}>
+          <div className="req-modal req-requirement-create-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <h3>新建需求</h3>
+              <button className="btn" type="button" onClick={() => setCreateModalOpen(false)}>关闭</button>
+            </div>
+            <div className="req-create-row">
+              <form className="form req-create-form" onSubmit={submitRequirementInModal}>
+                <input name="title" placeholder="需求标题" required />
+                <ThemedSelect name="priority" defaultValue="medium">
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </ThemedSelect>
+                <input name="description" placeholder="需求描述" required />
+                <button className="btn btn-primary" type="submit">新增需求</button>
+              </form>
+              <button
+                className="btn req-import-btn"
+                type="button"
+                onClick={() => {
+                  if (!selectedProjectId) return alert('请先在顶部选择项目！');
+                  setImportModal({ open: true, file: null, loading: false, error: '', result: null });
+                }}
+              >
+                📄 智能导入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {changeHistoryDrawer.open && changeHistoryDrawer.req && (
         <div
@@ -743,9 +822,10 @@ export default function RequirementsView({
 
       {/* 智能导入向导弹窗 */}
       {importModal.open && (
-        <div className="modal-overlay req-modal-overlay">
+        <div className="modal-overlay req-modal-overlay req-action-overlay req-import-overlay">
           <div
             className="modal-content req-import-modal"
+            onClick={(e) => e.stopPropagation()}
           >
             <h3 className="req-import-title">📄 AI 智能导入需求</h3>
 

@@ -1,4 +1,4 @@
-import React, { ReactNode, useRef, useState, useEffect } from 'react';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -20,6 +20,7 @@ import GlobalAiChatbot from './chat/GlobalAiChatbot';
 export type ViewKey =
   | 'dashboard'
   | 'requirements'
+  | 'work-items'
   | 'costs'
   | 'schedule'
   | 'resources'
@@ -64,6 +65,7 @@ interface AstraeaLayoutProps {
 const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; adminOnly?: boolean }> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
+  { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'schedule', label: '进度计划', icon: <CalendarDays size={18} />, platform: 'workspace' },
   { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
@@ -77,6 +79,8 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', adminOnly: true },
   { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin' }
 ];
+
+const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
 
 export default function AstraeaLayout({
   currentView,
@@ -95,21 +99,50 @@ export default function AstraeaLayout({
   const displayName = String(user?.username || user?.name || '未知用户');
   const displayRole = role || 'unknown';
   const canManageAdmin = canAccessAdmin || ['super_admin', 'project_director', 'lead'].includes(role);
-  const visibleNavItems = navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true));
-
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
-  const profileRef = useRef<HTMLDivElement>(null);
+  const [showUserSettings, setShowUserSettings] = useState(false);
+  const [hiddenNavItems, setHiddenNavItems] = useState<ViewKey[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(HIDDEN_NAV_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      const validIds = new Set(navItems.map((item) => item.id));
+      return parsed.filter((id): id is ViewKey => typeof id === 'string' && validIds.has(id as ViewKey));
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
-    if (!showThemeMenu) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
-        setShowThemeMenu(false);
-      }
+    window.localStorage.setItem(HIDDEN_NAV_STORAGE_KEY, JSON.stringify(hiddenNavItems));
+  }, [hiddenNavItems]);
+
+  const configurableNavItems = useMemo(
+    () => navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true)),
+    [platform, canManageAdmin]
+  );
+  const visibleNavItems = configurableNavItems.filter((item) => !hiddenNavItems.includes(item.id));
+
+  useEffect(() => {
+    if (visibleNavItems.some((item) => item.id === currentView)) return;
+    if (visibleNavItems.length > 0) {
+      onViewChange(visibleNavItems[0].id);
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showThemeMenu]);
+  }, [currentView, onViewChange, visibleNavItems]);
+
+  function toggleNavItem(id: ViewKey, checked: boolean) {
+    setHiddenNavItems((prev) => {
+      const hiddenSet = new Set(prev);
+      if (checked) {
+        hiddenSet.delete(id);
+      } else {
+        const remainingVisible = configurableNavItems.filter((item) => item.id !== id && !hiddenSet.has(item.id));
+        if (remainingVisible.length === 0) return prev;
+        hiddenSet.add(id);
+      }
+      return Array.from(hiddenSet) as ViewKey[];
+    });
+  }
 
   return (
     <div className="astraea-root">
@@ -162,37 +195,11 @@ export default function AstraeaLayout({
           })}
         </div>
 
-        <div className="astraea-user-profile-wrap" ref={profileRef}>
-          <AnimatePresence>
-            {showThemeMenu && (
-              <motion.div
-                className="user-theme-menu"
-                initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                transition={{ duration: 0.16 }}
-              >
-                <div className="user-theme-menu-label">界面主题</div>
-                {THEME_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={`user-theme-menu-item ${theme === opt.value ? 'is-active' : ''}`}
-                    onClick={() => { onThemeChange(opt.value); setShowThemeMenu(false); }}
-                    type="button"
-                  >
-                    <span className="user-theme-emoji">{opt.emoji}</span>
-                    <span className="user-theme-name">{opt.label}</span>
-                    <span className="user-theme-desc">{opt.desc}</span>
-                    {theme === opt.value && <span className="user-theme-check">✓</span>}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="astraea-user-profile-wrap">
           <div
-            className={`astraea-user-profile ${showThemeMenu ? 'is-open' : ''}`}
-            onClick={() => setShowThemeMenu((v) => !v)}
-            title="点击切换界面主题"
+            className={`astraea-user-profile ${showUserSettings ? 'is-open' : ''}`}
+            onClick={() => setShowUserSettings(true)}
+            title="点击打开个性化设置"
             style={{ cursor: 'pointer' }}
           >
             <div className="user-avatar">{displayName.charAt(0).toUpperCase() || 'U'}</div>
@@ -208,6 +215,75 @@ export default function AstraeaLayout({
           </div>
         </div>
       </nav>
+
+      <AnimatePresence>
+        {showUserSettings && (
+          <motion.div
+            className="user-settings-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16 }}
+            onClick={() => setShowUserSettings(false)}
+          >
+            <motion.div
+              className="user-settings-modal"
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="user-settings-head">
+                <h3>界面个性化设置</h3>
+                <button className="btn" type="button" onClick={() => setShowUserSettings(false)}>关闭</button>
+              </div>
+
+              <section className="user-settings-section">
+                <h4>侧栏功能显示</h4>
+                <p className="muted">按需隐藏左侧菜单功能，至少保留一个入口。</p>
+                <div className="user-settings-nav-grid">
+                  {configurableNavItems.map((item) => {
+                    const checked = !hiddenNavItems.includes(item.id);
+                    return (
+                      <label key={item.id} className="user-settings-nav-item">
+                        <span className="user-settings-nav-main">
+                          <span className="icon-wrapper">{item.icon}</span>
+                          <span>{item.label}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => toggleNavItem(item.id, e.target.checked)}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="user-settings-section">
+                <h4>UI 主题</h4>
+                <div className="user-theme-menu">
+                  {THEME_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={`user-theme-menu-item ${theme === opt.value ? 'is-active' : ''}`}
+                      onClick={() => onThemeChange(opt.value)}
+                      type="button"
+                    >
+                      <span className="user-theme-emoji">{opt.emoji}</span>
+                      <span className="user-theme-name">{opt.label}</span>
+                      <span className="user-theme-desc">{opt.desc}</span>
+                      {theme === opt.value && <span className="user-theme-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <header className="astraea-header">
         <div

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
+import html2canvas from 'html2canvas';
 import type { FeishuFormState, FeishuDependency } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
@@ -307,6 +308,22 @@ export default function ScheduleView({
     });
   }, [calendarMonth]);
 
+  function exportGanttSvg() {
+    const wrapper = ganttWrapperRef.current;
+    if (!wrapper) return;
+
+    html2canvas(wrapper, {
+      scale: 2,
+      useCORS: true,
+    } as any).then((canvas) => {
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gantt-${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+    });
+  }
+
   const calendarItems = useMemo(() => {
     const items = [...tasks, ...milestones].map((row) => ({
       id: row.recordId,
@@ -527,6 +544,9 @@ export default function ScheduleView({
           <div className="section-title-row">
             <h3>甘特图</h3>
             <span className="muted">关键路径高亮展示</span>
+            <button className="btn" type="button" onClick={exportGanttSvg} style={{ marginLeft: 'auto' }}>
+              导出图片
+            </button>
           </div>
           {ganttData.days.length === 0 ? (
             <p className="warn">暂无可用日期数据，无法生成甘特图。</p>
@@ -577,10 +597,12 @@ export default function ScheduleView({
                     ? `依赖: ${deps.map((dep) => `${taskNameMap.get(dep.dependsOnRecordId) || dep.dependsOnTaskId || dep.dependsOnRecordId}(${dep.type})`).join(', ')}`
                     : '';
                   const isCritical = criticalPath.ids.has(row.recordId);
+                  const progress = Number(row.进度) || 0;
+                  const isCompleted = progress >= 100 || String(row.状态 || '').includes('完成');
                   const endDate = toDate(row.截止时间 || row.开始时间);
                   const today = new Date();
                   today.setHours(0, 0, 0, 0);
-                  const overdue = isCritical && endDate ? endDate.getTime() < today.getTime() : false;
+                  const overdue = isCritical && !isCompleted && endDate ? endDate.getTime() < today.getTime() : false;
                   return (
                     <div
                       key={row.recordId}
@@ -593,7 +615,7 @@ export default function ScheduleView({
                         {overdue && <div className="gantt-overdue">关键任务已延期</div>}
                       </div>
                       <div
-                        className={`gantt-bar ${kind === 'milestone' ? 'gantt-milestone' : ''} ${isCritical ? 'gantt-critical' : ''} ${overdue ? 'gantt-overdue-bar' : ''}`}
+                        className={`gantt-bar ${kind === 'milestone' ? 'gantt-milestone' : ''} ${isCritical && !isCompleted ? 'gantt-critical' : ''} ${isCompleted ? 'gantt-completed' : ''} ${overdue ? 'gantt-overdue-bar' : ''}`}
                         data-bar-id={row.recordId}
                         style={{ gridColumn: `${startIndex + 2} / ${safeEnd + 3}` }}
                         title={`${row.任务名称 || row.任务ID} (${row.开始时间} → ${row.截止时间 || row.开始时间})`}
