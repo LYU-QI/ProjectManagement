@@ -16,8 +16,8 @@ interface ListWorkItemsInput {
   pageSize?: number;
   parentId?: number;
   hasParent?: 'true' | 'false';
-  showSubtasks?: boolean;
 }
+
 
 interface CreateWorkItemInput {
   projectId?: number;
@@ -128,6 +128,7 @@ export class WorkItemsService {
     const isSuperAdmin = this.isSuperAdmin(actor);
 
     const baseFilters: Prisma.WorkItemWhereInput[] = [];
+    if (query.status) baseFilters.push({ status: query.status as WorkItemStatus });
     if (query.type) baseFilters.push({ type: query.type as WorkItemType });
     if (query.priority) baseFilters.push({ priority: query.priority as WorkItemPriority });
     if (query.assigneeId) baseFilters.push({ assigneeId: query.assigneeId });
@@ -197,33 +198,18 @@ export class WorkItemsService {
       }
     }
 
-    let where: Prisma.WorkItemWhereInput;
-    if (query.showSubtasks && query.status) {
-      // showSubtasks: parents always shown (no status filter on parents),
-      // subtasks filtered by status
-      const statusFilter = { status: query.status as WorkItemStatus };
-      const parentFilter = { ...scopeWhere, parentId: null };
-      const childFilter = { ...scopeWhere, ...statusFilter, parentId: { not: null } };
-      where = baseFilters.length > 0
-        ? { OR: [{ AND: [parentFilter, ...baseFilters] }, { AND: [childFilter, ...baseFilters] }] }
-        : { OR: [parentFilter, childFilter] };
-    } else {
-      where = baseFilters.length > 0
-        ? { AND: [scopeWhere, ...baseFilters] }
-        : scopeWhere;
-      if (query.status) {
-        (where as Prisma.WorkItemWhereInput & { status?: WorkItemStatus }).status = query.status as WorkItemStatus;
-      }
-    }
+    const where: Prisma.WorkItemWhereInput = baseFilters.length > 0
+      ? { AND: [scopeWhere, ...baseFilters] }
+      : scopeWhere;
 
     // Apply parentId and hasParent filters
     if (query.parentId !== undefined) {
-      where = { AND: [where, { parentId: query.parentId }] };
+      where.parentId = query.parentId;
     }
     if (query.hasParent === 'true') {
-      where = { AND: [where, { parentId: { not: null } }] };
+      where.parentId = { not: null };
     } else if (query.hasParent === 'false') {
-      where = { AND: [where, { parentId: null }] };
+      where.parentId = null;
     }
 
     const rows = await this.prisma.workItem.findMany({

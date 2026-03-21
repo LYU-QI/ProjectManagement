@@ -167,6 +167,23 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     }
   }
 
+  // When showSubtasks toggles, auto-expand all parents that have children
+  useEffect(() => {
+    if (showSubtasks) {
+      // Expand all parents that have children
+      const toExpand = new Set<number>();
+      for (const item of rawItems) {
+        if (item.parentId == null) {
+          const hasSubs = rawItems.some((r) => r.parentId === item.id);
+          if (hasSubs) toExpand.add(item.id);
+        }
+      }
+      setExpandedIds(toExpand);
+    } else {
+      setExpandedIds(new Set());
+    }
+  }, [showSubtasks]);
+
   useEffect(() => {
     void load();
   }, [scope, status, type, priority, assigneeNameFilter, page, selectedProjectId, showSubtasks]);
@@ -446,7 +463,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           </div>
           <div className="workitems-search-row">
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '0.85em' }}>
-              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); setPage(1); setExpandedIds(new Set()); }} />
+              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); }} />
               显示子任务
             </label>
             <input
