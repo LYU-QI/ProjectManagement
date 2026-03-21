@@ -173,7 +173,7 @@ model WorkItem {
   creator     User             @relation("WorkItemCreator", fields: [creatorId], references: [id])
   assignee    User?            @relation("WorkItemAssignee", fields: [assigneeId], references: [id])
   histories   WorkItemHistory[]
-  parent      WorkItem?        @relation("WorkItemSubTasks", fields: [parentId], references: [id])
+  parent      WorkItem?        @relation("WorkItemSubTasks", fields: [parentId], references: [id], onDelete: Cascade)
   subTasks    WorkItem[]      @relation("WorkItemSubTasks")
 
   @@index([projectId, status, priority])
