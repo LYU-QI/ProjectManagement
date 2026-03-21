@@ -5,17 +5,17 @@ import { AccessService, AuthActor } from '../access/access.service';
 
 interface ListWorkItemsInput {
   projectId?: number;
-  scope?: 'project' | 'personal' | 'all';
-  status?: 'open' | 'done';
-  type?: 'todo' | 'issue';
-  priority?: 'low' | 'medium' | 'high';
+  scope?: string;
+  status?: string;
+  type?: string;
+  priority?: string;
   assigneeId?: number;
   assigneeName?: string;
   search?: string;
   page?: number;
   pageSize?: number;
   parentId?: number;
-  hasParent?: 'true' | 'false';
+  hasParent?: string;
 }
 
 

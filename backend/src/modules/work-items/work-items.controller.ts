@@ -11,14 +11,14 @@ export class WorkItemsController {
   list(
     @Query('projectId') projectId: string | undefined,
     @Query('scope') scope: 'project' | 'personal' | 'all' | undefined,
-    @Query('status') status: 'open' | 'done' | undefined,
-    @Query('type') type: 'todo' | 'issue' | undefined,
-    @Query('priority') priority: 'low' | 'medium' | 'high' | undefined,
+    @Query('status') status: string | undefined,
+    @Query('type') type: string | undefined,
+    @Query('priority') priority: string | undefined,
     @Query('assigneeId') assigneeId: string | undefined,
     @Query('assigneeName') assigneeName: string | undefined,
     @Query('search') search: string | undefined,
     @Query('parentId') parentId: string | undefined,
-    @Query('hasParent') hasParent: 'true' | 'false' | undefined,
+    @Query('hasParent') hasParent: string | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @Req() req?: { user?: { sub?: number; role?: string } }
