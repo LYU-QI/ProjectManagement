@@ -31,10 +31,10 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   closed: '已关闭',
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 50;
 
 export default function WorkItemsView({ canWrite, projects, users, feishuUserNames, selectedProjectId }: Props) {
-  const [items, setItems] = useState<WorkItem[]>([]);
+  const [rawItems, setRawItems] = useState<WorkItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -48,6 +48,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [assigneeNameFilter, setAssigneeNameFilter] = useState('');
   const [search, setSearch] = useState('');
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkAction, setBulkAction] = useState<'' | WorkItemStatus>('');
 
@@ -58,9 +59,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
   const [parentCandidates, setParentCandidates] = useState<WorkItem[]>([]);
-  const [subtasksOf, setSubtasksOf] = useState<WorkItem | null>(null);
-  const [subtasks, setSubtasks] = useState<WorkItem[]>([]);
-  const [subtasksLoading, setSubtasksLoading] = useState(false);
 
   const [form, setForm] = useState({
     scope: 'project' as 'project' | 'personal',
@@ -96,11 +94,61 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
 
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
+  // Build parent → children map
+  const childrenMap = useMemo(() => {
+    const map = new Map<number, WorkItem[]>();
+    for (const item of rawItems) {
+      if (item.parentId != null) {
+        const arr = map.get(item.parentId) ?? [];
+        arr.push(item);
+        map.set(item.parentId, arr);
+      }
+    }
+    return map;
+  }, [rawItems]);
+
+  // Only top-level parents (no parentId)
+  const parents = useMemo(() => {
+    const ids = new Set<number>();
+    for (const item of rawItems) {
+      if (item.parentId != null) ids.add(item.parentId);
+    }
+    return rawItems.filter((item) => item.parentId == null && !ids.has(item.id));
+  }, [rawItems]);
+
+  // Flatten visible rows (expanded parents + their children)
+  const visibleRows = useMemo(() => {
+    const rows: Array<{ item: WorkItem; isChild: boolean; depth: number }> = [];
+    for (const parent of parents) {
+      const children = childrenMap.get(parent.id) ?? [];
+      rows.push({ item: parent, isChild: false, depth: 0 });
+      if (children.length > 0 && (showSubtasks || expandedIds.has(parent.id))) {
+        for (const child of children) {
+          rows.push({ item: child, isChild: true, depth: 1 });
+        }
+      }
+    }
+    return rows;
+  }, [parents, childrenMap, expandedIds, showSubtasks]);
+
+  // Paginated visible rows
+  const paginatedRows = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return visibleRows.slice(start, start + PAGE_SIZE);
+  }, [visibleRows, page]);
+
   async function load(opts?: { page?: number }) {
     const nextPage = opts?.page ?? page;
     setLoading(true);
     setError('');
-    setSelectedIds(new Set()); // reset selection on reload
+    setSelectedIds(new Set());
+    setExpandedIds((prev) => {
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (childrenMap.get(id)?.length) next.add(id);
+      }
+      return next;
+    });
     try {
       const res = await listWorkItems({
         projectId: selectedProjectId ?? undefined,
@@ -110,12 +158,38 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         priority: priority || undefined,
         assigneeName: assigneeNameFilter || undefined,
         search: search || undefined,
-        page: nextPage,
-        pageSize: PAGE_SIZE,
+        page: 1,
+        pageSize: 200,
         hasParent: showSubtasks ? undefined : 'false'
       });
-      setItems(res.items || []);
-      setTotal(res.total || 0);
+      // When showing subtasks, also load all subtasks (hasParent=true)
+      let allItems = res.items || [];
+      if (showSubtasks) {
+        try {
+          const subRes = await listWorkItems({
+            projectId: selectedProjectId ?? undefined,
+            scope,
+            status,
+            type: type || undefined,
+            priority: priority || undefined,
+            assigneeName: assigneeNameFilter || undefined,
+            search: search || undefined,
+            page: 1,
+            pageSize: 200,
+            hasParent: 'true'
+          });
+          // Merge, deduplicate
+          const seen = new Set(allItems.map((i) => i.id));
+          for (const s of subRes.items || []) {
+            if (!seen.has(s.id)) {
+              allItems = [...allItems, s];
+              seen.add(s.id);
+            }
+          }
+        } catch { /* ignore sub-load errors */ }
+      }
+      setRawItems(allItems);
+      setTotal(allItems.length);
       if (page !== nextPage) {
         setPage(nextPage);
       }
@@ -158,6 +232,15 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       document.removeEventListener('mousedown', onPointerDown);
     };
   }, []);
+
+  function toggleExpand(id: number) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function openCreate() {
     setEditing(null);
@@ -226,7 +309,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         });
         setMessage('工作项已更新。');
       } else {
-        const created = await createWorkItem({
+        await createWorkItem({
           projectId: form.scope === 'project' ? form.projectId : undefined,
           title: form.title.trim(),
           description: form.description.trim() || undefined,
@@ -238,18 +321,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           parentId: form.parentId ?? undefined
         });
         setMessage('工作项已创建。');
-        // 快速回显：在第一页且筛选命中时，先本地插入一条，再后台刷新一次确保排序/总数准确。
-        const matchesCurrentFilters =
-          (scope === 'all' || (scope === 'project' ? Boolean(created.projectId) : !created.projectId)) &&
-          created.status === status &&
-          (!type || created.type === type) &&
-          (!priority || created.priority === priority) &&
-          (!assigneeNameFilter || (created.assigneeName || created.assignee?.name || '') === assigneeNameFilter) &&
-          (!search || `${created.title} ${created.description || ''}`.toLowerCase().includes(search.toLowerCase()));
-        if (page === 1 && matchesCurrentFilters) {
-          setItems((prev) => [created, ...prev].slice(0, PAGE_SIZE));
-          setTotal((prev) => prev + 1);
-        }
       }
       setShowEditor(false);
       setEditing(null);
@@ -343,10 +414,10 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   }
 
   function selectAll() {
-    if (selectedIds.size === items.length) {
+    if (selectedIds.size === paginatedRows.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(items.map((i) => i.id)));
+      setSelectedIds(new Set(paginatedRows.map((r) => r.item.id)));
     }
   }
 
@@ -363,20 +434,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setError(`批量更新失败。（${detail}）`);
-    }
-  }
-
-  async function openSubtasks(item: WorkItem) {
-    setSubtasksOf(item);
-    setSubtasksLoading(true);
-    setSubtasks([]);
-    try {
-      const res = await listWorkItems({ parentId: item.id, pageSize: 200 });
-      setSubtasks(res.items || []);
-    } catch {
-      setSubtasks([]);
-    } finally {
-      setSubtasksLoading(false);
     }
   }
 
@@ -423,7 +480,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           </div>
           <div className="workitems-search-row">
             <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '0.85em' }}>
-              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); setPage(1); }} />
+              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); setPage(1); setExpandedIds(new Set()); }} />
               显示子任务
             </label>
             <input
@@ -463,10 +520,11 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
               <th style={{ width: 32 }}>
                 <input
                   type="checkbox"
-                  checked={items.length > 0 && selectedIds.size === items.length}
+                  checked={paginatedRows.length > 0 && selectedIds.size === paginatedRows.length}
                   onChange={selectAll}
                 />
               </th>
+              <th style={{ width: 36 }}></th>
               <th>状态</th>
               <th>标题</th>
               <th>类型</th>
@@ -474,72 +532,87 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
               <th>负责人</th>
               <th>截止日期</th>
               <th>归属</th>
-              <th>子任务</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 && (
+            {paginatedRows.length === 0 && (
               <tr>
                 <td colSpan={10}>暂无记录</td>
               </tr>
             )}
-            {items.map((item) => (
-              <tr key={item.id} className={item.parentId ? 'workitems-subtask-row' : ''}>
-                <td>
-                  <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
-                </td>
-                <td>
-                  <select
-                    className={`status-badge status-${item.status}`}
-                    value={item.status}
-                    onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
-                    disabled={!canWrite}
-                    style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
-                  >
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <strong>{item.title}</strong>
-                  {item.description ? <div className="text-secondary">{item.description}</div> : null}
-                </td>
-                <td>{item.type === 'todo' ? 'Todo' : 'Issue'}</td>
-                <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
-                <td>{item.assignee?.name || item.assigneeName || '-'}</td>
-                <td>{item.dueDate || '-'}</td>
-                <td>{item.project?.name || '个人'}</td>
-                <td>
-                  {(item.subTaskCount ?? 0) > 0 ? (
-                    <span className="workitems-subtask-count">{item.completedSubTaskCount ?? 0}/{item.subTaskCount}</span>
-                  ) : '-'}
-                </td>
-                <td>{item.parentId ? `#${item.parentId}` : '-'}</td>
-                <td className="operation-cell">
-                  <div className="req-action-menu">
-                    <button
-                      className="btn req-action-trigger"
-                      type="button"
-                      onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
-                    >
-                      操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
-                    </button>
-                    {actionMenuRowId === item.id && (
-                      <div className="req-action-dropdown">
-                        <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
-                        {(item.subTaskCount ?? 0) > 0 && (
-                          <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openSubtasks(item); }}>查看子任务</button>
-                        )}
-                        {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
-                        {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
-                      </div>
+            {paginatedRows.map(({ item, isChild }) => {
+              const children = childrenMap.get(item.id) ?? [];
+              const hasChildren = children.length > 0;
+              const isExpanded = expandedIds.has(item.id);
+              return (
+                <tr key={item.id} className={isChild ? 'workitems-subtask-row' : ''}>
+                  <td>
+                    <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                  </td>
+                  <td className="workitems-expand-cell">
+                    {hasChildren ? (
+                      <button
+                        className="workitems-expand-btn"
+                        type="button"
+                        onClick={() => toggleExpand(item.id)}
+                        title={isExpanded ? '折叠' : '展开'}
+                      >
+                        {isExpanded ? '▼' : '▶'}
+                      </button>
+                    ) : (
+                      <span className="workitems-expand-placeholder" />
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td>
+                    <select
+                      className={`status-badge status-${item.status}`}
+                      value={item.status}
+                      onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
+                      disabled={!canWrite}
+                      style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className={isChild ? 'workitems-child-title' : ''}>
+                    {isChild && <span className="workitems-tree-connector">└─ </span>}
+                    <strong>{item.title}</strong>
+                    {hasChildren && !isChild && (
+                      <span className="workitems-subtask-badge">{children.length}</span>
+                    )}
+                    {item.description && !isChild ? (
+                      <div className="text-secondary">{item.description}</div>
+                    ) : null}
+                  </td>
+                  <td>{item.type === 'todo' ? 'Todo' : 'Issue'}</td>
+                  <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
+                  <td>{item.assignee?.name || item.assigneeName || '-'}</td>
+                  <td>{item.dueDate || '-'}</td>
+                  <td>{item.project?.name || '个人'}</td>
+                  <td className="operation-cell">
+                    <div className="req-action-menu">
+                      <button
+                        className="btn req-action-trigger"
+                        type="button"
+                        onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
+                      >
+                        操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
+                      </button>
+                      {actionMenuRowId === item.id && (
+                        <div className="req-action-dropdown">
+                          <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
+                          {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
+                          {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -643,59 +716,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 </div>
               </div>
             </form>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {subtasksOf && canUsePortal && createPortal(
-        <div className="req-modal-backdrop" onClick={() => setSubtasksOf(null)}>
-          <div className="req-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="req-modal-head">
-              <h3>子任务 · {subtasksOf.title}</h3>
-              <button className="btn" type="button" onClick={() => setSubtasksOf(null)}>关闭</button>
-            </div>
-            {subtasksLoading ? <p>Loading...</p> : (
-              <table className="table table-wrap">
-                <thead>
-                  <tr>
-                    <th>状态</th>
-                    <th>标题</th>
-                    <th>类型</th>
-                    <th>优先级</th>
-                    <th>负责人</th>
-                    <th>截止日期</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subtasks.length === 0 && (
-                    <tr><td colSpan={6}>暂无子任务</td></tr>
-                  )}
-                  {subtasks.map((st) => (
-                    <tr key={st.id}>
-                      <td>
-                        <select
-                          className={`status-badge status-${st.status}`}
-                          value={st.status}
-                          onChange={(e) => void setItemStatus(st, e.target.value as WorkItemStatus)}
-                          disabled={!canWrite}
-                          style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
-                        >
-                          {STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td><strong>{st.title}</strong></td>
-                      <td>{st.type === 'todo' ? 'Todo' : 'Issue'}</td>
-                      <td>{st.priority === 'high' ? '高' : st.priority === 'medium' ? '中' : '低'}</td>
-                      <td>{st.assignee?.name || st.assigneeName || '-'}</td>
-                      <td>{st.dueDate || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </div>
         </div>,
         document.body
