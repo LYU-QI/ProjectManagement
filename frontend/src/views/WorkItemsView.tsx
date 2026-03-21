@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ThemedSelect from '../components/ui/ThemedSelect';
-import { createWorkItem, deleteWorkItem, getWorkItemHistory, listWorkItems, updateWorkItem } from '../api/work-items';
+import { createWorkItem, deleteWorkItem, getWorkItemHistory, listWorkItems, updateWorkItem, batchUpdateWorkItems } from '../api/work-items';
 import type { ProjectItem, UserItem, WorkItem, WorkItemHistory } from '../types';
 
 type Props = {
@@ -48,6 +48,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [assigneeNameFilter, setAssigneeNameFilter] = useState('');
   const [search, setSearch] = useState('');
   const [showSubtasks, setShowSubtasks] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkAction, setBulkAction] = useState<'' | WorkItemStatus>('');
 
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -56,6 +58,9 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
   const [parentCandidates, setParentCandidates] = useState<WorkItem[]>([]);
+  const [subtasksOf, setSubtasksOf] = useState<WorkItem | null>(null);
+  const [subtasks, setSubtasks] = useState<WorkItem[]>([]);
+  const [subtasksLoading, setSubtasksLoading] = useState(false);
 
   const [form, setForm] = useState({
     scope: 'project' as 'project' | 'personal',
@@ -95,6 +100,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     const nextPage = opts?.page ?? page;
     setLoading(true);
     setError('');
+    setSelectedIds(new Set()); // reset selection on reload
     try {
       const res = await listWorkItems({
         projectId: selectedProjectId ?? undefined,
@@ -321,7 +327,57 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     if (field === 'status') {
       return STATUS_LABELS[value as WorkItemStatus] || value;
     }
+    if (field === 'parentId') {
+      return value ? `#${value}` : '无';
+    }
     return value;
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((i) => i.id)));
+    }
+  }
+
+  async function execBulk() {
+    if (!bulkAction || selectedIds.size === 0) return;
+    setError('');
+    setMessage('');
+    try {
+      const res = await batchUpdateWorkItems({ ids: Array.from(selectedIds), status: bulkAction });
+      setMessage(`批量更新 ${res.updated} 条。`);
+      setSelectedIds(new Set());
+      setBulkAction('');
+      await load();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      setError(`批量更新失败。（${detail}）`);
+    }
+  }
+
+  async function openSubtasks(item: WorkItem) {
+    setSubtasksOf(item);
+    setSubtasksLoading(true);
+    setSubtasks([]);
+    try {
+      const res = await listWorkItems({ parentId: item.id, pageSize: 200 });
+      setSubtasks(res.items || []);
+    } catch {
+      setSubtasks([]);
+    } finally {
+      setSubtasksLoading(false);
+    }
   }
 
   return (
@@ -380,6 +436,22 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="workitems-bulk-bar">
+          <span>已选 {selectedIds.size} 项</span>
+          <ThemedSelect value={bulkAction} onChange={(e) => setBulkAction(e.target.value as '' | WorkItemStatus)}>
+            <option value="">批量操作</option>
+            <option value="todo">设为待办</option>
+            <option value="in_progress">设为进行中</option>
+            <option value="in_review">设为审核中</option>
+            <option value="done">设为已完成</option>
+            <option value="closed">设为已关闭</option>
+          </ThemedSelect>
+          <button className="btn btn-primary" type="button" onClick={execBulk} disabled={!bulkAction}>执行</button>
+          <button className="btn" type="button" onClick={() => setSelectedIds(new Set())}>取消</button>
+        </div>
+      )}
+
       {loading && <p>Loading...</p>}
       {message && <p>{message}</p>}
       {error && <p className="warn">{error}</p>}
@@ -388,6 +460,13 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         <table className="table table-wrap">
           <thead>
             <tr>
+              <th style={{ width: 32 }}>
+                <input
+                  type="checkbox"
+                  checked={items.length > 0 && selectedIds.size === items.length}
+                  onChange={selectAll}
+                />
+              </th>
               <th>状态</th>
               <th>标题</th>
               <th>类型</th>
@@ -402,11 +481,14 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td colSpan={9}>暂无记录</td>
+                <td colSpan={10}>暂无记录</td>
               </tr>
             )}
             {items.map((item) => (
               <tr key={item.id} className={item.parentId ? 'workitems-subtask-row' : ''}>
+                <td>
+                  <input type="checkbox" checked={selectedIds.has(item.id)} onChange={() => toggleSelect(item.id)} />
+                </td>
                 <td>
                   <select
                     className={`status-badge status-${item.status}`}
@@ -434,6 +516,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                     <span className="workitems-subtask-count">{item.completedSubTaskCount ?? 0}/{item.subTaskCount}</span>
                   ) : '-'}
                 </td>
+                <td>{item.parentId ? `#${item.parentId}` : '-'}</td>
                 <td className="operation-cell">
                   <div className="req-action-menu">
                     <button
@@ -446,6 +529,9 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                     {actionMenuRowId === item.id && (
                       <div className="req-action-dropdown">
                         <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
+                        {(item.subTaskCount ?? 0) > 0 && (
+                          <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openSubtasks(item); }}>查看子任务</button>
+                        )}
                         {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
                         {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
                       </div>
@@ -557,6 +643,59 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 </div>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {subtasksOf && canUsePortal && createPortal(
+        <div className="req-modal-backdrop" onClick={() => setSubtasksOf(null)}>
+          <div className="req-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <h3>子任务 · {subtasksOf.title}</h3>
+              <button className="btn" type="button" onClick={() => setSubtasksOf(null)}>关闭</button>
+            </div>
+            {subtasksLoading ? <p>Loading...</p> : (
+              <table className="table table-wrap">
+                <thead>
+                  <tr>
+                    <th>状态</th>
+                    <th>标题</th>
+                    <th>类型</th>
+                    <th>优先级</th>
+                    <th>负责人</th>
+                    <th>截止日期</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {subtasks.length === 0 && (
+                    <tr><td colSpan={6}>暂无子任务</td></tr>
+                  )}
+                  {subtasks.map((st) => (
+                    <tr key={st.id}>
+                      <td>
+                        <select
+                          className={`status-badge status-${st.status}`}
+                          value={st.status}
+                          onChange={(e) => void setItemStatus(st, e.target.value as WorkItemStatus)}
+                          disabled={!canWrite}
+                          style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
+                        >
+                          {STATUS_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td><strong>{st.title}</strong></td>
+                      <td>{st.type === 'todo' ? 'Todo' : 'Issue'}</td>
+                      <td>{st.priority === 'high' ? '高' : st.priority === 'medium' ? '中' : '低'}</td>
+                      <td>{st.assignee?.name || st.assigneeName || '-'}</td>
+                      <td>{st.dueDate || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>,
         document.body

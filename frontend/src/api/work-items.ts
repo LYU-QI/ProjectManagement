@@ -82,3 +82,15 @@ export async function deleteWorkItem(id: number) {
 export async function getWorkItemHistory(id: number) {
   return apiGet<WorkItemHistory[]>(`/work-items/${id}/history`);
 }
+
+export type BatchUpdateWorkItemPayload = {
+  ids: number[];
+  status?: WorkItemStatus;
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  parentId?: number | null;
+};
+
+export async function batchUpdateWorkItems(payload: BatchUpdateWorkItemPayload) {
+  return apiPatch<{ updated: number; ids: number[] }>('/work-items/batch', payload);
+}

@@ -856,6 +856,17 @@ button.btn:disabled {
   cursor: default;
 }
 
+.workitems-bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--glass-bg) 88%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, var(--glass-border) 65%);
+  font-size: 13px;
+}
+
 .audit-title,
 .project-access-list-title {
   margin: 0;

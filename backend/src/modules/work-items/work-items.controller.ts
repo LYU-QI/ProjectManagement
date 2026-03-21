@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseArrayPipe, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
-import { CreateWorkItemDto, UpdateWorkItemDto } from './work-items.dto';
+import { BatchUpdateWorkItemDto, CreateWorkItemDto, UpdateWorkItemDto } from './work-items.dto';
 import { WorkItemsService } from './work-items.service';
 
 @Controller('api/v1/work-items')
@@ -73,5 +73,14 @@ export class WorkItemsController {
     @Req() req?: { user?: { sub?: number; role?: string } }
   ) {
     return this.workItemsService.remove(req?.user, id);
+  }
+
+  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Patch('batch')
+  batchUpdate(
+    @Body() body: BatchUpdateWorkItemDto,
+    @Req() req?: { user?: { sub?: number; role?: string } }
+  ) {
+    return this.workItemsService.batchUpdate(req?.user, body);
   }
 }

@@ -42,6 +42,14 @@ interface UpdateWorkItemInput {
   parentId?: number | null;
 }
 
+interface BatchUpdateWorkItemInput {
+  ids: number[];
+  status?: 'todo' | 'in_progress' | 'in_review' | 'done' | 'closed';
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  parentId?: number | null;
+}
+
 @Injectable()
 export class WorkItemsService {
   constructor(
@@ -386,7 +394,7 @@ export class WorkItemsService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.workItem.update({
         where: { id },
         data: nextData,
@@ -410,8 +418,60 @@ export class WorkItemsService {
         });
       }
 
+      // Auto-derive parent status from subtask completion
+      if (typeof input.status !== 'undefined' && target.parentId) {
+        await this.deriveParentStatus(tx, target.parentId, actorId);
+      }
+
       return updated;
     });
+  }
+
+  private async deriveParentStatus(
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+    parentId: number,
+    actorId: number
+  ) {
+    const subTasks = await tx.workItem.findMany({
+      where: { parentId },
+      select: { id: true, status: true }
+    });
+
+    if (subTasks.length === 0) return;
+
+    const allDone = subTasks.every((s) => s.status === WorkItemStatus.done || s.status === WorkItemStatus.closed);
+    const anyInProgress = subTasks.some((s) => s.status === WorkItemStatus.in_progress || s.status === WorkItemStatus.in_review);
+
+    const parent = await tx.workItem.findUnique({
+      where: { id: parentId },
+      select: { id: true, status: true, parentId: true }
+    });
+    if (!parent) return;
+
+    let newStatus: WorkItemStatus | null = null;
+    if (allDone) {
+      newStatus = WorkItemStatus.done;
+    } else if (anyInProgress || subTasks.some((s) => s.status !== WorkItemStatus.todo)) {
+      newStatus = WorkItemStatus.in_progress;
+    } else {
+      newStatus = WorkItemStatus.todo;
+    }
+
+    if (newStatus !== null && newStatus !== parent.status) {
+      await tx.workItemHistory.create({
+        data: {
+          workItemId: parentId,
+          field: WorkItemHistoryField.status,
+          beforeValue: parent.status,
+          afterValue: newStatus,
+          changedById: actorId
+        }
+      });
+      await tx.workItem.update({
+        where: { id: parentId },
+        data: { status: newStatus }
+      });
+    }
   }
 
   async remove(actor: AuthActor | undefined, id: number) {
@@ -459,5 +519,54 @@ export class WorkItemsService {
         }
       }
     });
+  }
+
+  async batchUpdate(actor: AuthActor | undefined, input: BatchUpdateWorkItemInput) {
+    const actorId = this.requireActorId(actor);
+
+    const items = await this.prisma.workItem.findMany({
+      where: { id: { in: input.ids } },
+      select: { id: true, projectId: true, creatorId: true, parentId: true }
+    });
+    if (items.length === 0) {
+      throw new NotFoundException('No work items found');
+    }
+
+    // Check write access for all items
+    for (const item of items) {
+      await this.assertWorkItemWriteAccess(actor, item);
+    }
+
+    const parentIds = [...new Set(items.map((i) => i.parentId).filter((p): p is number => p != null))];
+
+    const nextData: Prisma.WorkItemUpdateInput = {};
+    if (input.status !== undefined) nextData.status = input.status as WorkItemStatus;
+    if (input.assigneeId !== undefined) {
+      nextData.assignee = input.assigneeId == null
+        ? { disconnect: true }
+        : { connect: { id: input.assigneeId } };
+    }
+    if (input.assigneeName !== undefined) nextData.assigneeName = input.assigneeName;
+    if (input.parentId !== undefined) {
+      nextData.parent = input.parentId == null
+        ? { disconnect: true }
+        : { connect: { id: input.parentId } };
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const results = await tx.workItem.updateMany({
+        where: { id: { in: input.ids } },
+        data: nextData
+      });
+
+      // Derive parent status for all affected parents
+      for (const parentId of parentIds) {
+        await this.deriveParentStatus(tx, parentId, actorId);
+      }
+
+      return results;
+    });
+
+    return { updated: updated.count, ids: input.ids };
   }
 }
