@@ -16,6 +16,7 @@ export type WorkItemListQuery = {
   pageSize?: number;
   parentId?: number;
   hasParent?: 'true' | 'false';
+  showSubtasks?: boolean;
 };
 
 export type WorkItemListResponse = {
@@ -63,6 +64,7 @@ export async function listWorkItems(query: WorkItemListQuery) {
   if (query.pageSize != null) qs.set('pageSize', String(query.pageSize));
   if (query.parentId != null) qs.set('parentId', String(query.parentId));
   if (query.hasParent) qs.set('hasParent', query.hasParent);
+  if (query.showSubtasks) qs.set('showSubtasks', 'true');
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiGet<WorkItemListResponse>(`/work-items${suffix}`);
 }

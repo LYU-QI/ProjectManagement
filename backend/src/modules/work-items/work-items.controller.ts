@@ -19,6 +19,7 @@ export class WorkItemsController {
     @Query('search') search: string | undefined,
     @Query('parentId') parentId: string | undefined,
     @Query('hasParent') hasParent: 'true' | 'false' | undefined,
+    @Query('showSubtasks') showSubtasks: 'true' | 'false' | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @Req() req?: { user?: { sub?: number; role?: string } }
@@ -34,6 +35,7 @@ export class WorkItemsController {
       search,
       parentId: parentId ? Number(parentId) : undefined,
       hasParent,
+      showSubtasks: showSubtasks === 'true',
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined
     });
