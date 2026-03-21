@@ -97,6 +97,7 @@ enum WorkItemHistoryField {
   assignee
   dueDate
   description
+  parentId
 }
 
 enum MilestoneBoardStatus {
@@ -165,18 +166,22 @@ model WorkItem {
   assigneeName String?
   creatorId   Int
   dueDate     String?
+  parentId    Int?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   project     Project?         @relation(fields: [projectId], references: [id])
   creator     User             @relation("WorkItemCreator", fields: [creatorId], references: [id])
   assignee    User?            @relation("WorkItemAssignee", fields: [assigneeId], references: [id])
   histories   WorkItemHistory[]
+  parent      WorkItem?        @relation("WorkItemSubTasks", fields: [parentId], references: [id])
+  subTasks    WorkItem[]      @relation("WorkItemSubTasks")
 
   @@index([projectId, status, priority])
   @@index([creatorId, status])
   @@index([assigneeId, status])
   @@index([assigneeName, status])
   @@index([dueDate])
+  @@index([parentId])
 }
 
 model WorkItemHistory {

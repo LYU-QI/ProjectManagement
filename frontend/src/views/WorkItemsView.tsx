@@ -47,6 +47,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [priority, setPriority] = useState<'' | 'low' | 'medium' | 'high'>('');
   const [assigneeNameFilter, setAssigneeNameFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [showSubtasks, setShowSubtasks] = useState(false);
 
   const [editing, setEditing] = useState<WorkItem | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -54,6 +55,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
   const [histories, setHistories] = useState<WorkItemHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
+  const [parentCandidates, setParentCandidates] = useState<WorkItem[]>([]);
 
   const [form, setForm] = useState({
     scope: 'project' as 'project' | 'personal',
@@ -63,7 +65,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     type: 'todo' as 'todo' | 'issue',
     priority: 'medium' as 'low' | 'medium' | 'high',
     assigneeName: '',
-    dueDate: ''
+    dueDate: '',
+    parentId: null as number | null
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -102,7 +105,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         assigneeName: assigneeNameFilter || undefined,
         search: search || undefined,
         page: nextPage,
-        pageSize: PAGE_SIZE
+        pageSize: PAGE_SIZE,
+        hasParent: showSubtasks ? undefined : 'false'
       });
       setItems(res.items || []);
       setTotal(res.total || 0);
@@ -119,7 +123,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
 
   useEffect(() => {
     void load();
-  }, [scope, status, type, priority, assigneeNameFilter, page, selectedProjectId]);
+  }, [scope, status, type, priority, assigneeNameFilter, page, selectedProjectId, showSubtasks]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -160,9 +164,13 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       type: 'todo',
       priority: 'medium',
       assigneeName: defaultAssignee,
-      dueDate: ''
+      dueDate: '',
+      parentId: null
     });
     setShowEditor(true);
+    const projId = selectedProjectId ?? 0;
+    const formScope = selectedProjectId ? 'project' : 'personal';
+    void loadParentCandidates(projId || undefined, formScope);
   }
 
   function openEdit(item: WorkItem) {
@@ -175,9 +183,12 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       type: item.type,
       priority: item.priority,
       assigneeName: item.assigneeName || item.assignee?.name || '',
-      dueDate: item.dueDate || ''
+      dueDate: item.dueDate || '',
+      parentId: item.parentId ?? null
     });
     setShowEditor(true);
+    const formScope = item.projectId ? 'project' : 'personal';
+    void loadParentCandidates(item.projectId ?? undefined, formScope, item.id);
   }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -204,7 +215,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           priority: form.priority,
           assigneeId: mappedAssignee?.id ?? null,
           assigneeName,
-          dueDate: form.dueDate || null
+          dueDate: form.dueDate || null,
+          parentId: form.parentId
         });
         setMessage('工作项已更新。');
       } else {
@@ -216,7 +228,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           priority: form.priority,
           assigneeId: mappedAssignee?.id,
           assigneeName,
-          dueDate: form.dueDate || undefined
+          dueDate: form.dueDate || undefined,
+          parentId: form.parentId ?? undefined
         });
         setMessage('工作项已创建。');
         // 快速回显：在第一页且筛选命中时，先本地插入一条，再后台刷新一次确保排序/总数准确。
@@ -285,6 +298,20 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     }
   }
 
+  async function loadParentCandidates(projectId: number | undefined, scope: 'project' | 'personal', excludeId?: number) {
+    try {
+      const res = await listWorkItems({
+        projectId: projectId && scope === 'project' ? projectId : undefined,
+        scope,
+        pageSize: 200
+      });
+      const parents = (res.items || []).filter((item) => item.id !== excludeId && !item.parentId);
+      setParentCandidates(parents);
+    } catch {
+      setParentCandidates([]);
+    }
+  }
+
   function renderHistoryValue(field: WorkItemHistory['field'], value?: string | null) {
     if (value == null || value === '') return '-';
     if (field === 'assignee') {
@@ -339,6 +366,10 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
             </ThemedSelect>
           </div>
           <div className="workitems-search-row">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: '0.85em' }}>
+              <input type="checkbox" checked={showSubtasks} onChange={(e) => { setShowSubtasks(e.target.checked); setPage(1); }} />
+              显示子任务
+            </label>
             <input
               value={search}
               placeholder="搜索标题/描述"
@@ -364,17 +395,18 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
               <th>负责人</th>
               <th>截止日期</th>
               <th>归属</th>
+              <th>子任务</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td colSpan={8}>暂无记录</td>
+                <td colSpan={9}>暂无记录</td>
               </tr>
             )}
             {items.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.id} className={item.parentId ? 'workitems-subtask-row' : ''}>
                 <td>
                   <select
                     className={`status-badge status-${item.status}`}
@@ -397,6 +429,11 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 <td>{item.assignee?.name || item.assigneeName || '-'}</td>
                 <td>{item.dueDate || '-'}</td>
                 <td>{item.project?.name || '个人'}</td>
+                <td>
+                  {(item.subTaskCount ?? 0) > 0 ? (
+                    <span className="workitems-subtask-count">{item.completedSubTaskCount ?? 0}/{item.subTaskCount}</span>
+                  ) : '-'}
+                </td>
                 <td className="operation-cell">
                   <div className="req-action-menu">
                     <button
@@ -451,7 +488,11 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 {form.scope === 'project' && (
                   <div className="workitems-field">
                     <label>项目</label>
-                    <ThemedSelect value={String(form.projectId || '')} onChange={(e) => setForm((prev) => ({ ...prev, projectId: Number(e.target.value) || 0 }))}>
+                    <ThemedSelect value={String(form.projectId || '')} onChange={(e) => {
+                      const newProjId = Number(e.target.value) || 0;
+                      setForm((prev) => ({ ...prev, projectId: newProjId }));
+                      void loadParentCandidates(newProjId || undefined, 'project', editing?.id);
+                    }}>
                       <option value="">请选择项目</option>
                       {projects.map((project) => (
                         <option key={project.id} value={project.id}>{project.name} (#{project.id})</option>
@@ -459,6 +500,20 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                     </ThemedSelect>
                   </div>
                 )}
+                <div className="workitems-field">
+                  <label>父任务</label>
+                  <ThemedSelect
+                    value={String(form.parentId ?? '')}
+                    onChange={(e) => setForm((prev) => ({ ...prev, parentId: e.target.value ? Number(e.target.value) : null }))}
+                  >
+                    <option value="">无（顶层任务）</option>
+                    {parentCandidates
+                      .filter((p) => p.projectId === (form.scope === 'project' ? form.projectId : null) || (form.scope === 'personal' && !p.projectId))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>{p.title} (#{p.id})</option>
+                      ))}
+                  </ThemedSelect>
+                </div>
                 <div className="workitems-field">
                   <label>标题</label>
                   <input value={form.title} onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))} required />
@@ -532,7 +587,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                   {histories.map((entry) => (
                     <tr key={entry.id}>
                       <td>{new Date(entry.createdAt).toLocaleString()}</td>
-                      <td>{entry.field === 'status' ? '状态' : entry.field === 'assignee' ? '负责人' : entry.field === 'dueDate' ? '截止日期' : '描述'}</td>
+                      <td>{entry.field === 'status' ? '状态' : entry.field === 'assignee' ? '负责人' : entry.field === 'dueDate' ? '截止日期' : entry.field === 'parentId' ? '父任务' : '描述'}</td>
                       <td>{renderHistoryValue(entry.field, entry.beforeValue)}</td>
                       <td>{renderHistoryValue(entry.field, entry.afterValue)}</td>
                       <td>{entry.changedBy?.name || `#${entry.changedById}`}</td>

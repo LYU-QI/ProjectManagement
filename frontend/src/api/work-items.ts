@@ -14,6 +14,8 @@ export type WorkItemListQuery = {
   search?: string;
   page?: number;
   pageSize?: number;
+  parentId?: number;
+  hasParent?: 'true' | 'false';
 };
 
 export type WorkItemListResponse = {
@@ -32,6 +34,7 @@ export type CreateWorkItemPayload = {
   assigneeId?: number;
   assigneeName?: string;
   dueDate?: string;
+  parentId?: number;
 };
 
 export type UpdateWorkItemPayload = {
@@ -43,6 +46,7 @@ export type UpdateWorkItemPayload = {
   assigneeId?: number | null;
   assigneeName?: string | null;
   dueDate?: string | null;
+  parentId?: number | null;
 };
 
 export async function listWorkItems(query: WorkItemListQuery) {
@@ -57,6 +61,8 @@ export async function listWorkItems(query: WorkItemListQuery) {
   if (query.search) qs.set('search', query.search);
   if (query.page != null) qs.set('page', String(query.page));
   if (query.pageSize != null) qs.set('pageSize', String(query.pageSize));
+  if (query.parentId != null) qs.set('parentId', String(query.parentId));
+  if (query.hasParent) qs.set('hasParent', query.hasParent);
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiGet<WorkItemListResponse>(`/work-items${suffix}`);
 }

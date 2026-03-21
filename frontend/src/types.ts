@@ -275,6 +275,9 @@ export interface WorkItem {
   assigneeName?: string | null;
   creatorId: number;
   dueDate?: string | null;
+  parentId?: number | null;
+  subTaskCount?: number;
+  completedSubTaskCount?: number;
   createdAt: string;
   updatedAt: string;
   project?: {
@@ -297,7 +300,7 @@ export interface WorkItem {
 export interface WorkItemHistory {
   id: number;
   workItemId: number;
-  field: 'status' | 'assignee' | 'dueDate' | 'description';
+  field: 'status' | 'assignee' | 'dueDate' | 'description' | 'parentId';
   beforeValue?: string | null;
   afterValue?: string | null;
   changedById: number;

@@ -827,6 +827,35 @@ button.btn:disabled {
   gap: 8px;
 }
 
+.workitems-subtask-row > td:first-child {
+  padding-left: 20px;
+  position: relative;
+}
+
+.workitems-subtask-row > td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in srgb, var(--color-primary) 40%, transparent 60%);
+  border-radius: 1px;
+}
+
+.workitems-subtask-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent 86%);
+  color: color-mix(in srgb, var(--color-primary) 70%, var(--text-primary) 30%);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent 70%);
+  cursor: default;
+}
+
 .audit-title,
 .project-access-list-title {
   margin: 0;

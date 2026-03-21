@@ -14,6 +14,8 @@ interface ListWorkItemsInput {
   search?: string;
   page?: number;
   pageSize?: number;
+  parentId?: number;
+  hasParent?: 'true' | 'false';
 }
 
 interface CreateWorkItemInput {
@@ -25,6 +27,7 @@ interface CreateWorkItemInput {
   assigneeId?: number;
   assigneeName?: string;
   dueDate?: string;
+  parentId?: number;
 }
 
 interface UpdateWorkItemInput {
@@ -36,6 +39,7 @@ interface UpdateWorkItemInput {
   assigneeId?: number | null;
   assigneeName?: string | null;
   dueDate?: string | null;
+  parentId?: number | null;
 }
 
 @Injectable()
@@ -189,19 +193,55 @@ export class WorkItemsService {
       ? { AND: [scopeWhere, ...baseFilters] }
       : scopeWhere;
 
+    // Apply parentId and hasParent filters
+    if (query.parentId !== undefined) {
+      where.parentId = query.parentId;
+    }
+    if (query.hasParent === 'true') {
+      where.parentId = { not: null };
+    } else if (query.hasParent === 'false') {
+      where.parentId = null;
+    }
+
     const rows = await this.prisma.workItem.findMany({
       where,
       include: {
         project: { select: { id: true, name: true, alias: true } },
         creator: { select: { id: true, name: true, username: true } },
-        assignee: { select: { id: true, name: true, username: true } }
+        assignee: { select: { id: true, name: true, username: true } },
+        _count: { select: { subTasks: true } }
       }
     });
+
+    // Get sub-task counts for parent items
+    const parentIds = rows.filter(r => !r.parentId).map(r => r.id);
+    const subTaskCounts = await this.prisma.workItem.groupBy({
+      by: ['parentId'],
+      where: { parentId: { in: parentIds } },
+      _count: { id: true }
+    });
+    const subTaskDoneCounts = await this.prisma.workItem.groupBy({
+      by: ['parentId'],
+      where: { parentId: { in: parentIds }, status: WorkItemStatus.done },
+      _count: { id: true }
+    });
+    const countMap = new Map(subTaskCounts.map(c => [c.parentId, { total: c._count.id, done: 0 }]));
+    for (const c of subTaskDoneCounts) {
+      const entry = countMap.get(c.parentId);
+      if (entry) entry.done = c._count.id;
+    }
 
     const sorted = this.sortItems(rows);
     const total = sorted.length;
     const start = (page - 1) * pageSize;
-    const items = sorted.slice(start, start + pageSize);
+    const items = sorted.slice(start, start + pageSize).map(item => {
+      const counts = item.parentId ? undefined : countMap.get(item.id);
+      return {
+        ...item,
+        subTaskCount: counts?.total ?? 0,
+        completedSubTaskCount: counts?.done ?? 0
+      };
+    });
 
     return {
       items,
@@ -238,12 +278,14 @@ export class WorkItemsService {
         assigneeId: input.assigneeId ?? null,
         assigneeName,
         creatorId,
-        dueDate: input.dueDate ?? null
+        dueDate: input.dueDate ?? null,
+        parentId: input.parentId ?? null
       },
       include: {
         project: { select: { id: true, name: true, alias: true } },
         creator: { select: { id: true, name: true, username: true } },
-        assignee: { select: { id: true, name: true, username: true } }
+        assignee: { select: { id: true, name: true, username: true } },
+        _count: { select: { subTasks: true } }
       }
     });
   }
@@ -260,7 +302,8 @@ export class WorkItemsService {
         assigneeId: true,
         assigneeName: true,
         description: true,
-        dueDate: true
+        dueDate: true,
+        parentId: true
       }
     });
     if (!target) {
@@ -275,6 +318,21 @@ export class WorkItemsService {
       assigneeName = user.name;
     }
 
+    // Prevent circular reference: cannot set parentId to self or to an existing sub-task
+    if (input.parentId !== undefined && input.parentId !== null) {
+      if (input.parentId === id) {
+        throw new ForbiddenException('Cannot set parent to self');
+      }
+      // Check if the target is already a parent of the proposed parent
+      const existingSubs = await this.prisma.workItem.findMany({
+        where: { parentId: input.parentId },
+        select: { id: true }
+      });
+      if (existingSubs.some(s => s.id === id)) {
+        throw new ForbiddenException('Circular reference detected');
+      }
+    }
+
     const nextData: Prisma.WorkItemUpdateInput = {
       ...(typeof input.title === 'undefined' ? {} : { title: input.title }),
       ...(typeof input.description === 'undefined' ? {} : { description: input.description }),
@@ -283,7 +341,8 @@ export class WorkItemsService {
       ...(typeof input.status === 'undefined' ? {} : { status: input.status as WorkItemStatus }),
       ...(typeof input.assigneeId === 'undefined' ? {} : { assigneeId: input.assigneeId }),
       ...(typeof assigneeName === 'undefined' ? {} : { assigneeName }),
-      ...(typeof input.dueDate === 'undefined' ? {} : { dueDate: input.dueDate })
+      ...(typeof input.dueDate === 'undefined' ? {} : { dueDate: input.dueDate }),
+      ...(typeof input.parentId === 'undefined' ? {} : { parentId: input.parentId })
     };
 
     const histories: Array<{ field: WorkItemHistoryField; beforeValue: string | null; afterValue: string | null }> = [];
@@ -317,6 +376,15 @@ export class WorkItemsService {
         afterValue: input.description ?? null
       });
     }
+    // Track parentId changes
+    const nextParentId = typeof input.parentId === 'undefined' ? target.parentId : input.parentId;
+    if (typeof input.parentId !== 'undefined' && input.parentId !== target.parentId) {
+      histories.push({
+        field: WorkItemHistoryField.parentId,
+        beforeValue: target.parentId == null ? null : String(target.parentId),
+        afterValue: input.parentId == null ? null : String(input.parentId)
+      });
+    }
 
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.workItem.update({
@@ -325,7 +393,8 @@ export class WorkItemsService {
         include: {
           project: { select: { id: true, name: true, alias: true } },
           creator: { select: { id: true, name: true, username: true } },
-          assignee: { select: { id: true, name: true, username: true } }
+          assignee: { select: { id: true, name: true, username: true } },
+          _count: { select: { subTasks: true } }
         }
       });
 
@@ -354,6 +423,14 @@ export class WorkItemsService {
       throw new NotFoundException('Work item not found');
     }
     await this.assertWorkItemWriteAccess(actor, target);
+
+    // Check for sub-tasks
+    const subTaskCount = await this.prisma.workItem.count({
+      where: { parentId: id }
+    });
+    if (subTaskCount > 0) {
+      throw new ForbiddenException(`Cannot delete: this item has ${subTaskCount} sub-task(s). Please delete or reassign them first.`);
+    }
 
     await this.prisma.$transaction(async (tx) => {
       await tx.workItemHistory.deleteMany({ where: { workItemId: id } });

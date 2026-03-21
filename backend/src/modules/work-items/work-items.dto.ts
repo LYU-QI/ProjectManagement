@@ -32,6 +32,10 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   dueDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  parentId?: number;
 }
 
 export class UpdateWorkItemDto {
@@ -67,6 +71,10 @@ export class UpdateWorkItemDto {
   @IsOptional()
   @IsString()
   dueDate?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  parentId?: number | null;
 }
 
 export class ListWorkItemsQueryDto {
@@ -101,6 +109,14 @@ export class ListWorkItemsQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsNumber()
+  parentId?: number;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  hasParent?: 'true' | 'false';
 
   @IsOptional()
   @IsNumber()

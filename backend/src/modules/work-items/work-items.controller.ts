@@ -17,6 +17,8 @@ export class WorkItemsController {
     @Query('assigneeId') assigneeId: string | undefined,
     @Query('assigneeName') assigneeName: string | undefined,
     @Query('search') search: string | undefined,
+    @Query('parentId') parentId: string | undefined,
+    @Query('hasParent') hasParent: 'true' | 'false' | undefined,
     @Query('page') page: string | undefined,
     @Query('pageSize') pageSize: string | undefined,
     @Req() req?: { user?: { sub?: number; role?: string } }
@@ -30,6 +32,8 @@ export class WorkItemsController {
       assigneeId: assigneeId ? Number(assigneeId) : undefined,
       assigneeName,
       search,
+      parentId: parentId ? Number(parentId) : undefined,
+      hasParent,
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined
     });
