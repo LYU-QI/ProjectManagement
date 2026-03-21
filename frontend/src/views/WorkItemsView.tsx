@@ -142,13 +142,6 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
     setLoading(true);
     setError('');
     setSelectedIds(new Set());
-    setExpandedIds((prev) => {
-      const next = new Set<number>();
-      for (const id of prev) {
-        if (childrenMap.get(id)?.length) next.add(id);
-      }
-      return next;
-    });
     try {
       const res = await listWorkItems({
         projectId: selectedProjectId ?? undefined,
@@ -159,37 +152,10 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         assigneeName: assigneeNameFilter || undefined,
         search: search || undefined,
         page: 1,
-        pageSize: 200,
-        hasParent: showSubtasks ? undefined : 'false'
+        pageSize: 200
       });
-      // When showing subtasks, also load all subtasks (hasParent=true)
-      let allItems = res.items || [];
-      if (showSubtasks) {
-        try {
-          const subRes = await listWorkItems({
-            projectId: selectedProjectId ?? undefined,
-            scope,
-            status,
-            type: type || undefined,
-            priority: priority || undefined,
-            assigneeName: assigneeNameFilter || undefined,
-            search: search || undefined,
-            page: 1,
-            pageSize: 200,
-            hasParent: 'true'
-          });
-          // Merge, deduplicate
-          const seen = new Set(allItems.map((i) => i.id));
-          for (const s of subRes.items || []) {
-            if (!seen.has(s.id)) {
-              allItems = [...allItems, s];
-              seen.add(s.id);
-            }
-          }
-        } catch { /* ignore sub-load errors */ }
-      }
-      setRawItems(allItems);
-      setTotal(allItems.length);
+      setRawItems(res.items || []);
+      setTotal(res.items?.length || 0);
       if (page !== nextPage) {
         setPage(nextPage);
       }
