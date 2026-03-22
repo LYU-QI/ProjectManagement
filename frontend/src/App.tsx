@@ -358,7 +358,7 @@ function App() {
         logout();
         setError('登录已失效，请重新登录后再试。');
       } else if (err instanceof Error && err.message === 'FORBIDDEN') {
-        setError('当前账号没有创建项目权限，请使用 pm/lead 账号。');
+        setError('当前账号没有创建项目权限，请使用 pm/成员 账号。');
       } else {
         const detail = err instanceof Error ? err.message : 'unknown';
         setError(`新增项目失败，请检查输入或后端服务状态。（${detail}）`);
@@ -996,8 +996,9 @@ function App() {
     return projects.find((item) => item.id === selectedProjectId)?.alias?.trim() ?? '';
   }, [projects, selectedProjectId]);
   const userRole = String(user?.role || '');
-  const canWrite = ['super_admin', 'project_director', 'project_manager', 'lead', 'pm'].includes(userRole);
-  const canManageAdmin = ['super_admin', 'project_director', 'lead'].includes(userRole);
+  const canManageUsers = ['super_admin', 'project_manager'].includes(userRole);
+  const canWrite = ['super_admin', 'project_manager', 'pm'].includes(userRole);
+  const canManageAdmin = ['super_admin', 'project_manager', 'pm'].includes(userRole);
   const canAccessAdminPlatform = canManageAdmin;
 
   useEffect(() => {
@@ -1023,10 +1024,10 @@ function App() {
   }, [canManageAdmin, view]);
 
   useEffect(() => {
-    if (view === 'audit' && canWrite) {
+    if (view === 'audit' && canManageUsers) {
       void loadAuditLogs();
     }
-  }, [view, selectedProjectId, canWrite]);
+  }, [view, selectedProjectId, canManageUsers]);
 
   const [feishuRecords, setFeishuRecords] = useState<FeishuRecord[]>([]);
   const [feishuLoading, setFeishuLoading] = useState(false);
@@ -2513,7 +2514,7 @@ function App() {
           />
         )}
 
-        {view === 'audit' && canWrite && (
+        {view === 'audit' && canManageUsers && (
           <AuditView
             auditLogs={auditLogs}
             chatbotAuditLogs={chatbotAuditLogs}
@@ -2521,7 +2522,7 @@ function App() {
           />
         )}
 
-        {view === 'settings' && canWrite && (
+        {view === 'settings' && canManageUsers && (
           <SettingsView onError={setError} onMessage={setMessage} theme={theme} onThemeChange={setTheme} />
         )}
 
@@ -2529,7 +2530,8 @@ function App() {
           <ProjectAccessView
             users={users}
             projects={projects}
-            canManage={canManageAdmin}
+            canManageUsers={canManageUsers}
+            canManageProjectMembership={canManageAdmin}
             onError={setError}
             onMessage={setMessage}
             onReloadUsers={async () => {

@@ -45,13 +45,13 @@ export class CostsController {
     return this.costsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(@Body() body: CreateCostDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.costsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -61,7 +61,7 @@ export class CostsController {
     return this.costsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.costsService.remove(req?.user, id);

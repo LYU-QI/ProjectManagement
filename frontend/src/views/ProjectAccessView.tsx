@@ -7,15 +7,16 @@ import ThemedSelect from '../components/ui/ThemedSelect';
 type Props = {
   users: UserItem[];
   projects: ProjectItem[];
-  canManage: boolean;
+  canManageUsers: boolean;
+  canManageProjectMembership: boolean;
   onError: (msg: string) => void;
   onMessage: (msg: string) => void;
   onReloadUsers: () => Promise<void>;
 };
 
-const ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_director', 'project_manager', 'pm', 'lead', 'viewer'];
+const USER_ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_manager', 'pm', 'member', 'viewer'];
 
-export default function ProjectAccessView({ users, projects, canManage, onError, onMessage, onReloadUsers }: Props) {
+export default function ProjectAccessView({ users, projects, canManageUsers, canManageProjectMembership, onError, onMessage, onReloadUsers }: Props) {
   const [rows, setRows] = useState<ProjectMembershipItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
@@ -23,7 +24,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
     username: '',
     name: '',
     password: '',
-    role: 'project_manager' as UserItem['role']
+    role: 'member' as UserItem['role']
   });
   const [form, setForm] = useState({
     userId: '',
@@ -80,7 +81,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
   };
 
   const onCreateUser = async () => {
-    if (!canManage) return;
+    if (!canManageUsers) return;
     if (!newUserForm.username.trim() || !newUserForm.name.trim() || !newUserForm.password.trim()) {
       onError('请填写账号、姓名和密码');
       return;
@@ -101,7 +102,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
         username: '',
         name: '',
         password: '',
-        role: 'project_manager'
+        role: 'member'
       });
       await onReloadUsers();
     } catch (err) {
@@ -110,7 +111,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
   };
 
   const onResetPassword = async (user: UserItem) => {
-    if (!canManage) return;
+    if (!canManageUsers) return;
     const next = window.prompt(`为 ${user.username} 设置新密码（至少 6 位）`, '123456');
     if (!next) return;
     if (next.trim().length < 6) {
@@ -126,7 +127,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
   };
 
   const onUpdateRole = async (user: UserItem, role: UserItem['role']) => {
-    if (!canManage) return;
+    if (!canManageUsers) return;
     if (role === user.role) return;
     try {
       setUpdatingUserId(user.id);
@@ -142,94 +143,96 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
 
   return (
     <div className="project-access-page">
-      <div className="card">
-        <h3>管理后台 · 用户角色</h3>
-        <p className="project-access-hint">
-          仅超级管理员/项目总监可管理用户。项目总监仅可分配 project_manager / pm / viewer。
-        </p>
-        <div className="form project-access-user-form">
-          <input
-            value={newUserForm.username}
-            placeholder="账号（username）"
-            onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
-          />
-          <input
-            value={newUserForm.name}
-            placeholder="姓名"
-            onChange={(e) => setNewUserForm((prev) => ({ ...prev, name: e.target.value }))}
-          />
-          <input
-            type="password"
-            value={newUserForm.password}
-            placeholder="初始密码（>=6位）"
-            onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
-          />
-          <ThemedSelect
-            value={newUserForm.role}
-            onChange={(e) => setNewUserForm((prev) => ({ ...prev, role: e.target.value as UserItem['role'] }))}
-          >
-            {ROLE_OPTIONS.map((item) => (
-              <option key={`new-role-${item}`} value={item}>{item}</option>
-            ))}
-          </ThemedSelect>
-          <button className="btn btn-primary" type="button" disabled={!canManage} onClick={() => void onCreateUser()}>
-            新增用户
-          </button>
-        </div>
-        <table className="table table-wrap project-access-user-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>姓名</th>
-              <th>账号</th>
-              <th>当前角色</th>
-              <th>目标角色</th>
-              <th>密码</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={`user-${u.id}`}>
-                <td>{u.id}</td>
-                <td>{u.name}</td>
-                <td>{u.username}</td>
-                <td>{u.role}</td>
-                <td>
-                  <ThemedSelect
-                    value={u.role}
-                    disabled={!canManage || updatingUserId === u.id}
-                    onChange={(e) => void onUpdateRole(u, e.target.value as UserItem['role'])}
-                  >
-                    {ROLE_OPTIONS.map((item) => (
-                      <option key={item} value={item}>{item}</option>
-                    ))}
-                  </ThemedSelect>
-                </td>
-                <td>
-                  <button
-                    className="btn btn-small"
-                    type="button"
-                    disabled={!canManage || updatingUserId === u.id}
-                    onClick={() => void onResetPassword(u)}
-                  >
-                    重置密码
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {users.length === 0 && (
+      {canManageUsers && (
+        <div className="card">
+          <h3>管理后台 · 用户角色</h3>
+          <p className="project-access-hint">
+            仅超级管理员/项目主管可管理用户。不可分配超级管理员。
+          </p>
+          <div className="form project-access-user-form">
+            <input
+              value={newUserForm.username}
+              placeholder="账号（username）"
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, username: e.target.value }))}
+            />
+            <input
+              value={newUserForm.name}
+              placeholder="姓名"
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, name: e.target.value }))}
+            />
+            <input
+              type="password"
+              value={newUserForm.password}
+              placeholder="初始密码（>=6位）"
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, password: e.target.value }))}
+            />
+            <ThemedSelect
+              value={newUserForm.role}
+              onChange={(e) => setNewUserForm((prev) => ({ ...prev, role: e.target.value as UserItem['role'] }))}
+            >
+              {USER_ROLE_OPTIONS.map((item) => (
+                <option key={`new-role-${item}`} value={item}>{item}</option>
+              ))}
+            </ThemedSelect>
+            <button className="btn btn-primary" type="button" disabled={!canManageUsers} onClick={() => void onCreateUser()}>
+              新增用户
+            </button>
+          </div>
+          <table className="table table-wrap project-access-user-table">
+            <thead>
               <tr>
-                <td colSpan={6} className="project-access-empty-cell">暂无用户数据</td>
+                <th>ID</th>
+                <th>姓名</th>
+                <th>账号</th>
+                <th>当前角色</th>
+                <th>目标角色</th>
+                <th>密码</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={`user-${u.id}`}>
+                  <td>{u.id}</td>
+                  <td>{u.name}</td>
+                  <td>{u.username}</td>
+                  <td>{u.role}</td>
+                  <td>
+                    <ThemedSelect
+                      value={u.role}
+                      disabled={!canManageUsers || updatingUserId === u.id}
+                      onChange={(e) => void onUpdateRole(u, e.target.value as UserItem['role'])}
+                    >
+                      {USER_ROLE_OPTIONS.map((item) => (
+                        <option key={item} value={item}>{item}</option>
+                      ))}
+                    </ThemedSelect>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-small"
+                      type="button"
+                      disabled={!canManageUsers || updatingUserId === u.id}
+                      onClick={() => void onResetPassword(u)}
+                    >
+                      重置密码
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="project-access-empty-cell">暂无用户数据</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="card">
         <h3>管理后台 · 项目成员授权</h3>
         <p className="project-access-hint">
-          用于配置“谁能访问哪个项目”。同一用户可绑定多个项目。
+          用于配置谁能访问哪个项目。项目主管可为所有项目分配成员；项目经理仅可为本人创建的项目分配成员。
         </p>
         <div className="form project-access-form">
           <ThemedSelect value={form.userId} onChange={(e) => setForm((prev) => ({ ...prev, userId: e.target.value }))}>
@@ -246,7 +249,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
             <option value="member">member</option>
             <option value="viewer">viewer</option>
           </ThemedSelect>
-          <button className="btn" type="button" disabled={!canManage} onClick={() => void onSubmit()}>
+          <button className="btn" type="button" disabled={!canManageProjectMembership} onClick={() => void onSubmit()}>
             新增/更新授权
           </button>
         </div>
@@ -279,7 +282,7 @@ export default function ProjectAccessView({ users, projects, canManage, onError,
                 <td>{row.role}</td>
                 <td>{new Date(row.updatedAt).toLocaleString()}</td>
                 <td>
-                  <button className="btn btn-small" disabled={!canManage} onClick={() => void onRemove(row.id)}>
+                  <button className="btn btn-small" disabled={!canManageProjectMembership} onClick={() => void onRemove(row.id)}>
                     删除
                   </button>
                 </td>

@@ -18,13 +18,13 @@ class CreateProjectMembershipDto {
 export class ProjectMembershipsController {
   constructor(private readonly projectMembershipsService: ProjectMembershipsService) { }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager', 'pm', 'member')
   @Get()
   list(@Req() req: { user?: { sub?: number; role?: string } }) {
     return this.projectMembershipsService.list(req.user);
   }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager', 'pm')
   @Post()
   create(
     @Body() body: CreateProjectMembershipDto,
@@ -33,7 +33,7 @@ export class ProjectMembershipsController {
     return this.projectMembershipsService.create(req.user, body);
   }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager', 'pm')
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
@@ -42,4 +42,3 @@ export class ProjectMembershipsController {
     return this.projectMembershipsService.remove(req.user, id);
   }
 }
-

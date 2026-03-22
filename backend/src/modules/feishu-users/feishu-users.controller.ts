@@ -15,19 +15,19 @@ export class FeishuUsersController {
     }
 
     @Post()
-    @Roles('pm', 'lead')
+    @Roles('project_manager', 'member', 'pm')
     async create(@Body() body: { name: string; openId: string }) {
         return this.feishuUsersService.create(body);
     }
 
     @Put(':id')
-    @Roles('pm', 'lead')
+    @Roles('project_manager', 'member', 'pm')
     async update(@Param('id', ParseIntPipe) id: number, @Body() body: { name?: string; openId?: string }) {
         return this.feishuUsersService.update(id, body);
     }
 
     @Delete(':id')
-    @Roles('pm', 'lead')
+    @Roles('project_manager', 'member', 'pm')
     async remove(@Param('id', ParseIntPipe) id: number) {
         return this.feishuUsersService.remove(id);
     }

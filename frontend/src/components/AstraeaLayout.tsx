@@ -62,7 +62,7 @@ interface AstraeaLayoutProps {
   onThemeChange: (theme: ThemeMode) => void;
 }
 
-const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; adminOnly?: boolean }> = [
+const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; allowedRoles?: string[] }> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
@@ -74,10 +74,10 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'ai', label: 'AI 分析', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
-  { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', adminOnly: true },
-  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin' },
-  { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', adminOnly: true },
-  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin' }
+  { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
+  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
+  { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'project_manager', 'pm'] },
+  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedRoles: ['super_admin'] }
 ];
 
 const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
@@ -98,7 +98,7 @@ export default function AstraeaLayout({
   const role = String(user?.role || '');
   const displayName = String(user?.username || user?.name || '未知用户');
   const displayRole = role || 'unknown';
-  const canManageAdmin = canAccessAdmin || ['super_admin', 'project_director', 'lead'].includes(role);
+  const canManageAdmin = canAccessAdmin || ['super_admin', 'member', 'pm'].includes(role);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [hiddenNavItems, setHiddenNavItems] = useState<ViewKey[]>(() => {
     try {
@@ -118,8 +118,14 @@ export default function AstraeaLayout({
   }, [hiddenNavItems]);
 
   const configurableNavItems = useMemo(
-    () => navItems.filter((item) => item.platform === platform && (item.adminOnly ? canManageAdmin : true)),
-    [platform, canManageAdmin]
+    () => {
+      return navItems.filter((item) => {
+        if (item.platform !== platform) return false;
+        if (item.allowedRoles) return item.allowedRoles.includes(role);
+        return true;
+      });
+    },
+    [platform, role]
   );
   const visibleNavItems = configurableNavItems.filter((item) => !hiddenNavItems.includes(item.id));
 

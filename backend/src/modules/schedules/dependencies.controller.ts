@@ -32,13 +32,13 @@ export class ScheduleDependenciesController {
     return this.schedulesService.listDependencies(req?.user, projectName);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(@Body() body: CreateDependencyDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.createDependency(req?.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.removeDependency(req?.user, id);

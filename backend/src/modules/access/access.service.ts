@@ -12,14 +12,12 @@ export class AccessService {
 
   normalizeRole(role?: string): string {
     if (!role) return '';
-    if (role === 'pm') return 'project_manager';
-    if (role === 'lead') return 'project_director';
     return role;
   }
 
   isGlobalRole(role?: string): boolean {
     const normalized = this.normalizeRole(role);
-    return normalized === 'super_admin';
+    return normalized === 'super_admin' || normalized === 'project_manager';
   }
 
   async getAccessibleProjectIds(actor?: AuthActor): Promise<number[] | null> {

@@ -43,7 +43,7 @@ export class WorkItemsController {
     return this.workItemsService.getHistory(req?.user, id);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(
     @Body() body: CreateWorkItemDto,
@@ -52,7 +52,7 @@ export class WorkItemsController {
     return this.workItemsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -62,7 +62,7 @@ export class WorkItemsController {
     return this.workItemsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,

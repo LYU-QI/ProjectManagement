@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
-type Role = 'super_admin' | 'project_director' | 'project_manager' | 'pm' | 'lead' | 'viewer';
+type Role = 'super_admin' | 'project_manager' | 'member' | 'pm' | 'viewer';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -11,24 +11,17 @@ export class RolesGuard implements CanActivate {
   private expandRoles(role: Role): Set<Role> {
     const roles = new Set<Role>([role]);
     if (role === 'super_admin') {
-      roles.add('project_director');
       roles.add('project_manager');
-      roles.add('lead');
-      roles.add('pm');
-      roles.add('viewer');
-    }
-    if (role === 'project_director') {
-      roles.add('lead');
-      roles.add('project_manager');
-      roles.add('pm');
-      roles.add('viewer');
-    }
-    if (role === 'lead') {
-      roles.add('project_manager');
+      roles.add('member');
       roles.add('pm');
       roles.add('viewer');
     }
     if (role === 'project_manager') {
+      roles.add('member');
+      roles.add('pm');
+      roles.add('viewer');
+    }
+    if (role === 'member') {
       roles.add('pm');
       roles.add('viewer');
     }

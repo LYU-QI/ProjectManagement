@@ -22,29 +22,26 @@ export class UsersService {
     });
   }
 
-  private resolveActorRole(actor: AuthActor | undefined): 'super_admin' | 'project_director' {
+  private assertCanManageUsers(actor: AuthActor | undefined) {
     const actorId = Number(actor?.sub);
     if (!actorId) throw new ForbiddenException('Only authenticated users can manage users');
     const actorRole = this.accessService.normalizeRole(actor?.role);
-    if (!['super_admin', 'project_director'].includes(actorRole)) {
+    if (!['super_admin', 'project_manager'].includes(actorRole)) {
       throw new ForbiddenException('No permission to manage users');
     }
-    return actorRole as 'super_admin' | 'project_director';
   }
 
-  private assertAssignableRole(actorRole: 'super_admin' | 'project_director', role: UserRole) {
+  private assertCanAssignRole(actorRole: string, role: UserRole) {
     if (actorRole === 'super_admin') return;
-    const allowedNext: UserRole[] = ['project_manager', 'pm', 'viewer'];
-    if (!allowedNext.includes(role)) {
-      throw new ForbiddenException('Project director can only assign project_manager/pm/viewer');
+    if (role === 'super_admin') {
+      throw new ForbiddenException('Only super_admin can assign super_admin role');
     }
   }
 
-  private assertMutableTarget(actorRole: 'super_admin' | 'project_director', targetRole: UserRole) {
+  private assertCanModifyTarget(actorRole: string, targetRole: UserRole) {
     if (actorRole === 'super_admin') return;
-    const blockedCurrent: UserRole[] = ['super_admin', 'project_director', 'lead'];
-    if (blockedCurrent.includes(targetRole)) {
-      throw new ForbiddenException('Project director cannot modify this user');
+    if (targetRole === 'super_admin') {
+      throw new ForbiddenException('Only super_admin can modify super_admin users');
     }
   }
 
@@ -52,8 +49,9 @@ export class UsersService {
     actor: AuthActor | undefined,
     input: { username: string; name: string; password: string; role: UserRole }
   ) {
-    const actorRole = this.resolveActorRole(actor);
-    this.assertAssignableRole(actorRole, input.role);
+    const actorRole = this.accessService.normalizeRole(actor?.role);
+    this.assertCanManageUsers(actor);
+    this.assertCanAssignRole(actorRole, input.role);
 
     const username = input.username.trim().toLowerCase();
     const name = input.name.trim();
@@ -81,15 +79,16 @@ export class UsersService {
   }
 
   async updateRole(actor: AuthActor | undefined, id: number, role: UserRole) {
-    const actorRole = this.resolveActorRole(actor);
-    this.assertAssignableRole(actorRole, role);
+    const actorRole = this.accessService.normalizeRole(actor?.role);
+    this.assertCanManageUsers(actor);
+    this.assertCanAssignRole(actorRole, role);
 
     const target = await this.prisma.user.findUnique({
       where: { id },
       select: { id: true, role: true, username: true, name: true }
     });
     if (!target) throw new NotFoundException('User not found');
-    this.assertMutableTarget(actorRole, target.role);
+    this.assertCanModifyTarget(actorRole, target.role);
 
     return this.prisma.user.update({
       where: { id },
@@ -104,7 +103,8 @@ export class UsersService {
   }
 
   async resetPassword(actor: AuthActor | undefined, id: number, password: string) {
-    const actorRole = this.resolveActorRole(actor);
+    const actorRole = this.accessService.normalizeRole(actor?.role);
+    this.assertCanManageUsers(actor);
     const nextPassword = password.trim();
     if (!nextPassword) throw new BadRequestException('password is required');
 
@@ -113,7 +113,7 @@ export class UsersService {
       select: { id: true, role: true, username: true, name: true }
     });
     if (!target) throw new NotFoundException('User not found');
-    this.assertMutableTarget(actorRole, target.role);
+    this.assertCanModifyTarget(actorRole, target.role);
 
     await this.prisma.user.update({
       where: { id },

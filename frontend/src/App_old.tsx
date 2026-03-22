@@ -746,7 +746,7 @@ function App() {
     if (!selectedProjectId) return '未选择';
     return projects.find((item) => item.id === selectedProjectId)?.name ?? `#${selectedProjectId}`;
   }, [projects, selectedProjectId]);
-  const canWrite = user?.role === 'pm' || user?.role === 'lead';
+  const canWrite = user?.role === 'pm' || user?.role === 'member';
 
   if (!token) {
     return (

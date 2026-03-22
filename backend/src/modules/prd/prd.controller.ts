@@ -25,13 +25,13 @@ export class PrdController {
   }
 
   @Post('documents')
-  @Roles('pm', 'lead')
+  @Roles('project_manager', 'member', 'pm')
   async createDocument(@Body() body: CreatePrdDocumentDto) {
     return this.prdService.createDocument(Number(body.projectId), body.title);
   }
 
   @Delete('documents/:documentId')
-  @Roles('pm', 'lead')
+  @Roles('project_manager', 'member', 'pm')
   async deleteDocument(@Param('documentId', ParseIntPipe) documentId: number) {
     return this.prdService.deleteDocument(documentId);
   }
@@ -42,7 +42,7 @@ export class PrdController {
   }
 
   @Post('documents/:documentId/versions')
-  @Roles('pm', 'lead')
+  @Roles('project_manager', 'member', 'pm')
   @UseInterceptors(FileInterceptor('file'))
   async uploadVersion(
     @Param('documentId', ParseIntPipe) documentId: number,
@@ -53,7 +53,7 @@ export class PrdController {
   }
 
   @Delete('documents/:documentId/versions/:versionId')
-  @Roles('pm', 'lead')
+  @Roles('project_manager', 'member', 'pm')
   async deleteVersion(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Param('versionId', ParseIntPipe) versionId: number

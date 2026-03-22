@@ -78,13 +78,13 @@ export class SchedulesController {
     return this.schedulesService.getProjectSchedule(req.user, id);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post('tasks')
   createTask(@Body() body: CreateTaskDto, @Req() req: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.createTask(req.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch('tasks/:id')
   updateTask(
     @Param('id', ParseIntPipe) id: number,
@@ -94,19 +94,19 @@ export class SchedulesController {
     return this.schedulesService.updateTask(req.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete('tasks/:id')
   removeTask(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.removeTask(req.user, id);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post('milestones')
   createMilestone(@Body() body: CreateMilestoneDto, @Req() req: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.createMilestone(req.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch('milestones/:id')
   updateMilestone(
     @Param('id', ParseIntPipe) id: number,
@@ -116,7 +116,7 @@ export class SchedulesController {
     return this.schedulesService.updateMilestone(req.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete('milestones/:id')
   removeMilestone(@Param('id', ParseIntPipe) id: number, @Req() req: { user?: { sub?: number; role?: string } }) {
     return this.schedulesService.removeMilestone(req.user, id);

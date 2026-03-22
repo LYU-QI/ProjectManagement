@@ -6,11 +6,11 @@ import { Roles } from '../auth/roles.decorator';
 
 /**
  * 系统配置控制器
- * 仅 pm 和 lead 角色可访问
+ * 仅 super_admin 可访问
  */
 @Controller('api/v1/config')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('pm', 'lead')
+@Roles('super_admin')
 export class ConfigController {
     constructor(private readonly configService: ConfigService) { }
 

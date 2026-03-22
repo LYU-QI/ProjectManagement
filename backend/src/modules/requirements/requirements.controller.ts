@@ -74,13 +74,13 @@ export class RequirementsController {
     return this.requirementsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(@Body() body: CreateRequirementDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.requirementsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post(':id/review')
   review(
     @Param('id', ParseIntPipe) id: number,
@@ -90,7 +90,7 @@ export class RequirementsController {
     return this.requirementsService.review(req?.user, id, body.reviewer, body.decision, body.comment);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post(':id/change')
   change(
     @Param('id', ParseIntPipe) id: number,
@@ -105,7 +105,7 @@ export class RequirementsController {
     return this.requirementsService.listChanges(req?.user, id);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -115,7 +115,7 @@ export class RequirementsController {
     return this.requirementsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.requirementsService.remove(req?.user, id);

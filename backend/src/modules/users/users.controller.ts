@@ -4,8 +4,8 @@ import { Roles } from '../auth/roles.decorator';
 import { UsersService } from './users.service';
 
 class UpdateUserRoleDto {
-  @IsIn(['super_admin', 'project_director', 'project_manager', 'pm', 'lead', 'viewer'])
-  role!: 'super_admin' | 'project_director' | 'project_manager' | 'pm' | 'lead' | 'viewer';
+  @IsIn(['super_admin', 'project_manager', 'pm', 'member', 'viewer'])
+  role!: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
 }
 
 class CreateUserDto {
@@ -19,8 +19,8 @@ class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @IsIn(['super_admin', 'project_director', 'project_manager', 'pm', 'lead', 'viewer'])
-  role!: 'super_admin' | 'project_director' | 'project_manager' | 'pm' | 'lead' | 'viewer';
+  @IsIn(['super_admin', 'project_manager', 'pm', 'member', 'viewer'])
+  role!: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
 }
 
 class ResetPasswordDto {
@@ -33,13 +33,13 @@ class ResetPasswordDto {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Roles('pm', 'lead', 'viewer', 'project_manager', 'project_director', 'super_admin')
+  @Roles('super_admin', 'project_manager', 'pm', 'member', 'viewer')
   @Get()
   list() {
     return this.usersService.list();
   }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager')
   @Post()
   create(
     @Body() body: CreateUserDto,
@@ -48,7 +48,7 @@ export class UsersController {
     return this.usersService.createUser(req.user, body);
   }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager')
   @Patch(':id/role')
   updateRole(
     @Param('id', ParseIntPipe) id: number,
@@ -58,7 +58,7 @@ export class UsersController {
     return this.usersService.updateRole(req.user, id, body.role);
   }
 
-  @Roles('super_admin', 'project_director', 'lead')
+  @Roles('super_admin', 'project_manager')
   @Patch(':id/password')
   resetPassword(
     @Param('id', ParseIntPipe) id: number,

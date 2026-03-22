@@ -23,7 +23,7 @@ export class RisksController {
   }
 
   @Put('rules')
-  @Roles('pm', 'lead')
+  @Roles('project_manager', 'member', 'pm')
   async updateRule(@Body() body: UpdateRiskRuleDto) {
     return this.risksService.updateRule({
       key: body.key,

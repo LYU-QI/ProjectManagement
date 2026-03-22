@@ -77,13 +77,13 @@ export class WorklogsController {
     return this.worklogsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(@Body() body: CreateWorklogDto, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.worklogsService.create(req?.user, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -93,7 +93,7 @@ export class WorklogsController {
     return this.worklogsService.update(req?.user, id, body);
   }
 
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.worklogsService.remove(req?.user, id);

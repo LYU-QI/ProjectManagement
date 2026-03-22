@@ -203,7 +203,7 @@ export interface NotificationItem {
 export interface UserItem {
   id: number;
   name: string;
-  role: 'super_admin' | 'project_director' | 'project_manager' | 'pm' | 'lead' | 'viewer';
+  role: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
   username: string;
 }
 

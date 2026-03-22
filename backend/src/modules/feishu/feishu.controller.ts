@@ -89,7 +89,7 @@ export class FeishuController {
   }
 
   @Post('records')
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   async createRecord(
     @Body('fields') fields: Record<string, unknown>,
     @Query('projectId') projectId: string | undefined,
@@ -105,7 +105,7 @@ export class FeishuController {
   }
 
   @Put('records/:recordId')
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   async updateRecord(
     @Param('recordId') recordId: string,
     @Body('fields') fields: Record<string, unknown>,
@@ -126,7 +126,7 @@ export class FeishuController {
   }
 
   @Delete('records/:recordId')
-  @Roles('pm', 'lead', 'project_manager', 'project_director', 'super_admin')
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
   async deleteRecord(
     @Param('recordId') recordId: string,
     @Query('projectId') projectId: string | undefined,
