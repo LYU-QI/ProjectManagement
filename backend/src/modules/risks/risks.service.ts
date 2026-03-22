@@ -3,6 +3,7 @@ import { NotificationLevel } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FeishuService } from '../feishu/feishu.service';
+import { getOrgContext } from '../../prisma/org-context';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -21,6 +22,10 @@ export class RisksService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService
   ) { }
+
+  private getOrgId(): string | null {
+    return getOrgContext()?.organizationId ?? null;
+  }
 
   private parseDate(value: unknown): Date | null {
     if (value === null || value === undefined || value === '') return null;
@@ -73,7 +78,8 @@ export class RisksService {
   }
 
   private async getOrCreateRule() {
-    const existing = await this.prisma.riskRule.findUnique({ where: { key: RULE_KEY } });
+    const orgId = this.getOrgId();
+    const existing = await this.prisma.riskRule.findFirst({ where: { key: RULE_KEY, organizationId: orgId } });
     if (existing) return existing;
     return this.prisma.riskRule.create({
       data: {
@@ -84,14 +90,16 @@ export class RisksService {
         progressThreshold: 80,
         includeMilestones: false,
         autoNotify: true,
-        enabled: true
+        enabled: true,
+        organizationId: orgId
       }
     });
   }
 
   private async getOrCreateBlockedRule() {
     const key = 'blocked_tasks';
-    const existing = await this.prisma.riskRule.findUnique({ where: { key } });
+    const orgId = this.getOrgId();
+    const existing = await this.prisma.riskRule.findFirst({ where: { key, organizationId: orgId } });
     if (existing) return existing;
     return this.prisma.riskRule.create({
       data: {
@@ -103,14 +111,16 @@ export class RisksService {
         blockedValue: '是',
         includeMilestones: false,
         autoNotify: true,
-        enabled: true
+        enabled: true,
+        organizationId: orgId
       }
     });
   }
 
   private async getOrCreateOverdueRule() {
     const key = 'overdue_tasks';
-    const existing = await this.prisma.riskRule.findUnique({ where: { key } });
+    const orgId = this.getOrgId();
+    const existing = await this.prisma.riskRule.findFirst({ where: { key, organizationId: orgId } });
     if (existing) return existing;
     return this.prisma.riskRule.create({
       data: {
@@ -121,7 +131,8 @@ export class RisksService {
         progressThreshold: 0,
         includeMilestones: false,
         autoNotify: true,
-        enabled: true
+        enabled: true,
+        organizationId: orgId
       }
     });
   }
@@ -160,8 +171,9 @@ export class RisksService {
     enabled?: boolean;
     blockedValue?: string;
   }) {
+    const orgId = this.getOrgId();
     const existing = input.key
-      ? await this.prisma.riskRule.findUnique({ where: { key: input.key } })
+      ? await this.prisma.riskRule.findFirst({ where: { key: input.key, organizationId: orgId } })
       : await this.getOrCreateRule();
     if (!existing) {
       return this.getOrCreateRule();

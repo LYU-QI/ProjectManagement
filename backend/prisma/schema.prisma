@@ -15,6 +15,19 @@ enum UserRole {
   viewer
 }
 
+enum OrgRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
 enum ProjectRole {
   director
   manager
@@ -111,46 +124,98 @@ enum MilestoneBoardRisk {
   high
 }
 
+model Organization {
+  id         String      @id @default(cuid())
+  slug       String      @unique
+  name       String
+  plan       Plan        @default(FREE)
+  maxMembers Int         @default(25)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  members    OrgMember[]
+  projects   Project[]
+  configs    Config[]
+
+  @@index([slug])
+}
+
+model OrgMember {
+  id             String       @id @default(cuid())
+  userId         Int
+  organizationId String
+  orgRole        OrgRole      @default(member)
+  departmentId   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Config {
+  id             String        @id @default(cuid())
+  organizationId String?
+  key            String
+  value          String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
 model User {
-  id          Int                 @id @default(autoincrement())
-  name        String
-  username    String?             @unique
-  password    String?
-  role        UserRole
-  projects    Project[]           @relation("ProjectOwner")
-  memberships ProjectMembership[]
-  worklogs    Worklog[]
+  id            Int                 @id @default(autoincrement())
+  name          String
+  username      String?             @unique
+  password      String?
+  role          UserRole
+  feishuOpenId  String?
+  feishuUnionId String?
+  defaultOrgId  String?
+  projects      Project[]           @relation("ProjectOwner")
+  memberships   ProjectMembership[]
+  orgMemberships OrgMember[]
+  worklogs      Worklog[]
   createdWorkItems  WorkItem[]        @relation("WorkItemCreator")
   assignedWorkItems WorkItem[]        @relation("WorkItemAssignee")
   workItemHistories WorkItemHistory[] @relation("WorkItemHistoryChangedBy")
 }
 
 model Project {
-  id            Int                 @id @default(autoincrement())
-  name          String
-  alias         String?             @unique
-  ownerId       Int
-  budget        Float
-  startDate     String?
-  endDate       String?
+  id             Int                 @id @default(autoincrement())
+  organizationId String
+  name           String
+  alias          String?             @unique
+  ownerId        Int
+  budget         Float
+  startDate      String?
+  endDate        String?
   feishuChatIds  String?
   feishuAppToken String?
   feishuTableId  String?
   owner          User                @relation("ProjectOwner", fields: [ownerId], references: [id])
-  memberships   ProjectMembership[]
-  requirements  Requirement[]
-  costs         CostEntry[]
-  milestones    Milestone[]
-  tasks         Task[]
-  worklogs      Worklog[]
-  notifications Notification[]
-  prdDocuments  PrdDocument[]
-  pmJobConfigs  PmAssistantProjectJobConfig[]
-  pmPrompts     PmAssistantProjectPrompt[]
-  pmSchedules   PmAssistantProjectSchedule[]
-  pmLogs        PmAssistantLog[]
-  workItems     WorkItem[]
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  memberships    ProjectMembership[]
+  requirements   Requirement[]
+  costs          CostEntry[]
+  milestones     Milestone[]
+  tasks          Task[]
+  worklogs       Worklog[]
+  notifications  Notification[]
+  prdDocuments   PrdDocument[]
+  pmJobConfigs   PmAssistantProjectJobConfig[]
+  pmPrompts      PmAssistantProjectPrompt[]
+  pmSchedules    PmAssistantProjectSchedule[]
+  pmLogs         PmAssistantLog[]
+  workItems      WorkItem[]
   milestoneBoardItems MilestoneBoardItem[]
+
+  @@index([organizationId])
 }
 
 model WorkItem {
@@ -199,17 +264,19 @@ model WorkItemHistory {
 }
 
 model ProjectMembership {
-  id        Int         @id @default(autoincrement())
-  userId    Int
-  projectId Int
-  role      ProjectRole @default(member)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  user      User        @relation(fields: [userId], references: [id])
-  project   Project     @relation(fields: [projectId], references: [id])
+  id             Int         @id @default(autoincrement())
+  userId         Int
+  projectId      Int
+  organizationId String?
+  role           ProjectRole @default(member)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User        @relation(fields: [userId], references: [id])
+  project        Project     @relation(fields: [projectId], references: [id])
 
   @@unique([userId, projectId])
   @@index([projectId])
+  @@index([organizationId])
 }
 
 model Requirement {
@@ -345,6 +412,7 @@ model Task {
 
 model FeishuDependency {
   id                Int            @id @default(autoincrement())
+  organizationId    String?
   projectName       String
   taskRecordId      String
   taskId            String?
@@ -355,6 +423,7 @@ model FeishuDependency {
   updatedAt         DateTime       @updatedAt
 
   @@unique([taskRecordId, dependsOnRecordId, type])
+  @@index([organizationId])
 }
 
 model Worklog {
@@ -445,7 +514,8 @@ model Notification {
 
 model RiskRule {
   id                Int           @id @default(autoincrement())
-  key               String        @unique
+  organizationId    String?
+  key               String
   type              RiskRuleType  @default(deadline_progress)
   name              String
   enabled           Boolean       @default(true)
@@ -458,6 +528,9 @@ model RiskRule {
   updatedAt         DateTime      @updatedAt
   alerts            RiskAlert[]
   logs              RiskRuleLog[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
 }
 
 model RiskRuleLog {
@@ -486,21 +559,28 @@ model RiskAlert {
 }
 
 model AuditLog {
-  id          Int      @id @default(autoincrement())
-  userId      Int?
-  userName    String?
-  userRole    String?
-  method      String
-  path        String
-  projectId   Int?
-  requestBody Json?
-  createdAt   DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  userId         Int?
+  userName       String?
+  userRole       String?
+  method         String
+  path           String
+  projectId      Int?
+  organizationId String?
+  requestBody    Json?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
 }
 
 model FeishuUser {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  openId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  organizationId String?
+  name           String
+  openId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }

@@ -13,9 +13,13 @@ import {
   Users,
   CalendarDays,
   ShieldCheck,
-  Flag
+  Flag,
+  Building2,
+  ChevronDown,
+  LogOut
 } from 'lucide-react';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
+import { useOrgStore } from '../store/useOrgStore';
 
 export type ViewKey =
   | 'dashboard'
@@ -34,7 +38,9 @@ export type ViewKey =
   | 'global'
   | 'settings'
   | 'project-access'
-  | 'milestone-board';
+  | 'milestone-board'
+  | 'org-settings'
+  | 'org-members';
 export type PlatformMode = 'workspace' | 'admin';
 export type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 
@@ -75,6 +81,8 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
   { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
+  { id: 'org-members', label: '成员管理', icon: <Users size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'admin'] },
+  { id: 'org-settings', label: '组织设置', icon: <Settings size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'admin'] },
   { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
   { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'project_manager', 'pm'] },
   { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedRoles: ['super_admin'] }
@@ -100,6 +108,8 @@ export default function AstraeaLayout({
   const displayRole = role || 'unknown';
   const canManageAdmin = canAccessAdmin || ['super_admin', 'member', 'pm'].includes(role);
   const [showUserSettings, setShowUserSettings] = useState(false);
+  const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
+  const { activeOrgId, orgList, setActiveOrg } = useOrgStore();
   const [hiddenNavItems, setHiddenNavItems] = useState<ViewKey[]>(() => {
     try {
       const raw = window.localStorage.getItem(HIDDEN_NAV_STORAGE_KEY);
@@ -177,6 +187,68 @@ export default function AstraeaLayout({
             管理平台
           </button>
         </div>
+
+        {orgList.length > 0 && (
+          <div className="org-switcher" style={{ padding: '0.5rem 1rem', position: 'relative' }}>
+            <button
+              className="btn org-switcher-btn"
+              type="button"
+              onClick={() => setShowOrgSwitcher(v => !v)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}
+            >
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Building2 size={14} />
+                <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>组织</span>
+              </span>
+              <span style={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
+                {orgList.find(o => o.id === activeOrgId)?.name ?? '未选择'}
+              </span>
+              <ChevronDown size={12} style={{ opacity: 0.6 }} />
+            </button>
+            <AnimatePresence>
+              {showOrgSwitcher && (
+                <motion.div
+                  className="org-switcher-dropdown"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  style={{
+                    position: 'absolute', top: '100%', left: '1rem', right: '1rem',
+                    background: 'var(--color-bg-secondary)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '0.5rem',
+                    zIndex: 100,
+                    overflow: 'hidden',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
+                  }}
+                  onMouseLeave={() => setShowOrgSwitcher(false)}
+                >
+                  {orgList.map(org => (
+                    <button
+                      key={org.id}
+                      className={`org-switcher-item ${org.id === activeOrgId ? 'active' : ''}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveOrg(org.id);
+                        setShowOrgSwitcher(false);
+                      }}
+                      style={{
+                        width: '100%', padding: '0.5rem 0.75rem',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        color: org.id === activeOrgId ? 'var(--color-accent)' : 'var(--color-text)'
+                      }}
+                    >
+                      <span>{org.name}</span>
+                      <span style={{ fontSize: '0.65rem', opacity: 0.6, textTransform: 'capitalize' }}>{org.orgRole}</span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         <div className="astraea-nav-list">
           {visibleNavItems.map((item) => {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
+import { PrismaService } from '../../database/prisma.service';
 
 /**
  * 配置项的描述信息
@@ -61,6 +62,58 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
 
 @Injectable()
 export class ConfigService {
+    private cache = new Map<string, { value: string | null; expiresAt: number }>();
+
+    constructor(private readonly prisma: PrismaService) {}
+
+    /**
+     * 获取单个配置值（租户感知，支持缓存）
+     * 优先级：租户 DB 配置 > 全局 DB 配置 > .env
+     * 缓存 TTL: 5 分钟
+     */
+    async get(key: string, organizationId?: string): Promise<string | null> {
+        const cacheKey = `config:${organizationId ?? '__global__'}:${key}`;
+        const now = Date.now();
+
+        // Check cache
+        const cached = this.cache.get(cacheKey);
+        if (cached && cached.expiresAt > now) {
+            return cached.value;
+        }
+
+        // 1. Tenant-specific DB config
+        if (organizationId) {
+            const dbValue = await this.prisma.config.findFirst({
+                where: { organizationId, key }
+            });
+            if (dbValue) {
+                this.cache.set(cacheKey, { value: dbValue.value, expiresAt: now + 5 * 60 * 1000 });
+                return dbValue.value;
+            }
+        }
+
+        // 2. Global DB config (organizationId = null)
+        const globalValue = await this.prisma.config.findFirst({
+            where: { organizationId: null, key }
+        });
+        if (globalValue) {
+            this.cache.set(cacheKey, { value: globalValue.value, expiresAt: now + 5 * 60 * 1000 });
+            return globalValue.value;
+        }
+
+        // 3. Fallback to .env
+        const envValue = this.getRawValue(key);
+        this.cache.set(cacheKey, { value: envValue, expiresAt: now + 5 * 60 * 1000 });
+        return envValue;
+    }
+
+    /**
+     * 清空缓存（配置更新后调用）
+     */
+    clearCache(): void {
+        this.cache.clear();
+    }
+
     /** .env 文件路径 */
     private readonly envPath = this.resolveEnvPath();
 

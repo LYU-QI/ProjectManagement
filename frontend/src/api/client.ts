@@ -15,6 +15,10 @@ function buildHeaders(withJson = true): HeadersInit {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
+  const activeOrgId = localStorage.getItem('activeOrgId');
+  if (activeOrgId) {
+    headers['X-Org-Id'] = activeOrgId;
+  }
   return headers;
 }
 

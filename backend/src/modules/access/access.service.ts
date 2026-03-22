@@ -4,6 +4,8 @@ import { PrismaService } from '../../database/prisma.service';
 export type AuthActor = {
   sub?: number;
   role?: string;
+  organizationId?: string | null;
+  orgRole?: string | null;
 };
 
 @Injectable()

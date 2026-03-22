@@ -62,7 +62,8 @@ export class ProjectsService {
       data: {
         ...input,
         alias,
-        ownerId
+        ownerId,
+        organizationId: actor?.organizationId ?? 'default'
       }
     });
   }

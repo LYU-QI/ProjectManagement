@@ -1,11 +1,8 @@
 import { ValidationPipe } from '@nestjs/common';
-import { NestFactory, Reflector } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
+import { NestFactory } from '@nestjs/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AppModule } from './app.module';
-import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
-import { RolesGuard } from './modules/auth/roles.guard';
 
 function loadEnv() {
   const candidates = [
@@ -47,13 +44,11 @@ async function bootstrap() {
   app.enableCors({
     origin: true, // 允许所有来源
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'X-Requested-With', 'X-Org-Id'],
     credentials: true,
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-  const reflector = app.get(Reflector);
-  app.useGlobalGuards(new JwtAuthGuard(reflector, app.get(JwtService)), new RolesGuard(reflector));
 
   const port = process.env.PORT || 3000;
   const host = process.env.HOST || '0.0.0.0';

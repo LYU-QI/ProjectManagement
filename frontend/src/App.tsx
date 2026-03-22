@@ -1,6 +1,8 @@
 ﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
+import { listOrganizations } from './api/organizations';
+import { useOrgStore } from './store/useOrgStore';
 import WorkItemsView from './views/WorkItemsView';
 import {
   createFeishuRecord,
@@ -42,6 +44,8 @@ import NotificationsView from './views/NotificationsView';
 import AuditView from './views/AuditView';
 import AiView from './views/AiView';
 import SettingsView from './views/SettingsView';
+import OrgSettingsView from './views/OrgSettingsView';
+import OrgMembersView from './views/OrgMembersView';
 import FeishuUsersView from './views/FeishuUsersView';
 import PmAssistantView from './views/PmAssistantView';
 import ProjectAccessView from './views/ProjectAccessView';
@@ -49,12 +53,12 @@ import MilestoneBoardView from './views/MilestoneBoardView';
 import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
 import ThemedSelect from './components/ui/ThemedSelect';
 
-type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board';
+type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board' | 'org-settings' | 'org-members';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
 const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
-const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users'];
+const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -238,6 +242,7 @@ function App() {
   function logout() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    useOrgStore.getState().clear();
     setToken(null);
     setUser(null);
     setOverview(null);
@@ -264,9 +269,14 @@ function App() {
     const username = String(form.get('username') || '');
     const password = String(form.get('password') || '');
     try {
-      const res = await apiPost<{ token: string; user: AuthUser }>('/auth/login', { username, password });
+      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/login', { username, password });
       localStorage.setItem(TOKEN_KEY, res.token);
       localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      const { setActiveOrg, setOrgList } = useOrgStore.getState();
+      if (res.orgList?.length) {
+        setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
+        setActiveOrg(res.organizationId);
+      }
       setToken(res.token);
       setUser(res.user);
       formEl?.reset();
@@ -278,6 +288,14 @@ function App() {
   useEffect(() => {
     if (token) {
       void refreshAll();
+      void listOrganizations().then(orgs => {
+        const { setOrgList, setActiveOrg } = useOrgStore.getState();
+        if (orgs?.length) {
+          setOrgList(orgs.map(o => ({ id: o.id, name: o.name, orgRole: o.orgRole })));
+          const stored = localStorage.getItem('activeOrgId');
+          setActiveOrg(stored ?? orgs[0].id);
+        }
+      }).catch(() => {/* ignore */});
     }
   }, [token]);
 
@@ -2538,6 +2556,14 @@ function App() {
               await refreshAll(selectedProjectId);
             }}
           />
+        )}
+
+        {view === 'org-settings' && canManageAdmin && (
+          <OrgSettingsView onError={setError} onMessage={setMessage} />
+        )}
+
+        {view === 'org-members' && canManageAdmin && (
+          <OrgMembersView onError={setError} onMessage={setMessage} />
         )}
       </div>
     </AstraeaLayout>

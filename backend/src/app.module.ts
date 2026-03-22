@@ -1,3 +1,4 @@
+import { APP_GUARD } from '@nestjs/core';
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { APP_INTERCEPTOR } from '@nestjs/core';
@@ -25,6 +26,10 @@ import { PrdModule } from './modules/prd/prd.module';
 import { ProjectMembershipsModule } from './modules/project-memberships/project-memberships.module';
 import { WorkItemsModule } from './modules/work-items/work-items.module';
 import { MilestoneBoardModule } from './modules/milestone-board/milestone-board.module';
+import { JwtAuthGuard } from './modules/auth/jwt-auth.guard';
+import { RolesGuard } from './modules/auth/roles.guard';
+import { OrgGuard } from './guards/org.guard';
+import { OrganizationsModule } from './modules/organizations/organizations.module';
 
 @Module({
   imports: [
@@ -49,7 +54,8 @@ import { MilestoneBoardModule } from './modules/milestone-board/milestone-board.
     PrdModule,
     ProjectMembershipsModule,
     WorkItemsModule,
-    MilestoneBoardModule
+    MilestoneBoardModule,
+    OrganizationsModule
   ],
   controllers: [AppController],
   providers: [
@@ -57,6 +63,18 @@ import { MilestoneBoardModule } from './modules/milestone-board/milestone-board.
     {
       provide: APP_INTERCEPTOR,
       useClass: AuditInterceptor
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard
+    },
+    {
+      provide: APP_GUARD,
+      useClass: OrgGuard
     }
   ]
 })
