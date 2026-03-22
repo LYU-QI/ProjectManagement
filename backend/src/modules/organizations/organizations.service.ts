@@ -46,7 +46,7 @@ export class OrganizationsService {
       throw new BadRequestException(`Organization with slug '${dto.slug}' already exists`);
     }
 
-    return this.prisma.organization.create({
+    const org = await this.prisma.organization.create({
       data: {
         slug: dto.slug,
         name: dto.name,
@@ -54,6 +54,18 @@ export class OrganizationsService {
         maxMembers: dto.maxMembers ?? 25
       }
     });
+
+    // 自动将创建者加为 owner 成员
+    await this.prisma.orgMember.create({
+      data: {
+        id: `${org.id}-${actor.sub}`,
+        userId: actor.sub!,
+        organizationId: org.id,
+        orgRole: 'owner'
+      }
+    });
+
+    return org;
   }
 
   async update(id: string, dto: UpdateOrganizationDto, actorOrgRole: string | null, actorGlobalRole?: string) {

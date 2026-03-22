@@ -16,8 +16,10 @@ import {
   Flag,
   Building2,
   ChevronDown,
-  LogOut
+  LogOut,
+  Plus
 } from 'lucide-react';
+import { createOrganization, listOrganizations } from '../api/organizations';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
 import { useOrgStore } from '../store/useOrgStore';
 
@@ -109,6 +111,11 @@ export default function AstraeaLayout({
   const canManageAdmin = canAccessAdmin || ['super_admin', 'member', 'pm'].includes(role);
   const [showUserSettings, setShowUserSettings] = useState(false);
   const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
+  const [showCreateOrg, setShowCreateOrg] = useState(false);
+  const [createSlug, setCreateSlug] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createMsg, setCreateMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const { activeOrgId, orgList, setActiveOrg } = useOrgStore();
   const [hiddenNavItems, setHiddenNavItems] = useState<ViewKey[]>(() => {
     try {
@@ -158,6 +165,26 @@ export default function AstraeaLayout({
       }
       return Array.from(hiddenSet) as ViewKey[];
     });
+  }
+
+  async function handleCreateOrg() {
+    if (!createSlug.trim() || !createName.trim()) return;
+    setCreating(true);
+    setCreateMsg(null);
+    try {
+      const slug = createSlug.trim().toLowerCase().replace(/\s+/g, '-');
+      await createOrganization({ slug, name: createName.trim() });
+      const orgs = await listOrganizations();
+      const { setOrgList, setActiveOrg: _set } = useOrgStore.getState();
+      setOrgList(orgs.map(o => ({ id: o.id, name: o.name, orgRole: o.orgRole })));
+      setShowCreateOrg(false);
+      setCreateSlug('');
+      setCreateName('');
+    } catch (e: unknown) {
+      setCreateMsg({ type: 'error', text: e instanceof Error ? e.message : '创建失败' });
+    } finally {
+      setCreating(false);
+    }
   }
 
   return (
@@ -244,6 +271,43 @@ export default function AstraeaLayout({
                       <span style={{ fontSize: '0.65rem', opacity: 0.6, textTransform: 'capitalize' }}>{org.orgRole}</span>
                     </button>
                   ))}
+
+                  {showCreateOrg ? (
+                    <div style={{ padding: '0.6rem 0.75rem', borderTop: '1px solid var(--color-border)' }}>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button
+                          className="btn"
+                          type="button"
+                          onClick={() => setShowCreateOrg(false)}
+                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.3rem' }}
+                        >
+                          取消
+                        </button>
+                        <button
+                          className="btn primary"
+                          type="button"
+                          onClick={() => setShowOrgSwitcher(false)}
+                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.3rem' }}
+                        >
+                          去创建
+                        </button>
+                      </div>
+                    </div>
+                  ) : role === 'super_admin' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateOrg(true)}
+                      style={{
+                        width: '100%', padding: '0.5rem 0.75rem',
+                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        fontSize: '0.75rem', color: 'var(--color-accent)',
+                        borderTop: '1px solid var(--color-border)'
+                      }}
+                    >
+                      <Plus size={12} />新建组织
+                    </button>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -397,6 +461,90 @@ export default function AstraeaLayout({
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* 新建组织弹窗 */}
+      <AnimatePresence>
+        {showCreateOrg && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+            onClick={() => setShowCreateOrg(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: 'var(--color-bg-secondary)',
+                border: '1px solid var(--color-border)',
+                borderRadius: '1rem',
+                padding: '1.5rem',
+                width: 360,
+                boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+              }}
+            >
+              <h3 style={{ marginBottom: '1rem' }}>新建组织</h3>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.3rem' }}>组织名称</label>
+                <input
+                  className="glass-input"
+                  placeholder="例如：弋途科技"
+                  value={createName}
+                  onChange={e => {
+                    setCreateName(e.target.value);
+                    // 自动从名称生成 slug
+                    const s = e.target.value.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '');
+                    setCreateSlug(s);
+                  }}
+                  autoFocus
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.3rem' }}>
+                  标识 <span style={{ opacity: 0.5 }}>（URL 友好，自动生成）</span>
+                </label>
+                <input
+                  className="glass-input"
+                  placeholder="slug"
+                  value={createSlug}
+                  onChange={e => setCreateSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              {createMsg && (
+                <div style={{
+                  fontSize: '0.8rem',
+                  color: createMsg.type === 'error' ? '#ef4444' : '#22c55e',
+                  marginBottom: '0.75rem'
+                }}>
+                  {createMsg.text}
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                <button className="btn" type="button" onClick={() => { setShowCreateOrg(false); setCreateMsg(null); }}>
+                  取消
+                </button>
+                <button
+                  className="btn primary"
+                  type="button"
+                  onClick={() => void handleCreateOrg()}
+                  disabled={creating || !createSlug.trim() || !createName.trim()}
+                >
+                  {creating ? '创建中...' : '创建'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
