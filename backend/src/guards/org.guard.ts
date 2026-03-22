@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../database/prisma.service';
 import { IS_PUBLIC_KEY } from '../modules/auth/public.decorator';
+import { IS_ORG_SCOPED_KEY } from '../modules/auth/skip-org-guard.decorator';
 import { runWithOrgContext } from '../prisma/org-context';
 
 @Injectable()
@@ -18,10 +19,14 @@ export class OrgGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
+    const isOrgScoped = this.reflector.getAllAndOverride<boolean>(IS_ORG_SCOPED_KEY, [
+      context.getHandler(),
+      context.getClass()
+    ]);
+    if (isOrgScoped) return true;
+
     const request = context.switchToHttp().getRequest<Record<string, unknown>>();
     const user = request['user'] as { sub?: number; role?: string; organizationId?: string; orgRole?: string } | undefined;
-
-    console.log('[OrgGuard] user:', JSON.stringify(user));
 
     if (user?.role === 'super_admin') {
       request['org'] = { id: null, orgRole: null };
@@ -29,7 +34,6 @@ export class OrgGuard implements CanActivate {
     }
 
     if (!user?.sub) {
-      console.log('[OrgGuard] No user.sub, throwing');
       throw new ForbiddenException('Authentication required');
     }
 

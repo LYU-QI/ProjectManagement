@@ -56,18 +56,30 @@ export class OrganizationsService {
     });
   }
 
-  async update(id: string, dto: UpdateOrganizationDto, actorOrgRole: string | null) {
+  async update(id: string, dto: UpdateOrganizationDto, actorOrgRole: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole === 'super_admin') return this.prisma.organization.update({ where: { id }, data: dto });
     if (actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
       throw new ForbiddenException('Only owner or admin can update organization');
     }
-
     return this.prisma.organization.update({
       where: { id },
       data: dto
     });
   }
 
-  async delete(id: string, actorOrgRole: string | null) {
+  async delete(id: string, actorOrgRole: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole === 'super_admin') {
+      const org = await this.prisma.organization.findUnique({
+        where: { id },
+        include: { _count: { select: { projects: true } } }
+      });
+      if (!org) throw new NotFoundException('Organization not found');
+      if (org._count.projects > 0) {
+        throw new BadRequestException('Cannot delete organization with existing projects');
+      }
+      await this.prisma.organization.delete({ where: { id } });
+      return { success: true };
+    }
     if (actorOrgRole !== 'owner') {
       throw new ForbiddenException('Only owner can delete organization');
     }
@@ -85,8 +97,8 @@ export class OrganizationsService {
     return { success: true };
   }
 
-  async listMembers(orgId: string, actorOrgId: string | null) {
-    if (actorOrgId !== null && actorOrgId !== orgId) {
+  async listMembers(orgId: string, actorOrgId: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole !== 'super_admin' && actorOrgId !== null && actorOrgId !== orgId) {
       throw new ForbiddenException('Access denied');
     }
     const members = await this.prisma.orgMember.findMany({
@@ -106,8 +118,8 @@ export class OrganizationsService {
     }));
   }
 
-  async inviteMember(orgId: string, userId: number, role: string, actorOrgRole: string | null) {
-    if (actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
+  async inviteMember(orgId: string, userId: number, role: string, actorOrgRole: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole !== 'super_admin' && actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
       throw new ForbiddenException('Only owner or admin can invite members');
     }
 
@@ -137,8 +149,8 @@ export class OrganizationsService {
     };
   }
 
-  async updateMemberRole(orgId: string, userId: number, role: string, actorOrgRole: string | null) {
-    if (actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
+  async updateMemberRole(orgId: string, userId: number, role: string, actorOrgRole: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole !== 'super_admin' && actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
       throw new ForbiddenException('Only owner or admin can update member roles');
     }
 
@@ -153,8 +165,8 @@ export class OrganizationsService {
     });
   }
 
-  async removeMember(orgId: string, userId: number, actorOrgRole: string | null) {
-    if (actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
+  async removeMember(orgId: string, userId: number, actorOrgRole: string | null, actorGlobalRole?: string) {
+    if (actorGlobalRole !== 'super_admin' && actorOrgRole !== 'owner' && actorOrgRole !== 'admin') {
       throw new ForbiddenException('Only owner or admin can remove members');
     }
 

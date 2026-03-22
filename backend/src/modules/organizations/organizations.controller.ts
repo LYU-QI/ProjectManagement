@@ -1,16 +1,19 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Body, Param, Req, UseGuards
+  Body, Param, Req, ForbiddenException
 } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 import { InviteMemberDto, UpdateMemberRoleDto } from './dto/invite-member.dto';
+import { Public } from '../auth/public.decorator';
+import { SkipOrgGuard } from '../auth/skip-org-guard.decorator';
 
 @Controller('api/v1/organizations')
 export class OrganizationsController {
   constructor(private readonly orgService: OrganizationsService) {}
 
+  @SkipOrgGuard()
   @Get()
   async list(@Req() req: { user: { sub: number } }) {
     return this.orgService.listForUser(req.user.sub);
@@ -29,8 +32,12 @@ export class OrganizationsController {
     @Param('id') id: string,
     @Req() req: Record<string, unknown>
   ) {
-    const org = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.findById(id, org?.id ?? null);
+    const actor = req.org as { id: string | null; orgRole: string | null } | undefined;
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    if (globalRole !== 'super_admin' && actor?.id !== null && actor?.id !== id) {
+      throw new ForbiddenException('Access denied to this organization');
+    }
+    return this.orgService.findById(id, actor?.id ?? null);
   }
 
   @Patch(':id')
@@ -40,7 +47,8 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.update(id, dto, actorOrg?.orgRole ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.update(id, dto, actorOrg?.orgRole ?? null, globalRole);
   }
 
   @Delete(':id')
@@ -49,7 +57,8 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.delete(id, actorOrg?.orgRole ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.delete(id, actorOrg?.orgRole ?? null, globalRole);
   }
 
   @Get(':id/members')
@@ -58,7 +67,8 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.listMembers(id, actorOrg?.id ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.listMembers(id, actorOrg?.id ?? null, globalRole);
   }
 
   @Post(':id/members/invite')
@@ -68,7 +78,8 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.inviteMember(id, Number(dto.userId), dto.role ?? 'member', actorOrg?.orgRole ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.inviteMember(id, Number(dto.userId), dto.role ?? 'member', actorOrg?.orgRole ?? null, globalRole);
   }
 
   @Patch(':id/members/:userId')
@@ -79,7 +90,8 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.updateMemberRole(id, Number(userId), dto.role, actorOrg?.orgRole ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.updateMemberRole(id, Number(userId), dto.role, actorOrg?.orgRole ?? null, globalRole);
   }
 
   @Delete(':id/members/:userId')
@@ -89,6 +101,7 @@ export class OrganizationsController {
     @Req() req: Record<string, unknown>
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
-    return this.orgService.removeMember(id, Number(userId), actorOrg?.orgRole ?? null);
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.removeMember(id, Number(userId), actorOrg?.orgRole ?? null, globalRole);
   }
 }
