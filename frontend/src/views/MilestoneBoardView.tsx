@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MilestoneBoardItem as BoardItem, ProjectItem } from '../types';
+import AutocompleteOwner from '../components/ui/AutocompleteOwner';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import {
   addMilestoneDeliverable,
@@ -59,15 +60,50 @@ const riskText: Record<MilestoneRisk, string> = {
   high: '高风险'
 };
 
-function todayText() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function todayDateStr(): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0, 0));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
 
 function parseDateValue(value: string): number | null {
   if (!value) return null;
-  const ts = Date.parse(`${value}T00:00:00`);
-  return Number.isFinite(ts) ? ts : null;
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return null;
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0));
+  return d.getTime();
+}
+
+function calcNowLinePositionCalcString(nodes: string[], todayStr: string, gapPx: number): string | null {
+  if (nodes.length === 0) return null;
+  const N = nodes.length;
+  if (N === 1) return '50%';
+  const todayTs = parseDateValue(todayStr);
+  if (todayTs === null) return '50%';
+  let r = 0;
+  const tFirst = parseDateValue(nodes[0]);
+  const tLast = parseDateValue(nodes[N - 1]);
+  if (tFirst === null || tLast === null) return '50%';
+
+  if (todayTs <= tFirst) {
+    const t2 = parseDateValue(nodes[1]);
+    if (t2 && t2 > tFirst) r = 0 - (tFirst - todayTs) / (t2 - tFirst);
+  } else if (todayTs >= tLast) {
+    const t1 = parseDateValue(nodes[N - 2]);
+    if (t1 && tLast > t1) r = (N - 1) + (todayTs - tLast) / (tLast - t1);
+    else r = N - 1;
+  } else {
+    for (let i = 0; i < N - 1; i++) {
+      const t1 = parseDateValue(nodes[i]);
+      const t2 = parseDateValue(nodes[i + 1]);
+      if (t1 !== null && t2 !== null && todayTs >= t1 && todayTs <= t2) {
+        r = t2 === t1 ? i : i + (todayTs - t1) / (t2 - t1);
+        break;
+      }
+    }
+  }
+  r = Math.max(-0.4, Math.min(N - 1 + 0.4, r));
+  return `calc(${r + 0.5} * (100% - ${(N - 1) * gapPx}px) / ${N} + ${r * gapPx}px)`;
 }
 
 function makeDeliverableRow(partial?: Partial<DeliverableFormRow>): DeliverableFormRow {
@@ -141,52 +177,11 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
     return visibleMilestones.slice().sort((a, b) => a.due.localeCompare(b.due));
   }, [visibleMilestones]);
   const timelineGapPx = timelineNodes.length > 12 ? 3 : timelineNodes.length > 8 ? 5 : 8;
-  const todayDue = todayText();
-  const timelineTodayNodeIndex = useMemo(
-    () => timelineNodes.findIndex((node) => node.due === todayDue),
-    [timelineNodes, todayDue]
+  const todayDue = todayDateStr();
+  const nowLineLeftCalc = useMemo(
+    () => calcNowLinePositionCalcString(timelineNodes.map(n => n.due), todayDue, timelineGapPx),
+    [timelineNodes, todayDue, timelineGapPx]
   );
-
-  const timelineNowPercent = useMemo(() => {
-    const points = timelineNodes
-      .map((node, index) => {
-        const due = parseDateValue(node.due);
-        if (due === null) return null;
-        return { due, index };
-      })
-      .filter((value): value is { due: number; index: number } => value !== null);
-    if (points.length === 0) return null;
-
-    const today = parseDateValue(todayText());
-    if (today === null) return null;
-    const nodeCount = Math.max(1, timelineNodes.length);
-    const centerPercent = (index: number) => ((index + 0.5) / nodeCount) * 100;
-
-    if (points.length === 1) {
-      return centerPercent(points[0].index);
-    }
-    if (today <= points[0].due) {
-      return centerPercent(points[0].index);
-    }
-    if (today >= points[points.length - 1].due) {
-      return centerPercent(points[points.length - 1].index);
-    }
-
-    for (let i = 1; i < points.length; i += 1) {
-      const prev = points[i - 1];
-      const next = points[i];
-      if (today > next.due) continue;
-      if (today === next.due) return centerPercent(next.index);
-
-      const span = Math.max(1, next.due - prev.due);
-      const ratio = (today - prev.due) / span;
-      const startPercent = centerPercent(prev.index);
-      const endPercent = centerPercent(next.index);
-      return startPercent + ratio * (endPercent - startPercent);
-    }
-
-    return centerPercent(points[points.length - 1].index);
-  }, [timelineNodes]);
 
   const stats = useMemo(() => {
     const total = visibleMilestones.length;
@@ -433,7 +428,7 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
     <div className="milestone-page">
       <div className="card">
         <h3>多项目里程碑配置与看板</h3>
-        <p className="muted">已切换为后端持久化存储，里程碑看板与排期里程碑数据独立。当前日期：{todayText()}</p>
+        <p className="muted">已切换为后端持久化存储，里程碑看板与排期里程碑数据独立。当前日期：{todayDateStr()}</p>
         {migrationHint && <p className="muted">{migrationHint}</p>}
       </div>
 
@@ -463,16 +458,13 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
               onChange={(e) => setMilestoneForm((prev) => ({ ...prev, title: e.target.value }))}
               disabled={!canWrite}
             />
-            <ThemedSelect
-              value={milestoneForm.owner}
-              onChange={(e) => setMilestoneForm((prev) => ({ ...prev, owner: e.target.value }))}
-              disabled={ownerOptions.length === 0 || !canWrite}
-            >
-              <option value="">选择负责人（飞书成员）</option>
-              {ownerOptions.map((owner) => (
-                <option key={`owner-${owner}`} value={owner}>{owner}</option>
-              ))}
-            </ThemedSelect>
+              <AutocompleteOwner
+                value={milestoneForm.owner}
+                onChange={(v) => setMilestoneForm((prev) => ({ ...prev, owner: v }))}
+                options={ownerOptions}
+                placeholder="输入或选择负责人"
+                disabled={ownerOptions.length === 0 || !canWrite}
+              />
             <input
               type="date"
               value={milestoneForm.due}
@@ -575,19 +567,11 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
         <div className="card">
           <div className="section-title-row">
             <h3>当前项目时间线</h3>
-            <span className="milestone-today-chip">当前日期：{todayText()}</span>
+            <span className="milestone-today-chip">当前日期：{todayDateStr()}</span>
           </div>
           <div className="milestone-timeline-scroll">
             <div className="milestone-timeline-shell">
               <div className="milestone-timeline-track" />
-              {timelineNowPercent !== null && timelineTodayNodeIndex < 0 && (
-                <div className="milestone-timeline-now-layer">
-                  <div
-                    className="milestone-timeline-now-line"
-                    style={{ left: `${timelineNowPercent}%` }}
-                  />
-                </div>
-              )}
               <div
                 className="milestone-timeline-grid"
                 style={{
@@ -595,6 +579,12 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                   gap: timelineGapPx
                 }}
               >
+                {nowLineLeftCalc && (
+                  <span
+                    className="milestone-timeline-now-line-node"
+                    style={{ left: nowLineLeftCalc }}
+                  />
+                )}
                 {timelineNodes.map((m) => {
                   const isDense = timelineNodes.length > 10;
                   const dateFont = timelineNodes.length > 12 ? 13 : 16;
@@ -606,7 +596,6 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                       : 'var(--color-border-strong)';
                   return (
                     <div key={`timeline-${m.id}`} className="milestone-timeline-node">
-                      {m.due === todayDue && <span className="milestone-timeline-now-line-node" />}
                       <span
                         className="milestone-timeline-dot-shell"
                         style={{ width: isDense ? 22 : 26, height: isDense ? 22 : 26 }}

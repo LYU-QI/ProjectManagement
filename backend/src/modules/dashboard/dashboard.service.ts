@@ -1,16 +1,128 @@
 import { Injectable } from '@nestjs/common';
-import { TaskStatus } from '@prisma/client';
+import { BugStatus, RequirementStatus, TaskStatus, WorkItemStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
+import { RedisService } from '../cache/cache.service';
 
 @Injectable()
 export class DashboardService {
+  private readonly cacheTtl = 300; // 5 minutes
+
   constructor(
     private readonly prisma: PrismaService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly redisService: RedisService
   ) {}
 
+  async efficiency(projectId: number, actor?: AuthActor) {
+    await this.accessService.assertProjectAccess(actor, projectId);
+
+    const cacheKey = `dashboard:${projectId}:efficiency`;
+    const cached = await this.redisService.get<ReturnType<typeof this.computeEfficiency>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const result = await this.computeEfficiency(projectId);
+    await this.redisService.set(cacheKey, result, this.cacheTtl);
+    return result;
+  }
+
+  private async computeEfficiency(projectId: number) {
+    const project = await this.prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    const [requirements, bugs, workItems, costEntries, worklogs, milestones] = await Promise.all([
+      this.prisma.requirement.findMany({ where: { projectId } }),
+      this.prisma.bug.findMany({ where: { projectId } }),
+      this.prisma.workItem.findMany({ where: { projectId } }),
+      this.prisma.costEntry.findMany({ where: { projectId } }),
+      this.prisma.worklog.findMany({ where: { projectId } }),
+      this.prisma.milestone.findMany({ where: { projectId } })
+    ]);
+
+    // Requirement metrics
+    const requirementCount = requirements.length;
+    const approvedCount = requirements.filter((r) => r.status === RequirementStatus.approved || r.status === RequirementStatus.planned || r.status === RequirementStatus.done).length;
+    const doneReqCount = requirements.filter((r) => r.status === RequirementStatus.done).length;
+    const approvedRate = requirementCount > 0 ? Math.round((approvedCount / requirementCount) * 100) : 0;
+    const doneRate = requirementCount > 0 ? Math.round((doneReqCount / requirementCount) * 100) : 0;
+
+    // Bug metrics
+    const bugCount = bugs.length;
+    const openBugCount = bugs.filter((b) => b.status === BugStatus.open || b.status === BugStatus.in_progress).length;
+    const resolvedBugCount = bugs.filter((b) => b.status === BugStatus.resolved || b.status === BugStatus.closed).length;
+    const resolvedBugs = bugs.filter((b) => b.status === BugStatus.resolved && b.resolvedAt);
+    const avgResolutionDays =
+      resolvedBugs.length > 0
+        ? Number(
+            (
+              resolvedBugs.reduce((sum, b) => {
+                const created = new Date(b.createdAt).getTime();
+                const resolved = new Date(b.resolvedAt!).getTime();
+                return sum + (resolved - created) / (1000 * 60 * 60 * 24);
+              }, 0) / resolvedBugs.length
+            ).toFixed(1)
+          )
+        : 0;
+
+    // Work item metrics
+    const workItemCount = workItems.length;
+    const doneWorkItemCount = workItems.filter((w) => w.status === WorkItemStatus.done || w.status === WorkItemStatus.closed).length;
+    const doneWorkItemRate = workItemCount > 0 ? Math.round((doneWorkItemCount / workItemCount) * 100) : 0;
+
+    // Cost metrics
+    const laborCost = worklogs.reduce((sum, w) => sum + w.hours * w.hourlyRate, 0);
+    const outsourceCost = costEntries.filter((c) => c.type === 'outsource').reduce((sum, c) => sum + c.amount, 0);
+    const cloudCost = costEntries.filter((c) => c.type === 'cloud').reduce((sum, c) => sum + c.amount, 0);
+    const totalCost = laborCost + outsourceCost + cloudCost;
+
+    // Milestone / schedule efficiency
+    const onTimeMilestones = milestones.filter((m) => {
+      if (!m.actualDate) return false;
+      return m.actualDate <= m.plannedDate;
+    });
+    const onTimeDeliveryRate = milestones.length > 0 ? Math.round((onTimeMilestones.length / milestones.length) * 100) : 0;
+
+    return {
+      projectId,
+      projectName: project.name,
+      metrics: {
+        requirementCount,
+        approvedRate,
+        doneRate,
+        bugCount,
+        openBugCount,
+        resolvedBugCount,
+        avgResolutionDays,
+        sprintCount: 0,
+        completedSprintCount: 0,
+        workItemCount,
+        doneWorkItemRate,
+        totalCost,
+        laborCost,
+        outsourceCost,
+        cloudCost,
+        onTimeDeliveryRate
+      }
+    };
+  }
+
   async overview(actor?: AuthActor) {
+    const cacheKey = `dashboard:overview`;
+    const cached = await this.redisService.get<ReturnType<typeof this.computeOverview>>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const result = await this.computeOverview(actor);
+    await this.redisService.set(cacheKey, result, this.cacheTtl);
+    return result;
+  }
+
+  private async computeOverview(actor?: AuthActor) {
     const accessibleProjectIds = await this.accessService.getAccessibleProjectIds(actor);
     const projectFilter = accessibleProjectIds === null
       ? undefined

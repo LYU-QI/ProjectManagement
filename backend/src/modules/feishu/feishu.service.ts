@@ -179,6 +179,17 @@ export class FeishuService {
     return data.data as T;
   }
 
+  private async getTableFieldNames(appToken: string, tableId: string): Promise<Set<string>> {
+    try {
+      const data = await this.request<{ items: Array<{ field_name: string }> }>(
+        `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields`
+      );
+      return new Set((data?.items || []).map((f) => f.field_name));
+    } catch {
+      return new Set();
+    }
+  }
+
   private normalizeFieldNames(fieldNames?: string) {
     if (!fieldNames) return undefined;
     const trimmed = fieldNames.trim();
@@ -518,6 +529,21 @@ export class FeishuService {
           }
         );
       }
+      if (message.includes('FieldNameNotFound')) {
+        const existingFields = await this.getTableFieldNames(appToken, tableId);
+        const filtered: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(normalized)) {
+          if (existingFields.has(key)) filtered[key] = value;
+        }
+        if (Object.keys(filtered).length === 0) {
+          throw new BadRequestException('所有字段均不存在于该飞书表格，请检查字段配置。');
+        }
+        this.logger.warn(`FieldNameNotFound, retrying with ${Object.keys(filtered).join(',')}`);
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+          { method: 'POST', body: JSON.stringify({ fields: filtered }) }
+        );
+      }
       throw err;
     }
   }
@@ -572,6 +598,17 @@ export class FeishuService {
             }
           );
         }
+      }
+      if (message.includes('FieldNameNotFound')) {
+        const existingFields = await this.getTableFieldNames(appToken, tableId);
+        const filtered: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(normalized)) {
+          if (existingFields.has(key)) filtered[key] = value;
+        }
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+          { method: 'PUT', body: JSON.stringify({ fields: filtered }) }
+        );
       }
       throw err;
     }

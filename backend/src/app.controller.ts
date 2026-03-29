@@ -1,14 +1,12 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
-import { Public } from './modules/auth/public.decorator';
 
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
-  @Public()
-  @Get('health')
-  health() {
-    return this.appService.health();
+  @Get()
+  root() {
+    return { service: 'projectlvqi-backend', version: process.env.npm_package_version ?? '1.0.0' };
   }
 }

@@ -17,6 +17,8 @@ type Props = {
   className?: string;
   name?: string;
   required?: boolean;
+  style?: CSSProperties;
+  searchable?: boolean;
 };
 
 function toText(node: ReactNode): string {
@@ -67,19 +69,29 @@ export default function ThemedSelect({
   disabled,
   className,
   name,
-  required
+  required,
+  style,
+  searchable
 }: Props) {
   const options = useMemo(() => parseOptions(children), [children]);
   const isControlled = value !== undefined;
   const [innerValue, setInnerValue] = useState(defaultValue ?? '');
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
   const currentValue = isControlled ? String(value ?? '') : innerValue;
   const selected = options.find((item) => item.value === currentValue) || options.find((item) => item.value === '') || options[0];
   const triggerLabel = selected?.label || '请选择';
+
+  const filteredOptions = useMemo(() => {
+    if (!search) return options;
+    const q = search.toLowerCase();
+    return options.filter((item) => item.label.toLowerCase().includes(q));
+  }, [options, search]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,17 +124,21 @@ export default function ThemedSelect({
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onWindowChange);
     window.addEventListener('scroll', onWindowChange, true);
+    if (searchable && searchRef.current) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('resize', onWindowChange);
       window.removeEventListener('scroll', onWindowChange, true);
     };
-  }, [open]);
+  }, [open, searchable]);
 
   const commitValue = (nextValue: string) => {
     if (!isControlled) setInnerValue(nextValue);
     setOpen(false);
+    setSearch('');
     if (onChange) {
       const syntheticEvent = {
         target: { value: nextValue, name: name ?? '' },
@@ -142,12 +158,25 @@ export default function ThemedSelect({
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
         data-open={open ? '1' : '0'}
+        style={style}
       >
         {triggerLabel}
       </button>
       {open && createPortal(
         <div ref={menuRef} className="themed-select-menu themed-select-menu-portal" style={menuStyle}>
-          {options.filter((item) => !item.hidden).map((item) => (
+          {searchable && (
+            <div style={{ padding: '0.4rem 0.5rem', borderBottom: '1px solid var(--glass-border)' }}>
+              <input
+                ref={searchRef}
+                placeholder="搜索..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); }}
+                style={{ width: '100%', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 6, padding: '0.3rem 0.5rem', color: 'var(--color-text)', fontSize: '0.85rem' }}
+              />
+            </div>
+          )}
+          {filteredOptions.filter((item) => !item.hidden).map((item) => (
             <button
               key={`${name || 'select'}-${item.value}-${item.label}`}
               type="button"
@@ -158,6 +187,9 @@ export default function ThemedSelect({
               {item.label}
             </button>
           ))}
+          {filteredOptions.filter((item) => !item.hidden).length === 0 && (
+            <div style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>无匹配结果</div>
+          )}
         </div>,
         document.body
       )}

@@ -11,7 +11,7 @@
   lsof -ti:3000 | xargs -r kill || true
 
   echo "==> Start backend"
-  nohup npm run -w backend dev > "$ROOT/backend-start.out.log" 2> "$ROOT/backend-start.err.log" &
+  PORT=3000 nohup npm run -w backend dev > "$ROOT/backend-start.out.log" 2> "$ROOT/backend-start.err.log" &
 
   echo "==> Start frontend"
   nohup npm run -w frontend dev > "$ROOT/frontend-start.out.log" 2> "$ROOT/frontend-start.err.log" &

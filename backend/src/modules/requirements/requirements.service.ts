@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { NotificationLevel, Prisma, RequirementStatus } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AccessService, AuthActor } from '../access/access.service';
+import { AutomationEngineService } from '../automation/automation-engine.service';
 
 interface CreateRequirementInput {
   projectId: number;
@@ -25,7 +26,8 @@ export class RequirementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly automationEngine: AutomationEngineService
   ) { }
 
   async list(actor: AuthActor | undefined, projectId?: number) {
@@ -49,7 +51,7 @@ export class RequirementsService {
     await this.accessService.assertProjectAccess(actor, input.projectId);
     const project = await this.prisma.project.findUnique({
       where: { id: input.projectId },
-      select: { id: true }
+      select: { id: true, organizationId: true }
     });
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -59,7 +61,7 @@ export class RequirementsService {
     // 导入时可能并发创建，遇到唯一键冲突时重试。
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        return await this.prisma.$transaction(async (tx) => {
+        const created = await this.prisma.$transaction(async (tx) => {
           const last = await tx.requirement.findFirst({
             where: { projectId: input.projectId },
             orderBy: { projectSeq: 'desc' },
@@ -74,6 +76,15 @@ export class RequirementsService {
             }
           });
         });
+
+        void this.automationEngine.trigger('requirement.created', {
+          organizationId: project.organizationId,
+          projectId: input.projectId,
+          requirementId: created.id,
+          requirementStatus: created.status
+        });
+
+        return created;
       } catch (err) {
         const isUniqueConflict =
           err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';

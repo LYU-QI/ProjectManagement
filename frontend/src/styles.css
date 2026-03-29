@@ -40,11 +40,98 @@ body {
 
 /* Astraea全局布局骨架 */
 .astraea-root {
-  display: flex;
+  display: grid;
+  grid-template-columns: 260px 1fr;
   height: 100vh;
   width: 100vw;
   overflow: hidden;
   position: relative;
+}
+
+/* Sidebar: below content area so header/tabs are always on top */
+.astraea-sidebar {
+  z-index: 5;
+}
+
+/* Content area: above sidebar */
+.content-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: visible;
+  height: 100vh;
+  gap: 8px;
+  pointer-events: all;
+  position: relative;
+  z-index: 10;
+}
+
+.workspace-tab-bar {
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-height: 48px;
+  pointer-events: all;
+  position: relative;
+  z-index: 50;
+}
+
+.workspace-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.header-left {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  z-index: 300;
+}
+
+.header-center select,
+.header-center .glass-input {
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.astraea-main-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  padding-top: 0;
+  position: static;
+}
+
+/* Override original absolute header positioning inside grid layout */
+.content-area > .astraea-header {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 10px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: all !important;
+  z-index: 200 !important;
 }
 
 /* 极光背景层 */
@@ -89,6 +176,7 @@ body {
   padding: 24px 16px;
   position: relative;
   z-index: 10;
+  overflow: hidden;
 }
 
 .astraea-brand {
@@ -318,7 +406,6 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
-  padding-top: 64px;
 }
 
 .astraea-content-scroll {
@@ -933,6 +1020,7 @@ body {
   background: rgba(255, 255, 255, 0.78);
   border-right: 1px solid var(--color-border);
   box-shadow: 10px 0 24px rgba(16, 24, 40, 0.05);
+  overflow: hidden;
 }
 
 .astraea-brand h1 {
@@ -1014,10 +1102,6 @@ body {
 
 .action-btn .badge {
   background: var(--color-danger);
-}
-
-.astraea-main-container {
-  padding-top: 60px;
 }
 
 .astraea-content-scroll {
@@ -1406,13 +1490,20 @@ select option {
 }
 
 @media (max-width: 900px) {
-  .astraea-sidebar {
-    width: 76px;
-    padding: 16px 10px;
+  .astraea-root {
+    grid-template-columns: 76px 1fr;
   }
 
-  .astraea-header {
-    left: 76px;
+  .content-area .astraea-header {
+    padding: 0 16px;
+  }
+
+  .workspace-tab-bar {
+    display: none;
+  }
+
+  .nav-group-title span {
+    display: none;
   }
 
   .astraea-brand h1,
@@ -2064,6 +2155,82 @@ body {
   color: var(--color-text-muted);
   font-size: 10px;
   line-height: 1;
+}
+
+.org-switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-bg-surface) 92%, white 8%), var(--color-bg-surface));
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  z-index: 200;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+  backdrop-filter: blur(8px);
+}
+
+.org-switcher-item {
+  justify-content: space-between;
+  width: 100%;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.org-switcher-item:hover:not(:disabled) {
+  background: var(--color-bg-muted);
+}
+
+.org-switcher-item.is-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.org-switcher-item .org-role-badge {
+  font-size: 0.65rem;
+  font-weight: 400;
+  opacity: 0.6;
+  text-transform: capitalize;
+}
+
+.org-switcher-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
+.org-switcher-create-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+
+.org-switcher-create-btn:hover:not(:disabled) {
+  background: var(--color-primary-soft);
 }
 
 .req-action-dropdown {

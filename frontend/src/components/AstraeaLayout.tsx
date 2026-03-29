@@ -16,12 +16,17 @@ import {
   Flag,
   Building2,
   ChevronDown,
+  ChevronRight,
   LogOut,
-  Plus
+  Bug,
+  ClipboardList,
+  Layers,
+  BookOpen,
+  Webhook,
+  Key,
+  Sparkles
 } from 'lucide-react';
-import { createOrganization, listOrganizations } from '../api/organizations';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
-import { useOrgStore } from '../store/useOrgStore';
 
 export type ViewKey =
   | 'dashboard'
@@ -42,7 +47,19 @@ export type ViewKey =
   | 'project-access'
   | 'milestone-board'
   | 'org-settings'
-  | 'org-members';
+  | 'org-members'
+  | 'wiki'
+  | 'sprints'
+  | 'bugs'
+  | 'test-plans'
+  | 'efficiency'
+  | 'webhooks'
+  | 'api-keys'
+  | 'smart-fill'
+  | 'automation'
+  | 'cost-report'
+  | 'departments'
+  | 'plan-settings';
 export type PlatformMode = 'workspace' | 'admin';
 export type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 
@@ -62,15 +79,69 @@ interface AstraeaLayoutProps {
   platform: PlatformMode;
   onPlatformChange: (mode: PlatformMode) => void;
   canAccessAdmin: boolean;
+  myOrgRole: string | null;
   children: ReactNode;
   user: any;
   onLogout: () => void;
   unreadCount?: number;
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
+  headerCenter?: ReactNode;
 }
 
-const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; allowedRoles?: string[] }> = [
+interface NavGroup {
+  id: string;
+  label: string;
+  icon: ReactNode;
+  items: Array<{ id: ViewKey; label: string; icon: ReactNode }>;
+}
+
+const navGroups: NavGroup[] = [
+  { id: 'overview', label: '总览', icon: <LayoutDashboard size={14} />, items: [{ id: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> }] },
+  { id: 'project', label: '项目管理', icon: <ListTodo size={14} />, items: [
+    { id: 'requirements', label: '项目与需求', icon: <ListTodo size={16} /> },
+    { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={16} /> },
+    { id: 'schedule', label: '进度计划', icon: <CalendarDays size={16} /> },
+    { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={16} /> },
+    { id: 'resources', label: '资源视图', icon: <Users size={16} /> },
+    { id: 'sprints', label: 'Sprint', icon: <Layers size={16} /> },
+    { id: 'bugs', label: 'Bug 管理', icon: <Bug size={16} /> },
+    { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={16} /> },
+  ]},
+  { id: 'cost-risk', label: '成本与风险', icon: <CircleDollarSign size={14} />, items: [
+    { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={16} /> },
+    { id: 'cost-report', label: '成本报告', icon: <CircleDollarSign size={16} /> },
+    { id: 'risks', label: '风险中心', icon: <AlertTriangle size={16} /> },
+    { id: 'efficiency', label: '效能', icon: <Activity size={16} /> },
+  ]},
+  { id: 'ai-tools', label: 'AI 与工具', icon: <Sparkles size={14} />, items: [
+    { id: 'ai', label: 'AI 分析', icon: <Bot size={16} /> },
+    { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={16} /> },
+    { id: 'smart-fill', label: 'AI 智能填报', icon: <Sparkles size={16} /> },
+    { id: 'automation', label: '自动化规则', icon: <Sparkles size={16} /> },
+    { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={16} /> },
+    { id: 'api-keys', label: 'API Keys', icon: <Key size={16} /> },
+  ]},
+  { id: 'collaboration', label: '协作', icon: <MessageSquare size={14} />, items: [
+    { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={16} /> },
+    { id: 'wiki', label: '知识库', icon: <BookOpen size={16} /> },
+    { id: 'notifications', label: '通知', icon: <Bell size={16} /> },
+  ]},
+  { id: 'admin-org', label: '组织管理', icon: <Building2 size={14} />, items: [
+    { id: 'org-members', label: '成员管理', icon: <Users size={16} /> },
+    { id: 'org-settings', label: '组织设置', icon: <Settings size={16} /> },
+    { id: 'feishu-users', label: '飞书成员', icon: <Users size={16} /> },
+    { id: 'departments', label: '部门管理', icon: <Building2 size={16} /> },
+  ]},
+  { id: 'admin-platform', label: '平台管理', icon: <ShieldCheck size={14} />, items: [
+    { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={16} /> },
+    { id: 'audit', label: '审计日志', icon: <Activity size={16} /> },
+    { id: 'settings', label: '系统设置', icon: <Settings size={16} /> },
+    { id: 'plan-settings', label: '套餐设置', icon: <Settings size={16} /> },
+  ]},
+];
+
+const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; allowedOrgRoles?: string[] }> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
@@ -79,15 +150,29 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
   { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={18} />, platform: 'workspace' },
+  { id: 'wiki', label: '知识库', icon: <BookOpen size={18} />, platform: 'workspace' },
+  { id: 'sprints', label: 'Sprint', icon: <Layers size={18} />, platform: 'workspace' },
+  { id: 'bugs', label: 'Bug 管理', icon: <Bug size={18} />, platform: 'workspace' },
+  { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={18} />, platform: 'workspace' },
+  { id: 'efficiency', label: '效能', icon: <Activity size={18} />, platform: 'workspace' },
   { id: 'ai', label: 'AI 分析', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
+  { id: 'smart-fill', label: 'AI 智能填报', icon: <Sparkles size={18} />, platform: 'workspace' },
+  { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={18} />, platform: 'workspace' },
+  { id: 'api-keys', label: 'API Keys', icon: <Key size={18} />, platform: 'workspace' },
+  { id: 'automation', label: '自动化规则', icon: <Sparkles size={18} />, platform: 'workspace' },
+  { id: 'cost-report', label: '成本报告', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
+  { id: 'departments', label: '部门管理', icon: <Building2 size={18} />, platform: 'workspace' },
+  { id: 'plan-settings', label: '套餐设置', icon: <Settings size={18} />, platform: 'workspace' },
   { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
-  { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
-  { id: 'org-members', label: '成员管理', icon: <Users size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'admin'] },
-  { id: 'org-settings', label: '组织设置', icon: <Settings size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'admin'] },
-  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedRoles: ['super_admin'] },
-  { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', allowedRoles: ['super_admin', 'project_manager', 'pm'] },
-  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedRoles: ['super_admin'] }
+  { id: 'notifications', label: '通知', icon: <Bell size={18} />, platform: 'workspace' },
+  // admin platform nav items use OrgRole for permission check
+  { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] },
+  { id: 'org-members', label: '成员管理', icon: <Users size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin'] },
+  { id: 'org-settings', label: '组织设置', icon: <Settings size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin'] },
+  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] },
+  { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin', 'member'] },
+  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] }
 ];
 
 const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
@@ -98,25 +183,23 @@ export default function AstraeaLayout({
   platform,
   onPlatformChange,
   canAccessAdmin,
+  myOrgRole,
   children,
   user,
   onLogout,
   unreadCount = 0,
   theme,
-  onThemeChange
+  onThemeChange,
+  headerCenter
 }: AstraeaLayoutProps) {
   const role = String(user?.role || '');
   const displayName = String(user?.username || user?.name || '未知用户');
   const displayRole = role || 'unknown';
-  const canManageAdmin = canAccessAdmin || ['super_admin', 'member', 'pm'].includes(role);
+  const isSuperAdmin = role === 'super_admin';
+  const isProjectManager = role === 'project_manager';
+  const canManageAdmin = canAccessAdmin || isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
   const [showUserSettings, setShowUserSettings] = useState(false);
-  const [showOrgSwitcher, setShowOrgSwitcher] = useState(false);
-  const [showCreateOrg, setShowCreateOrg] = useState(false);
-  const [createSlug, setCreateSlug] = useState('');
-  const [createName, setCreateName] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createMsg, setCreateMsg] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
-  const { activeOrgId, orgList, setActiveOrg } = useOrgStore();
+  const [activeGroupId, setActiveGroupId] = useState<string>('overview');
   const [hiddenNavItems, setHiddenNavItems] = useState<ViewKey[]>(() => {
     try {
       const raw = window.localStorage.getItem(HIDDEN_NAV_STORAGE_KEY);
@@ -134,15 +217,30 @@ export default function AstraeaLayout({
     window.localStorage.setItem(HIDDEN_NAV_STORAGE_KEY, JSON.stringify(hiddenNavItems));
   }, [hiddenNavItems]);
 
+  // Auto-switch to the group that contains the active view
+  useEffect(() => {
+    const group = navGroups.find((g) =>
+      g.items.some((item) => item.id === currentView)
+    );
+    if (group) {
+      setActiveGroupId(group.id);
+    }
+  }, [currentView]);
+
   const configurableNavItems = useMemo(
     () => {
       return navItems.filter((item) => {
         if (item.platform !== platform) return false;
-        if (item.allowedRoles) return item.allowedRoles.includes(role);
+        // super_admin bypasses all org-level role checks
+        if (isSuperAdmin) return true;
+        // project_manager also bypasses (global role)
+        if (isProjectManager) return true;
+        // Use OrgRole for admin platform items
+        if (item.allowedOrgRoles) return item.allowedOrgRoles.includes(myOrgRole ?? '');
         return true;
       });
     },
-    [platform, role]
+    [platform, myOrgRole, isSuperAdmin, isProjectManager]
   );
   const visibleNavItems = configurableNavItems.filter((item) => !hiddenNavItems.includes(item.id));
 
@@ -165,26 +263,6 @@ export default function AstraeaLayout({
       }
       return Array.from(hiddenSet) as ViewKey[];
     });
-  }
-
-  async function handleCreateOrg() {
-    if (!createSlug.trim() || !createName.trim()) return;
-    setCreating(true);
-    setCreateMsg(null);
-    try {
-      const slug = createSlug.trim().toLowerCase().replace(/\s+/g, '-');
-      await createOrganization({ slug, name: createName.trim() });
-      const orgs = await listOrganizations();
-      const { setOrgList, setActiveOrg: _set } = useOrgStore.getState();
-      setOrgList(orgs.map(o => ({ id: o.id, name: o.name, orgRole: o.orgRole })));
-      setShowCreateOrg(false);
-      setCreateSlug('');
-      setCreateName('');
-    } catch (e: unknown) {
-      setCreateMsg({ type: 'error', text: e instanceof Error ? e.message : '创建失败' });
-    } finally {
-      setCreating(false);
-    }
   }
 
   return (
@@ -215,127 +293,66 @@ export default function AstraeaLayout({
           </button>
         </div>
 
-        {orgList.length > 0 && (
-          <div className="org-switcher" style={{ padding: '0.5rem 1rem', position: 'relative' }}>
-            <button
-              className="btn org-switcher-btn"
-              type="button"
-              onClick={() => setShowOrgSwitcher(v => !v)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Building2 size={14} />
-                <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>组织</span>
-              </span>
-              <span style={{ fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'left' }}>
-                {orgList.find(o => o.id === activeOrgId)?.name ?? '未选择'}
-              </span>
-              <ChevronDown size={12} style={{ opacity: 0.6 }} />
-            </button>
-            <AnimatePresence>
-              {showOrgSwitcher && (
-                <motion.div
-                  className="org-switcher-dropdown"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
-                  style={{
-                    position: 'absolute', top: '100%', left: '1rem', right: '1rem',
-                    background: 'var(--color-bg-secondary)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: '0.5rem',
-                    zIndex: 100,
-                    overflow: 'hidden',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
-                  }}
-                  onMouseLeave={() => setShowOrgSwitcher(false)}
-                >
-                  {orgList.map(org => (
-                    <button
-                      key={org.id}
-                      className={`org-switcher-item ${org.id === activeOrgId ? 'active' : ''}`}
-                      type="button"
-                      onClick={() => {
-                        setActiveOrg(org.id);
-                        setShowOrgSwitcher(false);
-                      }}
-                      style={{
-                        width: '100%', padding: '0.5rem 0.75rem',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        border: 'none', background: 'transparent', cursor: 'pointer',
-                        fontSize: '0.8rem',
-                        color: org.id === activeOrgId ? 'var(--color-accent)' : 'var(--color-text)'
-                      }}
-                    >
-                      <span>{org.name}</span>
-                      <span style={{ fontSize: '0.65rem', opacity: 0.6, textTransform: 'capitalize' }}>{org.orgRole}</span>
-                    </button>
-                  ))}
+        {/* Workspace: grouped nav titles */}
+        {platform === 'workspace' && (
+          <div className="astraea-nav-list">
+            {navGroups.map((group) => {
+              const groupItems = group.items.filter((item) =>
+                !hiddenNavItems.includes(item.id) &&
+                navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
+              );
+              if (groupItems.length === 0) return null;
 
-                  {showCreateOrg ? (
-                    <div style={{ padding: '0.6rem 0.75rem', borderTop: '1px solid var(--color-border)' }}>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button
-                          className="btn"
-                          type="button"
-                          onClick={() => setShowCreateOrg(false)}
-                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.3rem' }}
-                        >
-                          取消
-                        </button>
-                        <button
-                          className="btn primary"
-                          type="button"
-                          onClick={() => setShowOrgSwitcher(false)}
-                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.3rem' }}
-                        >
-                          去创建
-                        </button>
-                      </div>
-                    </div>
-                  ) : role === 'super_admin' && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateOrg(true)}
-                      style={{
-                        width: '100%', padding: '0.5rem 0.75rem',
-                        display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        border: 'none', background: 'transparent', cursor: 'pointer',
-                        fontSize: '0.75rem', color: 'var(--color-accent)',
-                        borderTop: '1px solid var(--color-border)'
-                      }}
-                    >
-                      <Plus size={12} />新建组织
-                    </button>
+              return (
+                <button
+                  key={group.id}
+                  className={`astraea-nav-item ${activeGroupId === group.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveGroupId(group.id);
+                    const first = groupItems[0];
+                    if (first) onViewChange(first.id);
+                  }}
+                >
+                  <div className="icon-wrapper">{group.icon}</div>
+                  <span>{group.label}</span>
+                  {activeGroupId === group.id && (
+                    <motion.div
+                      className="astraea-active-indicator"
+                      layoutId="activeNav"
+                      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                    />
                   )}
-                </motion.div>
-              )}
-            </AnimatePresence>
+                </button>
+              );
+            })}
           </div>
         )}
 
-        <div className="astraea-nav-list">
-          {visibleNavItems.map((item) => {
-            const isActive = currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                className={`astraea-nav-item ${isActive ? 'active' : ''}`}
-                onClick={() => onViewChange(item.id)}
-              >
-                <div className="icon-wrapper">{item.icon}</div>
-                <span>{item.label}</span>
-                {isActive && (
-                  <motion.div
-                    className="astraea-active-indicator"
-                    layoutId="activeNav"
-                    transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
+        {/* Admin: flat nav */}
+        {platform === 'admin' && (
+          <div className="astraea-nav-list">
+            {visibleNavItems.map((item) => {
+              const isActive = currentView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  className={`astraea-nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onViewChange(item.id)}
+                >
+                  <div className="icon-wrapper">{item.icon}</div>
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <motion.div
+                      className="astraea-active-indicator"
+                      layoutId="activeNav"
+                      transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         <div className="astraea-user-profile-wrap">
           <div
@@ -357,6 +374,79 @@ export default function AstraeaLayout({
           </div>
         </div>
       </nav>
+
+      {/* Right content area: header + topbar tabs + main */}
+      <div className="content-area">
+        <header className="astraea-header">
+          <div className="header-left">
+            <div
+              className="cmd-k-hint cmd-k-hint--button"
+              onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+            >
+              <span className="hk-key">⌘</span> + <span className="hk-key">K</span> AI 快速入口
+            </div>
+            {headerCenter && <div className="header-center">{headerCenter}</div>}
+          </div>
+
+          <div className="header-actions">
+            <div className="app-system-online">
+              <span className="app-system-dot"></span>
+              SYSTEM.ONLINE
+            </div>
+            <button className="action-btn notifications-btn" onClick={() => onViewChange('notifications')}>
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <motion.span className="badge" initial={{ scale: 0 }} animate={{ scale: 1 }}>
+                  {unreadCount}
+                </motion.span>
+              )}
+            </button>
+          </div>
+        </header>
+
+        {/* Top tab bar: only active group's items */}
+        {platform === 'workspace' && (() => {
+          const activeGroup = navGroups.find((g) => g.id === activeGroupId);
+          if (!activeGroup) return null;
+          const groupItems = activeGroup.items.filter((item) =>
+            !hiddenNavItems.includes(item.id) &&
+            navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
+          );
+          if (groupItems.length === 0) return null;
+          return (
+            <div className="workspace-tab-bar">
+              {groupItems.map((item) => {
+                const isActive = currentView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    className={`workspace-tab ${isActive ? 'active' : ''}`}
+                    onClick={() => onViewChange(item.id)}
+                  >
+                    <span className="tab-icon">{item.icon}</span>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        <main className="astraea-main-container">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentView}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2 }}
+              className="astraea-content-scroll"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+      </div>
 
       <AnimatePresence>
         {showUserSettings && (
@@ -384,24 +474,58 @@ export default function AstraeaLayout({
               <section className="user-settings-section">
                 <h4>侧栏功能显示</h4>
                 <p className="muted">按需隐藏左侧菜单功能，至少保留一个入口。</p>
-                <div className="user-settings-nav-grid">
-                  {configurableNavItems.map((item) => {
-                    const checked = !hiddenNavItems.includes(item.id);
-                    return (
-                      <label key={item.id} className="user-settings-nav-item">
-                        <span className="user-settings-nav-main">
-                          <span className="icon-wrapper">{item.icon}</span>
-                          <span>{item.label}</span>
-                        </span>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => toggleNavItem(item.id, e.target.checked)}
-                        />
-                      </label>
+                {platform === 'workspace' ? (
+                  navGroups.map((group) => {
+                    const groupItems = group.items.filter((item) =>
+                      navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
                     );
-                  })}
-                </div>
+                    if (groupItems.length === 0) return null;
+                    return (
+                      <div key={group.id} style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, opacity: 0.5, padding: '0.2rem 0', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          {group.label}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          {groupItems.map((item) => {
+                            const checked = !hiddenNavItems.includes(item.id);
+                            return (
+                              <label key={item.id} className="user-settings-nav-item" style={{ marginLeft: 0 }}>
+                                <span className="user-settings-nav-main">
+                                  <span className="icon-wrapper">{item.icon}</span>
+                                  <span>{item.label}</span>
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => toggleNavItem(item.id, e.target.checked)}
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="user-settings-nav-grid">
+                    {configurableNavItems.map((item) => {
+                      const checked = !hiddenNavItems.includes(item.id);
+                      return (
+                        <label key={item.id} className="user-settings-nav-item">
+                          <span className="user-settings-nav-main">
+                            <span className="icon-wrapper">{item.icon}</span>
+                            <span>{item.label}</span>
+                          </span>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => toggleNavItem(item.id, e.target.checked)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </section>
 
               <section className="user-settings-section">
@@ -422,125 +546,6 @@ export default function AstraeaLayout({
                   ))}
                 </div>
               </section>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <header className="astraea-header">
-        <div
-          className="cmd-k-hint cmd-k-hint--button"
-          onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-        >
-          <span className="hk-key">⌘</span> + <span className="hk-key">K</span> AI 快速入口
-        </div>
-
-        <div className="header-actions">
-          <button className="action-btn notifications-btn" onClick={() => onViewChange('notifications')}>
-            <Bell size={20} />
-            {unreadCount > 0 && (
-              <motion.span className="badge" initial={{ scale: 0 }} animate={{ scale: 1 }}>
-                {unreadCount}
-              </motion.span>
-            )}
-          </button>
-        </div>
-      </header>
-
-      <main className="astraea-main-container">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentView}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="astraea-content-scroll"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
-      {/* 新建组织弹窗 */}
-      <AnimatePresence>
-        {showCreateOrg && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 9999,
-              background: 'rgba(0,0,0,0.6)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center'
-            }}
-            onClick={() => setShowCreateOrg(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={e => e.stopPropagation()}
-              style={{
-                background: 'var(--color-bg-secondary)',
-                border: '1px solid var(--color-border)',
-                borderRadius: '1rem',
-                padding: '1.5rem',
-                width: 360,
-                boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
-              }}
-            >
-              <h3 style={{ marginBottom: '1rem' }}>新建组织</h3>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.3rem' }}>组织名称</label>
-                <input
-                  className="glass-input"
-                  placeholder="例如：弋途科技"
-                  value={createName}
-                  onChange={e => {
-                    setCreateName(e.target.value);
-                    // 自动从名称生成 slug
-                    const s = e.target.value.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '-').replace(/^-+|-+$/g, '');
-                    setCreateSlug(s);
-                  }}
-                  autoFocus
-                  style={{ width: '100%' }}
-                />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.3rem' }}>
-                  标识 <span style={{ opacity: 0.5 }}>（URL 友好，自动生成）</span>
-                </label>
-                <input
-                  className="glass-input"
-                  placeholder="slug"
-                  value={createSlug}
-                  onChange={e => setCreateSlug(e.target.value.toLowerCase().replace(/\s+/g, '-'))}
-                  style={{ width: '100%' }}
-                />
-              </div>
-              {createMsg && (
-                <div style={{
-                  fontSize: '0.8rem',
-                  color: createMsg.type === 'error' ? '#ef4444' : '#22c55e',
-                  marginBottom: '0.75rem'
-                }}>
-                  {createMsg.text}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-                <button className="btn" type="button" onClick={() => { setShowCreateOrg(false); setCreateMsg(null); }}>
-                  取消
-                </button>
-                <button
-                  className="btn primary"
-                  type="button"
-                  onClick={() => void handleCreateOrg()}
-                  disabled={creating || !createSlug.trim() || !createName.trim()}
-                >
-                  {creating ? '创建中...' : '创建'}
-                </button>
-              </div>
             </motion.div>
           </motion.div>
         )}

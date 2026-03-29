@@ -6,6 +6,7 @@ import TableToolbar from '../components/TableToolbar';
 import PaginationBar from '../components/PaginationBar';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AutocompleteOwner from '../components/ui/AutocompleteOwner';
 
 type Props = {
   canWrite: boolean;
@@ -249,6 +250,17 @@ export default function FeishuView({
                     : field.key === '负责人'
                       ? feishuUserOptions
                       : field.options ?? [];
+                  if (field.key === '负责人') {
+                    return (
+                      <AutocompleteOwner
+                        key={String(field.key)}
+                        value={value}
+                        onChange={(v) => onUpdateFeishuField(field.key, v)}
+                        options={feishuUserOptions}
+                        placeholder="输入或选择负责人"
+                      />
+                    );
+                  }
                   if (field.type === 'select') {
                     return (
                       <ThemedSelect

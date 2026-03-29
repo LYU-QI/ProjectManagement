@@ -89,7 +89,16 @@ export class OrganizationsService {
       if (org._count.projects > 0) {
         throw new BadRequestException('Cannot delete organization with existing projects');
       }
-      await this.prisma.organization.delete({ where: { id } });
+      await this.prisma.$transaction([
+        this.prisma.orgMember.deleteMany({ where: { organizationId: id } }),
+        this.prisma.department.deleteMany({ where: { organizationId: id } }),
+        this.prisma.config.deleteMany({ where: { organizationId: id } }),
+        this.prisma.wikiPage.deleteMany({ where: { organizationId: id } }),
+        this.prisma.automationRule.deleteMany({ where: { organizationId: id } }),
+        this.prisma.orgApiKey.deleteMany({ where: { organizationId: id } }),
+        this.prisma.orgWebhook.deleteMany({ where: { organizationId: id } }),
+        this.prisma.organization.delete({ where: { id } })
+      ]);
       return { success: true };
     }
     if (actorOrgRole !== 'owner') {
@@ -105,7 +114,16 @@ export class OrganizationsService {
       throw new BadRequestException('Cannot delete organization with existing projects');
     }
 
-    await this.prisma.organization.delete({ where: { id } });
+    await this.prisma.$transaction([
+      this.prisma.orgMember.deleteMany({ where: { organizationId: id } }),
+      this.prisma.department.deleteMany({ where: { organizationId: id } }),
+      this.prisma.config.deleteMany({ where: { organizationId: id } }),
+      this.prisma.wikiPage.deleteMany({ where: { organizationId: id } }),
+      this.prisma.automationRule.deleteMany({ where: { organizationId: id } }),
+      this.prisma.orgApiKey.deleteMany({ where: { organizationId: id } }),
+      this.prisma.orgWebhook.deleteMany({ where: { organizationId: id } }),
+      this.prisma.organization.delete({ where: { id } })
+    ]);
     return { success: true };
   }
 

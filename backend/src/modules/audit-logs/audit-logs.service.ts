@@ -74,4 +74,42 @@ export class AuditLogsService {
       };
     });
   }
+
+  async exportCsv(actor: AuthActor | undefined, projectId?: number): Promise<string> {
+    const accessible = await this.accessService.getAccessibleProjectIds(actor);
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(accessible === null
+          ? {}
+          : {
+            OR: [
+              { projectId: null },
+              { projectId: { in: accessible } }
+            ]
+          })
+      },
+      orderBy: { id: 'desc' },
+      take: 5000
+    });
+
+    const headers = ['ID', '时间', '用户ID', '用户名', '角色', '项目ID', '组织ID', '方法', '路径'];
+    const lines = [headers.join(',')];
+
+    for (const row of rows) {
+      lines.push([
+        String(row.id),
+        String(row.createdAt.toISOString()),
+        String(row.userId ?? ''),
+        String(row.userName ?? ''),
+        String(row.userRole ?? ''),
+        String(row.projectId ?? ''),
+        String(row.organizationId ?? ''),
+        String(row.method ?? ''),
+        String(row.path ?? '').replace(/,/g, ';')
+      ].map(v => `"${v.replace(/"/g, '""')}"`).join(','));
+    }
+
+    return lines.join('\n');
+  }
 }

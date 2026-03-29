@@ -1,4 +1,4 @@
-export const API_BASE = (import.meta as any).env?.VITE_API_BASE || 'http://localhost:3000/api/v1';
+export const API_BASE = (import.meta as any).env?.VITE_API_BASE || '/api/v1';
 export const TOKEN_KEY = 'projectlvqi_token';
 export const USER_KEY = 'projectlvqi_user';
 
@@ -44,7 +44,9 @@ async function ensureOk(res: Response, method: string, path: string) {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  console.debug('[apiGet]', url);
+  const res = await fetch(url, {
     headers: buildHeaders(false)
   });
   await ensureOk(res, 'GET', path);

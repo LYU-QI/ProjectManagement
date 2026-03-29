@@ -99,12 +99,12 @@ export class PmAssistantScheduler implements OnModuleInit {
     return this.configService.getRawValue(key) || def.defaultCron;
   }
 
-  private async run(jobId: PmJobId, projectId?: number) {
+  private async run(jobId: PmJobId, projectId?: number, organizationId?: string) {
     if (!this.isEnabled()) return;
     try {
       if (projectId) {
-        await this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule', projectId });
-        this.logger.log(`PM Assistant job sent: ${jobId} (project=${projectId})`);
+        await this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule', projectId, organizationId });
+        this.logger.log(`PM Assistant job sent: ${jobId} (project=${projectId}, org=${organizationId})`);
         return;
       }
       await this.pmAssistantService.runJob(jobId, { triggeredBy: 'schedule' });
@@ -120,7 +120,7 @@ export class PmAssistantScheduler implements OnModuleInit {
     try {
       const projects = await this.prisma.project.findMany({
         where: { feishuChatIds: { not: null } },
-        select: { id: true, feishuChatIds: true }
+        select: { id: true, feishuChatIds: true, organizationId: true }
       });
       const projectTargets = projects.filter((p) => (p.feishuChatIds || '').trim().length > 0);
       if (projectTargets.length === 0) {
@@ -137,7 +137,7 @@ export class PmAssistantScheduler implements OnModuleInit {
       const scopedSet = new Set(scopedRows.map((row) => row.projectId));
       const defaultProjects = projectTargets.filter((p) => !scopedSet.has(p.id));
       if (defaultProjects.length === 0) return;
-      await Promise.all(defaultProjects.map((p) => this.run(jobId, p.id)));
+      await Promise.all(defaultProjects.map((p) => this.run(jobId, p.id, p.organizationId)));
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`PM Assistant default schedule failed: ${scheduleId}/${jobId} (${detail})`);
@@ -275,7 +275,7 @@ export class PmAssistantScheduler implements OnModuleInit {
 
     const projects = await this.prisma.project.findMany({
       where: { feishuChatIds: { not: null } },
-      select: { id: true, feishuChatIds: true }
+      select: { id: true, feishuChatIds: true, organizationId: true }
     });
     const projectTargets = projects.filter((p) => (p.feishuChatIds || '').trim().length > 0);
     if (projectTargets.length === 0) return;
@@ -296,10 +296,11 @@ export class PmAssistantScheduler implements OnModuleInit {
         const def = SCHEDULES.find((item) => item.id === scheduleId);
         if (!def) return;
         const name = `pm-assistant:project:${project.id}:${scheduleId}`;
+        const projOrgId = project.organizationId;
         const job = new CronJob(
           row.cron,
           () => {
-            def.jobs.forEach((jobId) => void this.run(jobId, project.id));
+            def.jobs.forEach((jobId) => void this.run(jobId, project.id, projOrgId));
           },
           null,
           false,

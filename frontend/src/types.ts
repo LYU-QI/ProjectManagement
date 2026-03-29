@@ -333,3 +333,27 @@ export interface MilestoneBoardItem {
   updatedAt: string;
   deliverables: MilestoneBoardDeliverable[];
 }
+
+export interface EfficiencyData {
+  projectId: number;
+  projectName: string;
+  metrics: {
+    requirementCount: number;
+    approvedRate: number;
+    doneRate: number;
+    bugCount: number;
+    openBugCount: number;
+    resolvedBugCount: number;
+    avgResolutionDays: number;
+    sprintCount: number;
+    completedSprintCount: number;
+    workItemCount: number;
+    doneWorkItemRate: number;
+    totalCost: number;
+    laborCost: number;
+    outsourceCost: number;
+    cloudCost: number;
+    onTimeDeliveryRate: number;
+  };
+}
+

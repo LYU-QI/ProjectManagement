@@ -156,7 +156,7 @@ export class PmAssistantService {
 
   async runJob(
     jobId: PmJobId,
-    opts?: { dryRun?: boolean; receiveId?: string; receiveIds?: string[]; projectId?: number; triggeredBy?: 'manual' | 'schedule' }
+    opts?: { dryRun?: boolean; receiveId?: string; receiveIds?: string[]; projectId?: number; organizationId?: string; triggeredBy?: 'manual' | 'schedule' }
   ): Promise<PmRunResult> {
     const job = this.getJob(jobId);
     const triggeredBy = opts?.triggeredBy ?? 'manual';
@@ -174,6 +174,7 @@ export class PmAssistantService {
     const enabled = scopedConfig?.enabled ?? globalConfig?.enabled ?? true;
     if (!enabled) {
       await this.pushLog({
+        organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -216,6 +217,7 @@ export class PmAssistantService {
 
       if (opts?.dryRun) {
         await this.pushLog({
+          organizationId: opts?.organizationId,
           projectId: opts?.projectId,
           jobId,
           triggeredBy,
@@ -251,6 +253,7 @@ export class PmAssistantService {
       })));
 
       await this.pushLog({
+        organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -263,6 +266,7 @@ export class PmAssistantService {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       await this.pushLog({
+        organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -826,6 +830,7 @@ export class PmAssistantService {
   }
 
   private async pushLog(input: {
+    organizationId?: string;
     projectId?: number;
     jobId: PmJobId;
     triggeredBy: 'manual' | 'schedule';
@@ -838,6 +843,7 @@ export class PmAssistantService {
     try {
       await this.prisma.pmAssistantLog.create({
         data: {
+          organizationId: input.organizationId,
           projectId: input.projectId,
           jobId: input.jobId,
           triggeredBy: input.triggeredBy,

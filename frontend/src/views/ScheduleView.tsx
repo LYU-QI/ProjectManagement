@@ -86,7 +86,7 @@ export default function ScheduleView({
   onRemoveDependency,
   onInlineKeyDown
 }: Props) {
-  const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar' | 'kanban'>('list');
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:schedule:compactTable', false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [dependencyForm, setDependencyForm] = useState({ taskRecordId: '', dependsOnRecordId: '', type: 'FS' as 'FS' | 'SS' | 'FF' });
@@ -385,6 +385,7 @@ export default function ScheduleView({
             <button className={viewMode === 'list' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('list')}>列表</button>
             <button className={viewMode === 'gantt' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('gantt')}>甘特图</button>
             <button className={viewMode === 'calendar' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('calendar')}>日历</button>
+            <button className={viewMode === 'kanban' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('kanban')}>看板</button>
           </div>
         </div>
         {scheduleLoading && <p>Loading...</p>}
@@ -661,6 +662,64 @@ export default function ScheduleView({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {viewMode === 'kanban' && (
+        <div className="card">
+          <div className="section-title-row">
+            <h3>任务看板</h3>
+            <span className="muted">按状态分组展示所有任务</span>
+          </div>
+          {tasks.length === 0 ? (
+            <p className="muted">暂无任务数据</p>
+          ) : (
+            <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+              {(['待办', '进行中', '已完成'] as const).map((status) => {
+                const column = tasks.filter((t) => t.状态 === status);
+                return (
+                  <div key={status} style={{ minWidth: 280, flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', borderRadius: 8, background: 'var(--glass-border)', fontWeight: 600, fontSize: '0.85rem' }}>
+                      <span>{status}</span>
+                      <span style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: 10, padding: '0 0.5rem', fontSize: '0.75rem' }}>{column.length}</span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minHeight: 200 }}>
+                      {column.map((task) => (
+                        <div key={task.recordId} className="glass-card" style={{ padding: '0.75rem', borderRadius: 10, cursor: 'default' }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.9rem', marginBottom: '0.4rem', wordBreak: 'break-word' }}>
+                            {task.任务名称 || task.任务ID}
+                          </div>
+                          {task.负责人 && (
+                            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginBottom: '0.3rem' }}>
+                              {formatAssignee(task.负责人)}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)', flexWrap: 'wrap' }}>
+                            {task.开始时间 && <span>{task.开始时间}</span>}
+                            {task.开始时间 && task.截止时间 && <span>→</span>}
+                            {task.截止时间 && <span>{task.截止时间}</span>}
+                          </div>
+                          {task.进度 && (
+                            <div style={{ marginTop: '0.4rem' }}>
+                              <div style={{ height: 4, background: 'var(--glass-border)', borderRadius: 2 }}>
+                                <div style={{ height: 4, width: `${Math.min(100, (Number(task.进度) <= 1 ? Number(task.进度) * 100 : Number(task.进度)) || 0)}%`, background: 'var(--color-primary)', borderRadius: 2, transition: 'width 0.3s' }} />
+                              </div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: 2 }}>{formatProgress(task.进度)}</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {column.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--color-text-muted)', fontSize: '0.8rem', border: '1px dashed var(--glass-border)', borderRadius: 10 }}>
+                          暂无
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

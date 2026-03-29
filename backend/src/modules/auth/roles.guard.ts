@@ -11,20 +11,21 @@ export class RolesGuard implements CanActivate {
   private expandRoles(role: Role): Set<Role> {
     const roles = new Set<Role>([role]);
     if (role === 'super_admin') {
+      // platform admin implies all roles
       roles.add('project_manager');
       roles.add('member');
       roles.add('pm');
       roles.add('viewer');
     }
+    // project_manager: org-level global role, implies member (can read org data)
     if (role === 'project_manager') {
       roles.add('member');
-      roles.add('pm');
-      roles.add('viewer');
     }
+    // member: basic org member, implies viewer (can read org data)
     if (role === 'member') {
-      roles.add('pm');
       roles.add('viewer');
     }
+    // pm: project manager role, implies viewer (can read project data)
     if (role === 'pm') {
       roles.add('viewer');
     }

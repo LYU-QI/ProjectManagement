@@ -29,7 +29,12 @@ export class OrgGuard implements CanActivate {
     const user = request['user'] as { sub?: number; role?: string; organizationId?: string; orgRole?: string } | undefined;
 
     if (user?.role === 'super_admin') {
-      request['org'] = { id: null, orgRole: null };
+      const requestedOrgId = (request['headers'] as Record<string, string | undefined>)?.['x-org-id'];
+      const tokenOrgId = user.organizationId;
+      request['org'] = {
+        id: requestedOrgId ?? tokenOrgId ?? null,
+        orgRole: user.orgRole ?? null
+      };
       return true;
     }
 

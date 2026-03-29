@@ -1,4 +1,4 @@
-﻿import { FormEvent, useEffect, useMemo, useState } from 'react';
+﻿import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
 import { listOrganizations } from './api/organizations';
@@ -33,6 +33,7 @@ import type {
 } from './types';
 import type { FeishuUserItem } from './views/FeishuUsersView';
 import DashboardView from './views/DashboardView';
+import EfficiencyView from './views/EfficiencyView';
 import RequirementsView from './views/RequirementsView';
 import CostsView from './views/CostsView';
 import ScheduleView from './views/ScheduleView';
@@ -50,14 +51,27 @@ import FeishuUsersView from './views/FeishuUsersView';
 import PmAssistantView from './views/PmAssistantView';
 import ProjectAccessView from './views/ProjectAccessView';
 import MilestoneBoardView from './views/MilestoneBoardView';
+import WikiView from './views/WikiView';
+import SprintBoardView from './views/SprintBoardView';
+import BugView from './views/BugView';
+import TestPlanView from './views/TestPlanView';
+import WebhookView from './views/WebhookView';
+import ApiKeysView from './views/ApiKeysView';
+import AutomationView from './views/AutomationView';
+import CostReportView from './views/CostReportView';
+import DepartmentsView from './views/DepartmentsView';
+import PlanSettingsView from './views/PlanSettingsView';
+import SmartFillView from './views/SmartFillView';
 import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
 import ThemedSelect from './components/ui/ThemedSelect';
+import HeaderOrgSelect from './components/ui/HeaderOrgSelect';
+import HeaderProjectSelect from './components/ui/HeaderProjectSelect';
 
-type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board' | 'org-settings' | 'org-members';
+type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board' | 'wiki' | 'sprints' | 'org-settings' | 'org-members' | 'bugs' | 'test-plans' | 'efficiency' | 'webhooks' | 'api-keys' | 'smart-fill' | 'automation' | 'cost-report' | 'departments' | 'plan-settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'cost-report', 'departments'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
 
 function focusInlineEditor(selector: string) {
@@ -141,10 +155,11 @@ function App() {
       return null;
     }
   });
+  const [registerMode, setRegisterMode] = useState(false);
   const [view, setView] = useState<ViewKey>(() => {
     const raw = localStorage.getItem('pm_view');
     if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board'];
+    const allowed: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'cost-report', 'departments', 'plan-settings'];
     return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
   });
   const [platform, setPlatform] = useState<PlatformMode>(() => {
@@ -155,6 +170,8 @@ function App() {
     const raw = localStorage.getItem('ui:theme');
     return VALID_THEMES.includes(raw as ThemeMode) ? (raw as ThemeMode) : 'light';
   });
+  // Track whether activeOrgId has genuinely changed (vs initial load)
+  const prevActiveOrgIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -201,7 +218,10 @@ function App() {
         setNotifications(unreadNotifications);
 
         const activeProjectId = projectIdOverride ?? selectedProjectId ?? (projectList.find((p) => Number(localStorage.getItem('ui:lastProjectId')) === p.id)?.id) ?? projectList[0]?.id ?? null;
-        setSelectedProjectId(activeProjectId);
+        // Only update if actually changed to avoid re-triggering useEffect([selectedProjectId])
+        if (activeProjectId !== selectedProjectId) {
+          setSelectedProjectId(activeProjectId);
+        }
         if (activeProjectId) localStorage.setItem('ui:lastProjectId', String(activeProjectId));
 
         if (!activeProjectId) {
@@ -228,6 +248,7 @@ function App() {
         setNotifications(projectNotifications);
       });
     } catch (err) {
+      console.error('[refreshAll] error:', err);
       if (err instanceof Error && err.message === 'UNAUTHORIZED') {
         logout();
         setError('登录已失效，请重新登录。');
@@ -285,6 +306,38 @@ function App() {
     }
   }
 
+  async function submitRegister(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    setError('');
+    const form = new FormData(formEl);
+    const username = String(form.get('username') || '');
+    const password = String(form.get('password') || '');
+    const name = String(form.get('name') || '');
+    const orgName = String(form.get('orgName') || '');
+    const orgSlug = String(form.get('orgSlug') || '').toLowerCase().replace(/\s+/g, '-');
+    try {
+      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/register', {
+        username, password, name,
+        orgName: orgName || undefined,
+        orgSlug: orgSlug || undefined
+      });
+      localStorage.setItem(TOKEN_KEY, res.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      const { setActiveOrg, setOrgList } = useOrgStore.getState();
+      if (res.orgList?.length) {
+        setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
+        setActiveOrg(res.organizationId);
+      }
+      setToken(res.token);
+      setUser(res.user);
+      formEl?.reset();
+      setRegisterMode(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '注册失败');
+    }
+  }
+
   useEffect(() => {
     if (token) {
       void refreshAll();
@@ -298,6 +351,33 @@ function App() {
       }).catch(() => {/* ignore */});
     }
   }, [token]);
+
+  // Reload project list when org changes, reset selected project
+  const userRole = String(user?.role || '');
+  const { activeOrgId, orgList } = useOrgStore();
+  const myOrgRole = orgList.find(o => o.id === activeOrgId)?.orgRole ?? null;
+  const isSuperAdmin = userRole === 'super_admin';
+  const isProjectManager = userRole === 'project_manager';
+  const canManageUsers = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole);
+  const canWrite = isSuperAdmin || isProjectManager || ['owner', 'admin', 'member'].includes(myOrgRole);
+  const canManageAdmin = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole);
+  const canAccessAdminPlatform = canManageAdmin;
+
+  useEffect(() => {
+    if (!token || !activeOrgId) return;
+    // Only clear selectedProjectId on genuine org switch (not initial load)
+    if (prevActiveOrgIdRef.current !== null && prevActiveOrgIdRef.current !== activeOrgId) {
+      setSelectedProjectId(null);
+    }
+    prevActiveOrgIdRef.current = activeOrgId;
+  }, [activeOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reload project-specific data when selected project changes
+  useEffect(() => {
+    if (token && selectedProjectId) {
+      void refreshAll(selectedProjectId);
+    }
+  }, [selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   useEffect(() => {
@@ -1013,11 +1093,6 @@ function App() {
     if (!selectedProjectId) return '';
     return projects.find((item) => item.id === selectedProjectId)?.alias?.trim() ?? '';
   }, [projects, selectedProjectId]);
-  const userRole = String(user?.role || '');
-  const canManageUsers = ['super_admin', 'project_manager'].includes(userRole);
-  const canWrite = ['super_admin', 'project_manager', 'pm'].includes(userRole);
-  const canManageAdmin = ['super_admin', 'project_manager', 'pm'].includes(userRole);
-  const canAccessAdminPlatform = canManageAdmin;
 
   useEffect(() => {
     if (!canAccessAdminPlatform && platform === 'admin') {
@@ -2038,19 +2113,53 @@ function App() {
         <div className="login-card">
           <h2>Astraea <span>Flow</span></h2>
           <div className="app-login-subtitle">UNIFIED COMMAND CENTER</div>
-          <form className="form app-login-form" onSubmit={submitLogin}>
-            <div>
-              <label className="app-login-label">NODE ACCESS KEY</label>
-              <input name="username" placeholder="admin / user / 你的账号" required />
-            </div>
-            <div>
-              <label className="app-login-label">SECURITY TOKEN</label>
-              <input name="password" type="password" placeholder="***" required />
-            </div>
-            <button className="btn btn-primary app-login-submit" type="submit">
-              INITIALIZE CONNECTION
-            </button>
-          </form>
+          {registerMode ? (
+            <form className="form app-login-form" onSubmit={submitRegister}>
+              <div>
+                <label className="app-login-label">USERNAME</label>
+                <input name="username" placeholder="选择一个用户名" required minLength={3} />
+              </div>
+              <div>
+                <label className="app-login-label">PASSWORD</label>
+                <input name="password" type="password" placeholder="至少6位" required minLength={6} />
+              </div>
+              <div>
+                <label className="app-login-label">DISPLAY NAME</label>
+                <input name="name" placeholder="你的姓名" required />
+              </div>
+              <div>
+                <label className="app-login-label">ORGANIZATION NAME (OPTIONAL)</label>
+                <input name="orgName" placeholder="创建组织，或留空" />
+              </div>
+              <div>
+                <label className="app-login-label">ORG SLUG (OPTIONAL)</label>
+                <input name="orgSlug" placeholder="如 my-team" />
+              </div>
+              <button className="btn btn-primary app-login-submit" type="submit">
+                CREATE ACCOUNT
+              </button>
+              <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(false)}>
+                已有账号？登录
+              </button>
+            </form>
+          ) : (
+            <form className="form app-login-form" onSubmit={submitLogin}>
+              <div>
+                <label className="app-login-label">NODE ACCESS KEY</label>
+                <input name="username" placeholder="admin / user / 你的账号" required />
+              </div>
+              <div>
+                <label className="app-login-label">SECURITY TOKEN</label>
+                <input name="password" type="password" placeholder="***" required />
+              </div>
+              <button className="btn btn-primary app-login-submit" type="submit">
+                INITIALIZE CONNECTION
+              </button>
+              <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(true)}>
+                创建新账号
+              </button>
+            </form>
+          )}
           {error && <p className="warn app-login-error">[ERROR]: {error}</p>}
         </div>
       </div>
@@ -2071,11 +2180,13 @@ function App() {
         if (mode === 'admin' && WORKSPACE_VIEWS.includes(view)) setView('audit');
       }}
       canAccessAdmin={canAccessAdminPlatform}
+      myOrgRole={myOrgRole}
       user={user}
       onLogout={logout}
       unreadCount={notifications.filter((n) => !n.readAt).length}
       theme={theme}
       onThemeChange={setTheme}
+      headerCenter={<><HeaderOrgSelect /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={setSelectedProjectId} /></>}
     >
       <div className="page-content">
         <div className="app-view-head">
@@ -2095,47 +2206,21 @@ function App() {
                                   view === 'global' ? '全局检索' :
                                     view === 'project-access' ? '管理后台 · 项目授权' :
                                       view === 'milestone-board' ? '里程碑看板' :
+                                        view === 'wiki' ? '知识库' :
+                                          view === 'sprints' ? 'Sprint 管理' :
+                                      view === 'bugs' ? 'Bug 管理' :
+                                      view === 'test-plans' ? '测试管理' :
+                                      view === 'efficiency' ? '效能' :
+                                      view === 'webhooks' ? 'Webhook 管理' :
+                                      view === 'api-keys' ? 'API Keys' :
+                                      view === 'smart-fill' ? 'AI 智能填报' :
+                                      view === 'automation' ? '自动化规则' :
+                                      view === 'cost-report' ? '成本报告' :
+                                      view === 'departments' ? '部门管理' :
+                                      view === 'plan-settings' ? '套餐设置' :
                                     view === 'settings' ? '系统配置' : ''}
           </h2>
-          <div className="app-system-online">
-            <span className="app-system-dot"></span>
-            SYSTEM.ONLINE
-          </div>
         </div>
-
-        {view !== 'dashboard' && view !== 'global' && view !== 'feishu' && view !== 'audit' && view !== 'ai' && view !== 'settings' && view !== 'project-access' && (
-          <div className="card app-workspace-card">
-            <div className="form app-workspace-form">
-              <div>
-                <label className="app-workspace-label">目标工作区</label>
-                <ThemedSelect
-                  value={selectedProjectId == null ? '' : String(selectedProjectId)}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (!value) {
-                      localStorage.removeItem('ui:lastProjectId');
-                      void refreshAll(null);
-                      return;
-                    }
-                    const id = Number(value);
-                    localStorage.setItem('ui:lastProjectId', String(id));
-                    void refreshAll(id);
-                  }}
-                >
-                  {projects.length === 0 && <option value="">暂无项目</option>}
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name} (#{project.id})
-                    </option>
-                  ))}
-                </ThemedSelect>
-              </div>
-            </div>
-            <div className="app-workspace-current">
-              <span className="app-workspace-current-label">当前项目：</span> <strong className="app-workspace-current-name">{selectedProjectName}</strong>
-            </div>
-          </div>
-        )}
 
         {view === 'global' && (
           <div className="card app-global-search-card">
@@ -2421,6 +2506,23 @@ function App() {
           />
         )}
 
+        {view === 'wiki' && (
+          <WikiView
+            selectedProjectId={selectedProjectId}
+            canWrite={canWrite}
+          />
+        )}
+
+        {view === 'sprints' && (
+          <SprintBoardView
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            canWrite={canWrite}
+            feishuUserNames={feishuUsers.map((u) => u.name)}
+            onSelectProject={(id) => { if (id) void refreshAll(id); }}
+          />
+        )}
+
         {view === 'risks' && (
           <RiskCenterView
             data={riskAlerts}
@@ -2558,12 +2660,63 @@ function App() {
           />
         )}
 
+        {view === 'bugs' && (
+          <BugView
+            selectedProjectId={selectedProjectId}
+            canWrite={canWrite}
+            feishuUserNames={feishuUsers.map(u => u.name)}
+          />
+        )}
+
+        {view === 'test-plans' && (
+          <TestPlanView
+            selectedProjectId={selectedProjectId}
+            canWrite={canWrite}
+            feishuUserNames={feishuUsers.map(u => u.name)}
+          />
+        )}
+
+        {view === 'efficiency' && (
+          <EfficiencyView
+            projectId={selectedProjectId}
+            projectName={selectedProjectName}
+          />
+        )}
+
         {view === 'org-settings' && canManageAdmin && (
           <OrgSettingsView onError={setError} onMessage={setMessage} />
         )}
 
         {view === 'org-members' && canManageAdmin && (
           <OrgMembersView onError={setError} onMessage={setMessage} />
+        )}
+
+        {view === 'webhooks' && canWrite && (
+          <WebhookView />
+        )}
+
+        {view === 'api-keys' && canWrite && (
+          <ApiKeysView />
+        )}
+
+        {view === 'smart-fill' && (
+          <SmartFillView projectId={selectedProjectId} requirements={requirements} />
+        )}
+
+        {view === 'automation' && canWrite && (
+          <AutomationView />
+        )}
+
+        {view === 'cost-report' && (
+          <CostReportView />
+        )}
+
+        {view === 'departments' && canWrite && (
+          <DepartmentsView />
+        )}
+
+        {view === 'plan-settings' && (
+          <PlanSettingsView />
         )}
       </div>
     </AstraeaLayout>

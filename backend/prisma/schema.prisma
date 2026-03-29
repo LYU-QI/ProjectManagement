@@ -124,6 +124,49 @@ enum MilestoneBoardRisk {
   high
 }
 
+enum TestCaseStatus {
+  draft
+  active
+  deprecated
+}
+
+enum TestCasePriority {
+  low
+  medium
+  high
+  critical
+}
+
+enum TestPlanStatus {
+  draft
+  active
+  completed
+  archived
+}
+
+enum BugStatus {
+  open
+  in_progress
+  resolved
+  closed
+  rejected
+}
+
+enum BugSeverity {
+  trivial
+  minor
+  major
+  critical
+  blocker
+}
+
+enum BugPriority {
+  low
+  medium
+  high
+  urgent
+}
+
 model Organization {
   id         String      @id @default(cuid())
   slug       String      @unique
@@ -135,6 +178,13 @@ model Organization {
   members    OrgMember[]
   projects   Project[]
   configs    Config[]
+  wikiPages  WikiPage[]
+  departments Department[]
+  automationRules AutomationRule[]
+  orgApiKeys OrgApiKey[]
+  webhooks OrgWebhook[]
+
+  allowedIps String?
 
   @@index([slug])
 }
@@ -145,14 +195,34 @@ model OrgMember {
   organizationId String
   orgRole        OrgRole      @default(member)
   departmentId   String?
+  totpVerified  Boolean     @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   user           User         @relation(fields: [userId], references: [id])
   organization   Organization @relation(fields: [organizationId], references: [id])
+  department     Department?  @relation(fields: [departmentId], references: [id])
 
   @@unique([userId, organizationId])
   @@index([organizationId])
   @@index([userId])
+}
+
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String
+  feishuDeptId  String?
+  name           String
+  parentId       String?
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  parent         Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children       Department[] @relation("DeptHierarchy")
+  members       OrgMember[]
+
+  @@index([organizationId])
+  @@index([feishuDeptId])
 }
 
 model Config {
@@ -177,6 +247,8 @@ model User {
   feishuOpenId  String?
   feishuUnionId String?
   defaultOrgId  String?
+  totpSecret    String?
+  totpEnabled   Boolean @default(false)
   projects      Project[]           @relation("ProjectOwner")
   memberships   ProjectMembership[]
   orgMemberships OrgMember[]
@@ -214,6 +286,11 @@ model Project {
   pmLogs         PmAssistantLog[]
   workItems      WorkItem[]
   milestoneBoardItems MilestoneBoardItem[]
+  sprints           Sprint[]
+  testCases      TestCase[]
+  testPlans      TestPlan[]
+  bugs           Bug[]
+  wikiPages      WikiPage[]
 
   @@index([organizationId])
 }
@@ -444,17 +521,21 @@ model Worklog {
 }
 
 model PmAssistantLog {
-  id          Int      @id @default(autoincrement())
-  projectId   Int?
-  jobId       String
-  triggeredBy String
-  status      String
-  summary     String
-  rawSummary  String?
-  aiSummary   String?
-  error       String?
-  createdAt   DateTime @default(now())
-  project     Project? @relation(fields: [projectId], references: [id])
+  id             Int      @id @default(autoincrement())
+  organizationId String?
+  projectId     Int?
+  jobId         String
+  triggeredBy   String
+  status        String
+  summary       String
+  rawSummary    String?
+  aiSummary     String?
+  error         String?
+  createdAt     DateTime @default(now())
+  project       Project? @relation(fields: [projectId], references: [id])
+
+  @@index([organizationId])
+  @@index([projectId])
 }
 
 model PmAssistantJobConfig {
@@ -573,6 +654,143 @@ model AuditLog {
   @@index([organizationId])
 }
 
+model TestCase {
+  id             Int              @id @default(autoincrement())
+  projectId      Int
+  organizationId String?
+  title          String
+  description    String?          @db.Text
+  preconditions  String?          @db.Text
+  steps          Json?
+  expectedResult String?          @db.Text
+  priority       TestCasePriority @default(medium)
+  status         TestCaseStatus   @default(draft)
+  tags           String?
+  creatorId      Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  project        Project          @relation(fields: [projectId], references: [id])
+  testPlanItems  TestPlanItem[]
+  bugs           Bug[]
+
+  @@index([projectId, status])
+  @@index([organizationId])
+}
+
+model TestPlan {
+  id             Int            @id @default(autoincrement())
+  projectId      Int
+  organizationId String?
+  title          String
+  description    String?        @db.Text
+  status         TestPlanStatus @default(draft)
+  startDate      String?
+  endDate        String?
+  creatorId      Int?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  project        Project        @relation(fields: [projectId], references: [id])
+  items          TestPlanItem[]
+
+  @@index([projectId, status])
+  @@index([organizationId])
+}
+
+model TestPlanItem {
+  id         Int       @id @default(autoincrement())
+  planId     Int
+  testCaseId Int
+  result     String?
+  notes      String?
+  executedAt DateTime?
+  executorId Int?
+  createdAt  DateTime  @default(now())
+  plan       TestPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  testCase   TestCase  @relation(fields: [testCaseId], references: [id])
+
+  @@unique([planId, testCaseId])
+  @@index([planId])
+}
+
+model Bug {
+  id             Int         @id @default(autoincrement())
+  projectId      Int
+  organizationId String?
+  testCaseId     Int?
+  title          String
+  description    String?     @db.Text
+  steps          String?     @db.Text
+  severity       BugSeverity @default(major)
+  priority       BugPriority @default(medium)
+  status         BugStatus   @default(open)
+  assigneeId     Int?
+  assigneeName   String?
+  reporterId     Int?
+  reporterName   String?
+  resolvedAt     DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  project        Project     @relation(fields: [projectId], references: [id])
+  testCase       TestCase?   @relation(fields: [testCaseId], references: [id])
+
+  @@index([projectId, status, severity])
+  @@index([organizationId])
+  @@index([assigneeId])
+}
+
+enum SprintStatus {
+  planning
+  active
+  completed
+  cancelled
+}
+
+model Sprint {
+  id             Int         @id @default(autoincrement())
+  projectId      Int
+  organizationId String?
+  name           String
+  goal           String?     @db.Text
+  status         SprintStatus @default(planning)
+  startDate      String?
+  endDate        String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  project        Project     @relation(fields: [projectId], references: [id])
+
+  @@index([projectId, status])
+}
+
+enum WikiPageType {
+  document
+  folder
+}
+
+model WikiPage {
+  id             Int         @id @default(autoincrement())
+  projectId      Int
+  organizationId String?
+  parentId       Int?
+  title          String
+  content        String      @db.Text
+  type           WikiPageType @default(document)
+  slug           String
+  sortOrder      Int         @default(0)
+  creatorId      Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  project        Project     @relation(fields: [projectId], references: [id])
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  parent         WikiPage?   @relation("WikiPageChildren", fields: [parentId], references: [id])
+  children       WikiPage[]  @relation("WikiPageChildren")
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([parentId])
+  @@index([projectId, sortOrder])
+}
+
 model FeishuUser {
   id             Int      @id @default(autoincrement())
   organizationId String?
@@ -584,3 +802,100 @@ model FeishuUser {
   @@unique([organizationId, name])
   @@index([organizationId])
 }
+
+enum AutomationTrigger {
+  requirement_created
+  requirement_status_changed
+  workitem_created
+  workitem_status_changed
+  bug_created
+  bug_severity_critical
+  cost_over_budget
+  milestone_due_soon
+}
+
+enum AutomationAction {
+  send_notification
+  update_status
+  assign_to_user
+  create_workitem
+  send_webhook
+}
+
+model AutomationRule {
+  id             String             @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  enabled        Boolean           @default(true)
+  trigger        AutomationTrigger
+  conditions     Json
+  actions        Json
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  logs           AutomationLog[]
+
+  @@index([organizationId])
+  @@index([trigger])
+}
+
+model AutomationLog {
+  id           String         @id @default(cuid())
+  ruleId       String
+  executionAt  DateTime      @default(now())
+  trigger      String
+  payload      Json
+  actionsRun   Json
+  success      Boolean
+  error        String?
+  rule         AutomationRule @relation(fields: [ruleId], references: [id])
+}
+
+model OrgApiKey {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  keyPrefix      String       @default(cuid())
+  keyHash        String
+  permissions    String[]
+  lastUsedAt     DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+}
+
+model OrgWebhook {
+  id              String       @id @default(cuid())
+  organizationId  String
+  name            String
+  url             String
+  secret          String?
+  events          String[]
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  lastTriggeredAt DateTime?
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  deliveries      OrgWebhookDelivery[]
+
+  @@index([organizationId])
+}
+
+model OrgWebhookDelivery {
+  id          String     @id @default(cuid())
+  webhookId   String
+  event       String
+  payload     Json
+  statusCode  Int?
+  success     Boolean
+  response    String?
+  error       String?
+  attemptedAt DateTime   @default(now())
+  webhook     OrgWebhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+}
+
