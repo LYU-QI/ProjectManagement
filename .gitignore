@@ -8,3 +8,7 @@ backend/node_modules
 desktop/dist/
 backend/uploads/
 be_restart*.log
+*.pid
+*.log
+frontend/tsconfig.tsbuildinfo
+backend/test-results/

@@ -17,6 +17,7 @@ type Props = {
   canWrite: boolean;
   overview: DashboardOverview | null;
   projects: ProjectItem[];
+  selectedProjectId: number | null;
   selectedProjectIds: number[];
   onToggleProjectSelection: (id: number, checked: boolean) => void;
   onDeleteSelectedProjects: () => void;
@@ -41,6 +42,7 @@ export default function DashboardView({
   canWrite,
   overview,
   projects,
+  selectedProjectId,
   selectedProjectIds,
   onToggleProjectSelection,
   onDeleteSelectedProjects,
@@ -60,7 +62,10 @@ export default function DashboardView({
   }
 
   const summary = useMemo(() => {
-    const items = overview?.projects || [];
+    const allItems = overview?.projects || [];
+    const items = selectedProjectId
+      ? allItems.filter((item) => item.projectId === selectedProjectId)
+      : allItems;
     const totalBudget = items.reduce((sum, item) => sum + (item.budget || 0), 0);
     const totalActual = items.reduce((sum, item) => sum + (item.actualCost || 0), 0);
     const blocked = items.reduce((sum, item) => sum + item.blockedTasks, 0);
@@ -72,15 +77,23 @@ export default function DashboardView({
       avgHealth,
       varianceRate: totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0
     };
-  }, [overview]);
+  }, [overview, selectedProjectId]);
 
   const topRiskProjects = useMemo(() => {
-    return [...(overview?.projects || [])].sort((a, b) => a.healthScore - b.healthScore).slice(0, 5);
-  }, [overview]);
+    const allItems = overview?.projects || [];
+    const items = selectedProjectId
+      ? allItems.filter((item) => item.projectId === selectedProjectId)
+      : allItems;
+    return [...items].sort((a, b) => a.healthScore - b.healthScore).slice(0, 5);
+  }, [overview, selectedProjectId]);
 
   const visibleProjectBudgets = useMemo(() => {
-    return [...(overview?.projects || [])].sort((a, b) => a.projectId - b.projectId);
-  }, [overview]);
+    const allItems = overview?.projects || [];
+    const items = selectedProjectId
+      ? allItems.filter((item) => item.projectId === selectedProjectId)
+      : allItems;
+    return [...items].sort((a, b) => a.projectId - b.projectId);
+  }, [overview, selectedProjectId]);
 
   const filteredProjects = useMemo(() => {
     const keyword = projectKeyword.trim().toLowerCase();

@@ -3,7 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
 import * as XLSX from 'xlsx';
 
-interface CostSummary {
+export interface CostSummary {
   totalLabor: number;
   totalOutsource: number;
   totalCloud: number;
@@ -29,7 +29,7 @@ interface CostSummary {
   }>;
 }
 
-interface CostTrend {
+export interface CostTrend {
   month: string;
   labor: number;
   outsource: number;
@@ -48,7 +48,8 @@ export class CostReportService {
     actor: AuthActor | undefined,
     organizationId: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    projectId?: string
   ): Promise<CostSummary> {
     const dateFilter: Record<string, unknown> = {};
     if (startDate) {
@@ -58,15 +59,30 @@ export class CostReportService {
       dateFilter.lte = endDate;
     }
 
-    const entries = await this.prisma.costEntry.findMany({
-      where: {
-        project: { organizationId },
-        ...(Object.keys(dateFilter).length > 0 ? { occurredOn: dateFilter } : {})
-      },
-      include: { project: { select: { id: true, name: true } } },
-      orderBy: { occurredOn: 'asc' }
-    });
+    const projectFilter = projectId && projectId !== 'include_all'
+      ? { id: Number(projectId) }
+      : undefined;
 
+    const [entries, worklogs] = await Promise.all([
+      this.prisma.costEntry.findMany({
+        where: {
+          project: { organizationId },
+          ...(projectFilter ? { projectId: projectFilter.id } : {}),
+          ...(Object.keys(dateFilter).length > 0 ? { occurredOn: dateFilter } : {})
+        },
+        include: { project: { select: { id: true, name: true } } },
+        orderBy: { occurredOn: 'asc' }
+      }),
+      this.prisma.worklog.findMany({
+        where: {
+          project: { organizationId },
+          ...(projectFilter ? { projectId: projectFilter.id } : {})
+        },
+        include: { project: { select: { id: true, name: true } } }
+      })
+    ]);
+
+    // Labor cost = worklog (hours × hourlyRate)
     let totalLabor = 0;
     let totalOutsource = 0;
     let totalCloud = 0;
@@ -106,6 +122,19 @@ export class CostReportService {
       typeMap.set(entry.type, (typeMap.get(entry.type) ?? 0) + amount);
     }
 
+    // Worklog labor costs (hours × hourlyRate)
+    for (const wl of worklogs) {
+      const laborCost = wl.hours * wl.hourlyRate;
+      totalLabor += laborCost;
+
+      if (!projectMap.has(wl.projectId)) {
+        projectMap.set(wl.projectId, { projectId: wl.projectId, projectName: wl.project.name, labor: 0, outsource: 0, cloud: 0, total: 0 });
+      }
+      const proj = projectMap.get(wl.projectId)!;
+      proj.labor += laborCost;
+      proj.total += laborCost;
+    }
+
     return {
       totalLabor,
       totalOutsource,
@@ -117,11 +146,34 @@ export class CostReportService {
     };
   }
 
-  async getTrend(actor: AuthActor | undefined, organizationId: string): Promise<CostTrend[]> {
-    const entries = await this.prisma.costEntry.findMany({
-      where: { project: { organizationId } },
-      orderBy: { occurredOn: 'asc' }
-    });
+  async getTrend(
+    actor: AuthActor | undefined,
+    organizationId: string,
+    startDate?: string,
+    endDate?: string,
+    projectId?: string
+  ): Promise<CostTrend[]> {
+    const projectFilter = projectId && projectId !== 'include_all'
+      ? { id: Number(projectId) }
+      : undefined;
+
+    const dateFilter: Record<string, unknown> = {};
+    if (startDate) dateFilter.gte = startDate;
+    if (endDate) dateFilter.lte = endDate;
+
+    const [entries, worklogs] = await Promise.all([
+      this.prisma.costEntry.findMany({
+        where: {
+          project: { organizationId },
+          ...(projectFilter ? { projectId: projectFilter.id } : {}),
+          ...(Object.keys(dateFilter).length > 0 ? { occurredOn: dateFilter } : {})
+        },
+        orderBy: { occurredOn: 'asc' }
+      }),
+      this.prisma.worklog.findMany({
+        where: { project: { organizationId }, ...(projectFilter ? { projectId: projectFilter.id } : {}) }
+      })
+    ]);
 
     const monthMap = new Map<string, CostTrend>();
 
@@ -138,11 +190,28 @@ export class CostReportService {
       m.total += amount;
     }
 
+    for (const wl of worklogs) {
+      const laborCost = wl.hours * wl.hourlyRate;
+      const month = wl.workedOn.slice(0, 7);
+      if (!monthMap.has(month)) {
+        monthMap.set(month, { month, labor: 0, outsource: 0, cloud: 0, total: 0 });
+      }
+      const m = monthMap.get(month)!;
+      m.labor += laborCost;
+      m.total += laborCost;
+    }
+
     return Array.from(monthMap.values()).sort((a, b) => a.month.localeCompare(b.month));
   }
 
-  async buildExcel(actor: AuthActor | undefined, organizationId: string, startDate?: string, endDate?: string): Promise<Buffer> {
-    const summary = await this.getSummary(actor, organizationId, startDate, endDate);
+  async buildExcel(
+    actor: AuthActor | undefined,
+    organizationId: string,
+    startDate?: string,
+    endDate?: string,
+    projectId?: string
+  ): Promise<Buffer> {
+    const summary = await this.getSummary(actor, organizationId, startDate, endDate, projectId);
 
     // Summary sheet
     const summaryData = [

@@ -10,30 +10,42 @@ export class CostReportController {
   async getSummary(
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('projectId') projectId?: string,
     @Req() req?: Record<string, unknown>
   ) {
     const actor = (req as any)?.user as { sub?: number; role?: string } | undefined;
     const actorOrg = (req as any)?.org as { id: string | null } | undefined;
     const orgId = actorOrg?.id ?? '';
-    return this.costReportService.getSummary(actor, orgId, startDate, endDate);
+    return this.costReportService.getSummary(actor, orgId, startDate, endDate, projectId);
   }
 
   @Get('trend')
-  async getTrend(@Req() req: Record<string, unknown>) {
+  async getTrend(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('projectId') projectId?: string,
+    @Req() req?: Record<string, unknown>
+  ) {
     const actor = (req as any)?.user as { sub?: number; role?: string } | undefined;
     const actorOrg = (req as any)?.org as { id: string | null } | undefined;
     const orgId = actorOrg?.id ?? '';
-    return this.costReportService.getTrend(actor, orgId);
+    return this.costReportService.getTrend(actor, orgId, startDate, endDate, projectId);
   }
 
   @Get('export')
   @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   @Header('Content-Disposition', 'attachment; filename="cost-report.xlsx"')
-  async exportExcel(@Query('startDate') startDate: string | undefined, @Query('endDate') endDate: string | undefined, @Res() res: Response, @Req() req: Record<string, unknown>) {
+  async exportExcel(
+    @Query('startDate') startDate: string | undefined,
+    @Query('endDate') endDate: string | undefined,
+    @Query('projectId') projectId: string | undefined,
+    @Res() res: Response,
+    @Req() req?: Record<string, unknown>
+  ) {
     const actor = (req as any)?.user as { sub?: number; role?: string } | undefined;
     const actorOrg = (req as any)?.org as { id: string | null } | undefined;
     const orgId = actorOrg?.id ?? '';
-    const buffer = await this.costReportService.buildExcel(actor, orgId, startDate, endDate);
+    const buffer = await this.costReportService.buildExcel(actor, orgId, startDate, endDate, projectId);
     res.end(buffer);
   }
 }

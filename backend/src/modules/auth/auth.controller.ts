@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsNotEmpty, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { Public } from './public.decorator';
 
@@ -22,14 +22,6 @@ class RegisterDto {
 
   @IsNotEmpty()
   name!: string;
-
-  @IsOptional()
-  @IsString()
-  orgName?: string;
-
-  @IsOptional()
-  @IsString()
-  orgSlug?: string;
 }
 
 @Controller('api/v1/auth')
@@ -45,10 +37,7 @@ export class AuthController {
   @Public()
   @Post('register')
   async register(@Body() body: RegisterDto) {
-    const createOrg = body.orgName && body.orgSlug
-      ? { name: body.orgName, slug: body.orgSlug }
-      : undefined;
-    return this.authService.register(body.username, body.password, body.name, createOrg);
+    return this.authService.register(body.username, body.password, body.name);
   }
 }
 

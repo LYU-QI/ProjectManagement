@@ -195,9 +195,14 @@ function App() {
   const [error, setError] = useState<string>('');
   const [lastRetry, setLastRetry] = useState<{ label: string; action: () => Promise<void> } | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   async function refreshAll(projectIdOverride?: number | null) {
     if (!token) return;
+    // Cancel any in-flight request before starting a new one
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
     setLoading(true);
     setError('');
     try {
@@ -209,6 +214,7 @@ function App() {
           apiGet<NotificationItem[]>('/notifications?unread=true'),
           apiGet<FeishuUserItem[]>('/feishu-users')
         ]);
+        if (signal.aborted) return;
 
         setOverview(dashboardRes);
         setProjects(projectList);
@@ -217,14 +223,18 @@ function App() {
         setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
         setNotifications(unreadNotifications);
 
-        const activeProjectId = projectIdOverride ?? selectedProjectId ?? (projectList.find((p) => Number(localStorage.getItem('ui:lastProjectId')) === p.id)?.id) ?? projectList[0]?.id ?? null;
-        // Only update if actually changed to avoid re-triggering useEffect([selectedProjectId])
-        if (activeProjectId !== selectedProjectId) {
-          setSelectedProjectId(activeProjectId);
+        const effectiveProjectId = projectIdOverride
+          ?? selectedProjectId
+          ?? (projectList.find((p) => Number(localStorage.getItem('ui:lastProjectId')) === p.id)?.id)
+          ?? projectList[0]?.id
+          ?? null;
+        if (effectiveProjectId !== selectedProjectId) {
+          setSelectedProjectId(effectiveProjectId);
         }
-        if (activeProjectId) localStorage.setItem('ui:lastProjectId', String(activeProjectId));
+        if (effectiveProjectId) localStorage.setItem('ui:lastProjectId', String(effectiveProjectId));
 
-        if (!activeProjectId) {
+        if (!effectiveProjectId) {
+          if (signal.aborted) return;
           setRequirements([]);
           setRequirementChanges([]);
           setSelectedRequirementForChanges(null);
@@ -235,12 +245,13 @@ function App() {
         }
 
         const [reqRes, costRes, costListRes, worklogRes, projectNotifications] = await Promise.all([
-          apiGet<Requirement[]>(`/requirements?projectId=${activeProjectId}`),
-          apiGet<CostSummary>(`/cost-entries/summary?projectId=${activeProjectId}`),
-          apiGet<CostEntryItem[]>(`/cost-entries?projectId=${activeProjectId}`),
-          apiGet<Worklog[]>(`/worklogs?projectId=${activeProjectId}`),
-          apiGet<NotificationItem[]>(`/notifications?projectId=${activeProjectId}`)
+          apiGet<Requirement[]>(`/requirements?projectId=${effectiveProjectId}`),
+          apiGet<CostSummary>(`/cost-entries/summary?projectId=${effectiveProjectId}`),
+          apiGet<CostEntryItem[]>(`/cost-entries?projectId=${effectiveProjectId}`),
+          apiGet<Worklog[]>(`/worklogs?projectId=${effectiveProjectId}`),
+          apiGet<NotificationItem[]>(`/notifications?projectId=${effectiveProjectId}`)
         ]);
+        if (signal.aborted) return;
         setRequirements(reqRes);
         setCostSummary(costRes);
         setCostEntries(costListRes);
@@ -248,6 +259,7 @@ function App() {
         setNotifications(projectNotifications);
       });
     } catch (err) {
+      if (signal.aborted) return;
       console.error('[refreshAll] error:', err);
       if (err instanceof Error && err.message === 'UNAUTHORIZED') {
         logout();
@@ -314,14 +326,8 @@ function App() {
     const username = String(form.get('username') || '');
     const password = String(form.get('password') || '');
     const name = String(form.get('name') || '');
-    const orgName = String(form.get('orgName') || '');
-    const orgSlug = String(form.get('orgSlug') || '').toLowerCase().replace(/\s+/g, '-');
     try {
-      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/register', {
-        username, password, name,
-        orgName: orgName || undefined,
-        orgSlug: orgSlug || undefined
-      });
+      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/register', { username, password, name });
       localStorage.setItem(TOKEN_KEY, res.token);
       localStorage.setItem(USER_KEY, JSON.stringify(res.user));
       const { setActiveOrg, setOrgList } = useOrgStore.getState();
@@ -358,9 +364,9 @@ function App() {
   const myOrgRole = orgList.find(o => o.id === activeOrgId)?.orgRole ?? null;
   const isSuperAdmin = userRole === 'super_admin';
   const isProjectManager = userRole === 'project_manager';
-  const canManageUsers = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole);
-  const canWrite = isSuperAdmin || isProjectManager || ['owner', 'admin', 'member'].includes(myOrgRole);
-  const canManageAdmin = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole);
+  const canManageUsers = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
+  const canWrite = isSuperAdmin || isProjectManager || ['owner', 'admin', 'member'].includes(myOrgRole ?? '');
+  const canManageAdmin = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
   const canAccessAdminPlatform = canManageAdmin;
 
   useEffect(() => {
@@ -1585,7 +1591,9 @@ function App() {
     setRiskMessage('');
     try {
       await runWithRetry('加载风险预警', async () => {
-        const projectFilter = selectedProjectName && selectedProjectName !== '未选择' ? selectedProjectName : undefined;
+        const projectFilter = selectedProjectId
+          ? (projects.find(p => p.id === selectedProjectId)?.name ?? '')
+          : undefined;
         const res = await listAllRiskAlerts({
           filterProject: riskFilters.filterProject || projectFilter,
           filterStatus: riskFilters.filterStatus,
@@ -2068,13 +2076,13 @@ function App() {
       void loadScheduleRecords();
       void loadScheduleDependencies();
     }
-  }, [token, view, selectedProjectName]);
+  }, [token, view, selectedProjectId]);
 
   useEffect(() => {
     if (token && view === 'resources') {
       void loadScheduleRecords();
     }
-  }, [token, view, selectedProjectName]);
+  }, [token, view, selectedProjectId]);
 
   useEffect(() => {
     if (token && view === 'risks') {
@@ -2086,7 +2094,7 @@ function App() {
     if (token && view === 'risks' && riskReady) {
       void loadRiskAlerts();
     }
-  }, [token, view, selectedProjectName, riskFilters, riskReady]);
+  }, [token, view, selectedProjectId, riskFilters, riskReady]);
 
 
   const filteredFeishuRecords = feishuRecords;
@@ -2126,14 +2134,6 @@ function App() {
               <div>
                 <label className="app-login-label">DISPLAY NAME</label>
                 <input name="name" placeholder="你的姓名" required />
-              </div>
-              <div>
-                <label className="app-login-label">ORGANIZATION NAME (OPTIONAL)</label>
-                <input name="orgName" placeholder="创建组织，或留空" />
-              </div>
-              <div>
-                <label className="app-login-label">ORG SLUG (OPTIONAL)</label>
-                <input name="orgSlug" placeholder="如 my-team" />
               </div>
               <button className="btn btn-primary app-login-submit" type="submit">
                 CREATE ACCOUNT
@@ -2186,7 +2186,7 @@ function App() {
       unreadCount={notifications.filter((n) => !n.readAt).length}
       theme={theme}
       onThemeChange={setTheme}
-      headerCenter={<><HeaderOrgSelect /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={setSelectedProjectId} /></>}
+      headerCenter={<><HeaderOrgSelect isSuperAdmin={isSuperAdmin} /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={setSelectedProjectId} /></>}
     >
       <div className="page-content">
         <div className="app-view-head">
@@ -2394,6 +2394,7 @@ function App() {
             canWrite={canWrite}
             overview={overview}
             projects={projects}
+            selectedProjectId={selectedProjectId}
             selectedProjectIds={selectedProjectIds}
             onToggleProjectSelection={toggleProjectSelection}
             onDeleteSelectedProjects={() => void deleteSelectedProjects()}
@@ -2708,7 +2709,7 @@ function App() {
         )}
 
         {view === 'cost-report' && (
-          <CostReportView />
+          <CostReportView projects={projects} selectedProjectId={selectedProjectId} />
         )}
 
         {view === 'departments' && canWrite && (

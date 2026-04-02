@@ -158,9 +158,9 @@ export class DashboardService {
       const blockedTasks = tasks.filter((item) => item.projectId === project.id && item.status === TaskStatus.blocked).length;
       const worklogLaborCost = projectWorklogs.reduce((sum, item) => sum + item.hours * item.hourlyRate, 0);
       const actualCost = projectCosts.reduce((sum, item) => sum + item.amount, 0) + worklogLaborCost;
-      const varianceRate = project.budget === 0 ? 0 : Number((((actualCost - project.budget) / project.budget) * 100).toFixed(2));
+      const varianceRate = project.budget === 0 ? 0 : +(((actualCost - project.budget) / project.budget) * 100).toFixed(2);
       const requirementRisk = projectRequirements.filter((item) => item.changeCount >= 2).length;
-      const healthScore = Math.max(0, 100 - Math.abs(varianceRate) - blockedTasks * 12 - requirementRisk * 8);
+      const healthScore = Math.round(Math.max(0, 100 - Math.abs(varianceRate) - blockedTasks * 12 - requirementRisk * 8) * 100) / 100;
 
       return {
         projectId: project.id,

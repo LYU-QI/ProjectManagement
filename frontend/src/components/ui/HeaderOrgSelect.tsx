@@ -3,7 +3,11 @@ import { ChevronDown, Plus } from 'lucide-react';
 import { useOrgStore } from '../../store/useOrgStore';
 import { createOrganization, listOrganizations } from '../../api/organizations';
 
-export default function HeaderOrgSelect() {
+interface Props {
+  isSuperAdmin: boolean;
+}
+
+export default function HeaderOrgSelect({ isSuperAdmin }: Props) {
   const [open, setOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState('');
@@ -146,7 +150,7 @@ export default function HeaderOrgSelect() {
               </button>
             ))}
 
-            {showCreate ? (
+            {isSuperAdmin && (showCreate ? (
               <div style={{ padding: '4px 0', borderTop: '1px solid var(--glass-border)', marginTop: 2 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 4px 0' }}>
                   <input
@@ -245,7 +249,7 @@ export default function HeaderOrgSelect() {
                 <Plus size={14} />
                 创建组织
               </button>
-            )}
+            ))}
           </div>
         </div>
       )}

@@ -1,14 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { apiGet } from '../api/client';
 
-export default function CostReportView() {
+interface ProjectItem {
+  id: number;
+  name: string;
+  alias?: string | null;
+}
+
+interface CostReportViewProps {
+  projects: ProjectItem[];
+  selectedProjectId: number | null;
+}
+
+export default function CostReportView({ projects, selectedProjectId }: CostReportViewProps) {
   const [summary, setSummary] = useState<any>(null);
   const [trend, setTrend] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [startDate, setStartDate] = useState('2025-01-01');
   const [endDate, setEndDate] = useState('2026-12-31');
-  const [projectFilter, setProjectFilter] = useState('include_all');
+  const [projectFilter, setProjectFilter] = useState<string>(() =>
+    selectedProjectId ? String(selectedProjectId) : 'include_all'
+  );
+
+  // Sync with header project selector
+  useEffect(() => {
+    setProjectFilter(selectedProjectId ? String(selectedProjectId) : 'include_all');
+  }, [selectedProjectId]);
 
   function load() {
     setLoading(true);
@@ -37,6 +55,9 @@ export default function CostReportView() {
         <input className="glass-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         <select className="glass-input" value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} style={{ maxWidth: 200 }}>
           <option value="include_all">所有项目</option>
+          {projects.map((p) => (
+            <option key={p.id} value={String(p.id)}>{p.name}</option>
+          ))}
         </select>
         <button className="btn primary" onClick={load}>查询</button>
         <button className="btn" onClick={exportCsv}>导出 CSV</button>

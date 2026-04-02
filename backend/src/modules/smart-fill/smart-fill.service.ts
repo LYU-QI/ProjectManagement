@@ -2,14 +2,14 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '../config/config.service';
 import { PrismaService } from '../../database/prisma.service';
 
-interface RequirementResult {
+export interface RequirementResult {
   title: string;
   description: string;
   acceptanceCriteria: string[];
   priority: 'high' | 'medium' | 'low';
 }
 
-interface WorkItemSuggestion {
+export interface WorkItemSuggestion {
   title: string;
   type: 'todo' | 'issue';
   estimatedHours: number;

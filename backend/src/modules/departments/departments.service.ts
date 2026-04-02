@@ -3,19 +3,19 @@ import { PrismaService } from '../../database/prisma.service';
 import { FeishuService } from '../feishu/feishu.service';
 import { AccessService, AuthActor } from '../access/access.service';
 
-interface CreateDepartmentInput {
+export interface CreateDepartmentInput {
   name: string;
   parentId?: string;
   sortOrder?: number;
 }
 
-interface UpdateDepartmentInput {
+export interface UpdateDepartmentInput {
   name?: string;
   parentId?: string | null;
   sortOrder?: number;
 }
 
-interface DepartmentTreeNode {
+export interface DepartmentTreeNode {
   id: string;
   name: string;
   parentId: string | null;

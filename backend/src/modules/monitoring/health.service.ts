@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { RedisService } from '../cache/cache.service';
 
-interface HealthStatus {
+export interface HealthStatus {
   status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp: string;
   version: string;
