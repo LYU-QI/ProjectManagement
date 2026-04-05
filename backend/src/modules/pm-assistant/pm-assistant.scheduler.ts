@@ -5,6 +5,7 @@ import { ConfigService } from '../config/config.service';
 import { PmAssistantService } from './pm-assistant.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { PmJobId, PmScheduleDefinition, PmScheduleState } from './pm-assistant.types';
+import { EventsService } from '../events/events.service';
 
 const DEFAULT_TZ = 'Asia/Shanghai';
 const SCHEDULES: PmScheduleDefinition[] = [
@@ -72,7 +73,8 @@ export class PmAssistantScheduler implements OnModuleInit {
     private readonly pmAssistantService: PmAssistantService,
     private readonly configService: ConfigService,
     private readonly schedulerRegistry: SchedulerRegistry,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService
   ) {}
 
   onModuleInit() {
@@ -186,9 +188,17 @@ export class PmAssistantScheduler implements OnModuleInit {
         throw new BadRequestException(result.message);
       }
       void this.refreshSchedules();
+      this.eventsService.emit('pm_assistant.schedule.changed', {
+        projectId: null,
+        payload: { scheduleId: id, cron, scope: 'global' }
+      });
       return result;
     }
     await this.ensureProjectExists(projectId);
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { organizationId: true }
+    });
     await this.prisma.pmAssistantProjectSchedule.upsert({
       where: {
         projectId_scheduleId: {
@@ -205,6 +215,11 @@ export class PmAssistantScheduler implements OnModuleInit {
       }
     });
     void this.refreshSchedules();
+    this.eventsService.emit('pm_assistant.schedule.changed', {
+      organizationId: project?.organizationId ?? null,
+      projectId,
+      payload: { scheduleId: id, cron, scope: 'project' }
+    });
     return { success: true };
   }
 
@@ -215,9 +230,17 @@ export class PmAssistantScheduler implements OnModuleInit {
         throw new BadRequestException(result.message);
       }
       void this.refreshSchedules();
+      this.eventsService.emit('pm_assistant.schedule.changed', {
+        projectId: null,
+        payload: { timezone, scope: 'global' }
+      });
       return result;
     }
     await this.ensureProjectExists(projectId);
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { organizationId: true }
+    });
     const existingRows = await this.prisma.pmAssistantProjectSchedule.findMany({
       where: { projectId }
     });
@@ -243,6 +266,11 @@ export class PmAssistantScheduler implements OnModuleInit {
       })
     );
     void this.refreshSchedules();
+    this.eventsService.emit('pm_assistant.schedule.changed', {
+      organizationId: project?.organizationId ?? null,
+      projectId,
+      payload: { timezone, scope: 'project' }
+    });
     return { success: true };
   }
 

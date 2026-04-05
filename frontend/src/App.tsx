@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
 import { listOrganizations } from './api/organizations';
 import { useOrgStore } from './store/useOrgStore';
+import { useWorkspaceStore } from './store/useWorkspaceStore';
 import WorkItemsView from './views/WorkItemsView';
 import {
   createFeishuRecord,
@@ -62,16 +63,18 @@ import CostReportView from './views/CostReportView';
 import DepartmentsView from './views/DepartmentsView';
 import PlanSettingsView from './views/PlanSettingsView';
 import SmartFillView from './views/SmartFillView';
-import AstraeaLayout, { PlatformMode } from './components/AstraeaLayout';
+import CapabilitiesView from './views/CapabilitiesView';
+import TaskCenterView from './views/TaskCenterView';
+import AstraeaLayout, { PlatformMode, ViewKey } from './components/AstraeaLayout';
 import ThemedSelect from './components/ui/ThemedSelect';
 import HeaderOrgSelect from './components/ui/HeaderOrgSelect';
 import HeaderProjectSelect from './components/ui/HeaderProjectSelect';
+import useEventStream, { AppStreamEvent } from './hooks/useEventStream';
 
-type ViewKey = 'dashboard' | 'requirements' | 'work-items' | 'costs' | 'schedule' | 'resources' | 'risks' | 'ai' | 'notifications' | 'audit' | 'feishu' | 'feishu-users' | 'pm-assistant' | 'global' | 'settings' | 'project-access' | 'milestone-board' | 'wiki' | 'sprints' | 'org-settings' | 'org-members' | 'bugs' | 'test-plans' | 'efficiency' | 'webhooks' | 'api-keys' | 'smart-fill' | 'automation' | 'cost-report' | 'departments' | 'plan-settings';
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'cost-report', 'departments'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
 
 function focusInlineEditor(selector: string) {
@@ -156,16 +159,15 @@ function App() {
     }
   });
   const [registerMode, setRegisterMode] = useState(false);
-  const [view, setView] = useState<ViewKey>(() => {
-    const raw = localStorage.getItem('pm_view');
-    if (!raw) return 'dashboard';
-    const allowed: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'ai', 'notifications', 'audit', 'feishu', 'feishu-users', 'pm-assistant', 'global', 'settings', 'project-access', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'cost-report', 'departments', 'plan-settings'];
-    return allowed.includes(raw as ViewKey) ? (raw as ViewKey) : 'dashboard';
-  });
-  const [platform, setPlatform] = useState<PlatformMode>(() => {
-    const raw = localStorage.getItem('pm_platform');
-    return raw === 'admin' ? 'admin' : 'workspace';
-  });
+  const {
+    view,
+    setView,
+    platform,
+    setPlatform,
+    selectedProjectId,
+    setSelectedProjectId,
+    clear: clearWorkspace
+  } = useWorkspaceStore();
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const raw = localStorage.getItem('ui:theme');
     return VALID_THEMES.includes(raw as ThemeMode) ? (raw as ThemeMode) : 'light';
@@ -176,8 +178,6 @@ function App() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
-  const savedProjectId = typeof window !== 'undefined' ? Number(localStorage.getItem('ui:lastProjectId')) || null : null;
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(savedProjectId);
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [feishuUsers, setFeishuUsers] = useState<FeishuUserItem[]>([]);
   const [requirementChanges, setRequirementChanges] = useState<RequirementChange[]>([]);
@@ -196,6 +196,15 @@ function App() {
   const [lastRetry, setLastRetry] = useState<{ label: string; action: () => Promise<void> } | null>(null);
   const [retrying, setRetrying] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  function handleProjectSelect(projectId: number | null) {
+    if (!projectId) return;
+    if (projectId === selectedProjectId) {
+      void refreshAll(projectId);
+      return;
+    }
+    setSelectedProjectId(projectId);
+  }
 
   async function refreshAll(projectIdOverride?: number | null) {
     if (!token) return;
@@ -225,13 +234,12 @@ function App() {
 
         const effectiveProjectId = projectIdOverride
           ?? selectedProjectId
-          ?? (projectList.find((p) => Number(localStorage.getItem('ui:lastProjectId')) === p.id)?.id)
+          ?? (projectList.find((p) => useWorkspaceStore.getState().selectedProjectId === p.id)?.id)
           ?? projectList[0]?.id
           ?? null;
         if (effectiveProjectId !== selectedProjectId) {
           setSelectedProjectId(effectiveProjectId);
         }
-        if (effectiveProjectId) localStorage.setItem('ui:lastProjectId', String(effectiveProjectId));
 
         if (!effectiveProjectId) {
           if (signal.aborted) return;
@@ -276,13 +284,13 @@ function App() {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     useOrgStore.getState().clear();
+    clearWorkspace();
     setToken(null);
     setUser(null);
     setOverview(null);
     setProjects([]);
     setUsers([]);
     setSelectedProjectIds([]);
-    setSelectedProjectId(null);
     setRequirements([]);
     setCostSummary(null);
     setCostEntries([]);
@@ -381,18 +389,15 @@ function App() {
   // Reload project-specific data when selected project changes
   useEffect(() => {
     if (token && selectedProjectId) {
+      setRequirementChanges([]);
+      setSelectedRequirementForChanges(null);
+      setCostSummary(null);
+      setCostEntries([]);
+      setWorklogs([]);
       void refreshAll(selectedProjectId);
     }
   }, [selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
-  useEffect(() => {
-    localStorage.setItem('pm_view', view);
-  }, [view]);
-
-  useEffect(() => {
-    localStorage.setItem('pm_platform', platform);
-  }, [platform]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -1610,6 +1615,18 @@ function App() {
     }
   }
 
+  useEventStream({
+    enabled: Boolean(token),
+    eventTypes: ['feishu.records.changed'],
+    onEvent: (event: AppStreamEvent) => {
+      if (event.type !== 'feishu.records.changed') return;
+      if (event.projectId && selectedProjectId && event.projectId !== selectedProjectId) return;
+      if (view === 'feishu') {
+        void loadFeishuRecords({ resetPage: true });
+      }
+    }
+  });
+
   async function loadRiskRule() {
     if (!token) return;
     setRiskLoading(true);
@@ -2186,7 +2203,7 @@ function App() {
       unreadCount={notifications.filter((n) => !n.readAt).length}
       theme={theme}
       onThemeChange={setTheme}
-      headerCenter={<><HeaderOrgSelect isSuperAdmin={isSuperAdmin} /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={setSelectedProjectId} /></>}
+      headerCenter={<><HeaderOrgSelect isSuperAdmin={isSuperAdmin} /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={handleProjectSelect} /></>}
     >
       <div className="page-content">
         <div className="app-view-head">
@@ -2215,6 +2232,8 @@ function App() {
                                       view === 'api-keys' ? 'API Keys' :
                                       view === 'smart-fill' ? 'AI 智能填报' :
                                       view === 'automation' ? '自动化规则' :
+                                      view === 'task-center' ? '任务中心' :
+                                      view === 'capabilities' ? '能力模板' :
                                       view === 'cost-report' ? '成本报告' :
                                       view === 'departments' ? '部门管理' :
                                       view === 'plan-settings' ? '套餐设置' :
@@ -2445,6 +2464,9 @@ function App() {
         {view === 'costs' && (
           <CostsView
             canWrite={canWrite}
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            selectedProjectName={selectedProjectName}
             costSummary={costSummary}
             costEntries={costEntries}
             worklogs={worklogs}
@@ -2502,7 +2524,7 @@ function App() {
             projects={projects}
             feishuUserNames={feishuUsers.map((u) => u.name)}
             selectedProjectId={selectedProjectId}
-            onSelectProject={(id) => { if (id) void refreshAll(id); }}
+            onSelectProject={handleProjectSelect}
             canWrite={canWrite}
           />
         )}
@@ -2520,7 +2542,7 @@ function App() {
             selectedProjectId={selectedProjectId}
             canWrite={canWrite}
             feishuUserNames={feishuUsers.map((u) => u.name)}
-            onSelectProject={(id) => { if (id) void refreshAll(id); }}
+            onSelectProject={handleProjectSelect}
           />
         )}
 
@@ -2622,7 +2644,7 @@ function App() {
             onGenerate={generateReport}
             projects={projects}
             selectedProjectId={selectedProjectId}
-            onSelectProject={(id) => { if (id) void refreshAll(id); }}
+            onSelectProject={handleProjectSelect}
           />
         )}
 
@@ -2706,6 +2728,23 @@ function App() {
 
         {view === 'automation' && canWrite && (
           <AutomationView />
+        )}
+
+        {view === 'task-center' && (
+          <TaskCenterView
+            projectId={selectedProjectId}
+            projectName={selectedProjectName}
+          />
+        )}
+
+        {view === 'capabilities' && (
+          <CapabilitiesView
+            canWrite={canWrite}
+            selectedProjectId={selectedProjectId}
+            selectedProjectName={selectedProjectName}
+            onError={setError}
+            onMessage={setMessage}
+          />
         )}
 
         {view === 'cost-report' && (

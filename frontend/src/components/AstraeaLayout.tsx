@@ -57,6 +57,8 @@ export type ViewKey =
   | 'api-keys'
   | 'smart-fill'
   | 'automation'
+  | 'capabilities'
+  | 'task-center'
   | 'cost-report'
   | 'departments'
   | 'plan-settings';
@@ -119,6 +121,8 @@ const navGroups: NavGroup[] = [
     { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={16} /> },
     { id: 'smart-fill', label: 'AI 智能填报', icon: <Sparkles size={16} /> },
     { id: 'automation', label: '自动化规则', icon: <Sparkles size={16} /> },
+    { id: 'task-center', label: '任务中心', icon: <Activity size={16} /> },
+    { id: 'capabilities', label: '能力模板', icon: <Sparkles size={16} /> },
     { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={16} /> },
     { id: 'api-keys', label: 'API Keys', icon: <Key size={16} /> },
   ]},
@@ -161,6 +165,8 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={18} />, platform: 'workspace' },
   { id: 'api-keys', label: 'API Keys', icon: <Key size={18} />, platform: 'workspace' },
   { id: 'automation', label: '自动化规则', icon: <Sparkles size={18} />, platform: 'workspace' },
+  { id: 'task-center', label: '任务中心', icon: <Activity size={18} />, platform: 'workspace' },
+  { id: 'capabilities', label: '能力模板', icon: <Sparkles size={18} />, platform: 'workspace' },
   { id: 'cost-report', label: '成本报告', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'departments', label: '部门管理', icon: <Building2 size={18} />, platform: 'workspace' },
   { id: 'plan-settings', label: '套餐设置', icon: <Settings size={18} />, platform: 'workspace' },

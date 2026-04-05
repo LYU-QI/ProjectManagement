@@ -23,22 +23,20 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const headers = request['headers'] as Record<string, string | undefined>;
+    const query = request['query'] as Record<string, string | undefined> | undefined;
     const auth = headers?.['authorization'];
-    if (!auth || !auth.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing bearer token');
-    }
-
-    const token = auth.slice(7).trim();
-    if (!token) {
+    const queryToken = query?.['access_token'];
+    const rawToken = auth?.startsWith('Bearer ') ? auth.slice(7).trim() : queryToken?.trim();
+    if (!rawToken) {
       throw new UnauthorizedException('Missing bearer token');
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token);
+      const payload = await this.jwtService.verifyAsync(rawToken);
       request['user'] = payload;
       console.log('[JwtAuthGuard] Token verified, user set:', JSON.stringify(payload).slice(0, 100));
 
-      const requestedOrgId = headers?.['x-org-id'];
+      const requestedOrgId = headers?.['x-org-id'] ?? query?.['orgId'];
       request['org'] = {
         id: requestedOrgId ?? payload['organizationId'] ?? null,
         orgRole: payload['orgRole'] ?? null

@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { AutomationEngineService } from './automation-engine.service';
 import { AccessService, AuthActor } from '../access/access.service';
 import { AutomationRule, AutomationTrigger } from '@prisma/client';
+import { EventsService } from '../events/events.service';
 
 interface CreateRuleInput {
   name: string;
@@ -27,7 +28,8 @@ export class AutomationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly automationEngine: AutomationEngineService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly eventsService: EventsService
   ) {}
 
   async list(actor: AuthActor | undefined, organizationId: string) {
@@ -51,7 +53,7 @@ export class AutomationService {
   }
 
   async create(actor: AuthActor | undefined, organizationId: string, input: CreateRuleInput) {
-    return this.prisma.automationRule.create({
+    const created = await this.prisma.automationRule.create({
       data: {
         name: input.name,
         description: input.description ?? null,
@@ -62,6 +64,11 @@ export class AutomationService {
         organizationId
       }
     });
+    this.eventsService.emit('automation.rule.changed', {
+      organizationId,
+      payload: { action: 'created', ruleId: created.id }
+    });
+    return created;
   }
 
   async update(actor: AuthActor | undefined, id: string, input: UpdateRuleInput) {
@@ -70,7 +77,7 @@ export class AutomationService {
       throw new NotFoundException('Automation rule not found');
     }
 
-    return this.prisma.automationRule.update({
+    const updated = await this.prisma.automationRule.update({
       where: { id },
       data: {
         name: input.name ?? existing.name,
@@ -81,6 +88,11 @@ export class AutomationService {
         enabled: input.enabled ?? existing.enabled
       }
     });
+    this.eventsService.emit('automation.rule.changed', {
+      organizationId: existing.organizationId,
+      payload: { action: 'updated', ruleId: updated.id }
+    });
+    return updated;
   }
 
   async delete(actor: AuthActor | undefined, id: string) {
@@ -90,7 +102,12 @@ export class AutomationService {
     }
 
     await this.prisma.automationLog.deleteMany({ where: { ruleId: id } });
-    return this.prisma.automationRule.delete({ where: { id } });
+    const deleted = await this.prisma.automationRule.delete({ where: { id } });
+    this.eventsService.emit('automation.rule.changed', {
+      organizationId: existing.organizationId,
+      payload: { action: 'deleted', ruleId: id }
+    });
+    return deleted;
   }
 
   async getLogs(actor: AuthActor | undefined, ruleId: string) {

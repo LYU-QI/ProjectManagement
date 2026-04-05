@@ -4,6 +4,8 @@ import { FeishuService } from '../feishu/feishu.service';
 import { PrismaService } from '../../database/prisma.service';
 import type { PmAssistantLog } from '@prisma/client';
 import type { FeishuTaskRecord, PmJobId, PmJobMeta, PmRunLog, PmRunResult } from './pm-assistant.types';
+import { EventsService } from '../events/events.service';
+import { CapabilitiesService } from '../capabilities/capabilities.service';
 
 const JOBS: PmJobMeta[] = [
   { id: 'morning-briefing', name: '早间播报', color: 'blue', description: '今日工作重点' },
@@ -41,7 +43,9 @@ export class PmAssistantService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly feishuService: FeishuService
+    private readonly feishuService: FeishuService,
+    private readonly eventsService: EventsService,
+    private readonly capabilitiesService: CapabilitiesService
   ) {}
 
   listJobs(): PmJobMeta[] {
@@ -106,9 +110,17 @@ export class PmAssistantService {
         update: { enabled },
         create: { jobId, enabled }
       });
+      this.eventsService.emit('pm_assistant.config.changed', {
+        projectId: null,
+        payload: { jobId, enabled, scope: 'global' }
+      });
       return { success: true };
     }
     await this.ensureProjectExists(projectId);
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { organizationId: true }
+    });
     await this.prisma.pmAssistantProjectJobConfig.upsert({
       where: {
         projectId_jobId: {
@@ -119,22 +131,40 @@ export class PmAssistantService {
       update: { enabled },
       create: { projectId, jobId, enabled }
     });
+    this.eventsService.emit('pm_assistant.config.changed', {
+      organizationId: project?.organizationId ?? null,
+      projectId,
+      payload: { jobId, enabled, scope: 'project' }
+    });
     return { success: true };
   }
 
   async getPromptConfigs(projectId?: number) {
-    if (!projectId) return {};
-    await this.ensureProjectExists(projectId);
-    const rows = await this.prisma.pmAssistantProjectPrompt.findMany({ where: { projectId } });
+    let organizationId: string | undefined;
+    if (projectId) {
+      organizationId = await this.ensureProjectExists(projectId);
+    }
+    const rows = projectId
+      ? await this.prisma.pmAssistantProjectPrompt.findMany({ where: { projectId } })
+      : [];
     const result: Record<string, string> = {};
-    rows.forEach((row) => {
+    rows.forEach((row: { jobId: string; prompt: string }) => {
       result[row.jobId] = row.prompt;
     });
+    for (const job of JOBS) {
+      const template = await this.capabilitiesService.resolve(this.getCapabilityScene(job.id), {
+        organizationId,
+        projectId
+      });
+      if (template?.systemPrompt?.trim()) {
+        result[job.id] = template.systemPrompt.trim();
+      }
+    }
     return result;
   }
 
   async updatePromptConfigs(projectId: number, prompts: Record<string, string>) {
-    await this.ensureProjectExists(projectId);
+    const organizationId = await this.ensureProjectExists(projectId);
     const allowedJobIds = new Set(JOBS.map((item) => item.id));
     const entries = Object.entries(prompts).filter(([jobId]) => allowedJobIds.has(jobId as PmJobId));
     await this.prisma.$transaction(
@@ -151,6 +181,23 @@ export class PmAssistantService {
         })
       )
     );
+    await Promise.all(entries.map(([jobId, prompt]) => {
+      const job = this.getJob(jobId as PmJobId);
+      return this.capabilitiesService.upsert({
+        organizationId,
+        projectId,
+        scene: this.getCapabilityScene(job.id),
+        name: this.getCapabilityTemplateName(job.id),
+        description: `PM 助手「${job.name}」提示词模板`,
+        systemPrompt: String(prompt ?? ''),
+        enabled: true
+      });
+    }));
+    this.eventsService.emit('pm_assistant.prompt.changed', {
+      organizationId: organizationId ?? null,
+      projectId,
+      payload: { updatedJobIds: entries.map(([jobId]) => jobId) }
+    });
     return { success: true };
   }
 
@@ -173,7 +220,7 @@ export class PmAssistantService {
       : null;
     const enabled = scopedConfig?.enabled ?? globalConfig?.enabled ?? true;
     if (!enabled) {
-      await this.pushLog({
+      const log = await this.pushLog({
         organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
@@ -183,6 +230,9 @@ export class PmAssistantService {
         rawSummary: `任务已禁用：${job.name}`,
         aiSummary: `任务已禁用：${job.name}`
       });
+      if (log) {
+        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'skipped', false);
+      }
       return { jobId, sent: false, summary: `任务已禁用：${job.name}`, card: {} };
     }
     try {
@@ -216,7 +266,7 @@ export class PmAssistantService {
       const card = this.buildCardPayload(headerTitle, template, finalText, todayStr);
 
       if (opts?.dryRun) {
-        await this.pushLog({
+        const log = await this.pushLog({
           organizationId: opts?.organizationId,
           projectId: opts?.projectId,
           jobId,
@@ -226,6 +276,9 @@ export class PmAssistantService {
           rawSummary: summary,
           aiSummary: summarized
         });
+        if (log) {
+          this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'dry-run', false);
+        }
         return { jobId, sent: false, summary: finalText, card };
       }
 
@@ -252,7 +305,7 @@ export class PmAssistantService {
         mentions
       })));
 
-      await this.pushLog({
+      const log = await this.pushLog({
         organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
@@ -262,10 +315,13 @@ export class PmAssistantService {
         rawSummary: summary,
         aiSummary: summarized
       });
+      if (log) {
+        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'success', true);
+      }
       return { jobId, sent: true, summary: finalText, card };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      await this.pushLog({
+      const log = await this.pushLog({
         organizationId: opts?.organizationId,
         projectId: opts?.projectId,
         jobId,
@@ -274,8 +330,26 @@ export class PmAssistantService {
         summary: `任务执行失败: ${job.name}`,
         error: detail
       });
+      if (log) {
+        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'failed', false);
+      }
       throw err;
     }
+  }
+
+  private emitRunEvent(
+    organizationId: string | undefined,
+    projectId: number | undefined,
+    logId: number,
+    jobId: PmJobId,
+    status: 'success' | 'failed' | 'dry-run' | 'skipped',
+    sent: boolean
+  ) {
+    this.eventsService.emit('pm_assistant.run.completed', {
+      organizationId: organizationId ?? null,
+      projectId: projectId ?? null,
+      payload: { logId, jobId, status, sent }
+    });
   }
 
   private getDefaultChatId() {
@@ -384,6 +458,14 @@ export class PmAssistantService {
     return `FEISHU_PM_ASSISTANT_PROMPT_${jobId.toUpperCase().replace(/-/g, '_')}`;
   }
 
+  private getCapabilityScene(jobId: PmJobId) {
+    return `pm-assistant.${jobId}`;
+  }
+
+  private getCapabilityTemplateName(jobId: PmJobId) {
+    return `PM助手提示词-${this.getJob(jobId).name}`;
+  }
+
   private async summarizeWithAi(jobId: PmJobId, summary: string, context?: string, projectId?: number) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
     const aiApiKey = this.configService.getRawValue('AI_API_KEY');
@@ -391,6 +473,16 @@ export class PmAssistantService {
     if (!aiApiUrl || !aiApiKey || !aiModel) {
       return summary;
     }
+    const project = projectId
+      ? await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { organizationId: true }
+      })
+      : null;
+    const capabilityPrompt = await this.capabilitiesService.resolve(this.getCapabilityScene(jobId), {
+      organizationId: project?.organizationId ?? undefined,
+      projectId
+    });
     const scopedPrompt = projectId
       ? await this.prisma.pmAssistantProjectPrompt.findUnique({
         where: {
@@ -402,6 +494,7 @@ export class PmAssistantService {
       })
       : null;
     const systemPrompt =
+      capabilityPrompt?.systemPrompt?.trim() ||
       scopedPrompt?.prompt?.trim() ||
       this.configService.getRawValue(this.getPromptKey(jobId)) ||
       this.getDefaultSystemPrompt(jobId);
@@ -733,6 +826,17 @@ export class PmAssistantService {
     return { headerTitle, template, summary: contentText, mentions, todayStr, aiContext, fallbackMentionText };
   }
 
+  private async ensureProjectExists(projectId: number) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { organizationId: true }
+    });
+    if (!project) {
+      throw new BadRequestException(`项目不存在: ${projectId}`);
+    }
+    return project.organizationId;
+  }
+
   private buildAiContext(input: {
     jobId: PmJobId;
     todayStr: string;
@@ -841,7 +945,7 @@ export class PmAssistantService {
     error?: string;
   }) {
     try {
-      await this.prisma.pmAssistantLog.create({
+      return await this.prisma.pmAssistantLog.create({
         data: {
           organizationId: input.organizationId,
           projectId: input.projectId,
@@ -857,6 +961,7 @@ export class PmAssistantService {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`写入执行日志失败: ${detail}`);
+      return null;
     }
   }
 
@@ -867,13 +972,4 @@ export class PmAssistantService {
     });
   }
 
-  private async ensureProjectExists(projectId: number) {
-    const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true }
-    });
-    if (!project) {
-      throw new BadRequestException(`项目不存在: ${projectId}`);
-    }
-  }
 }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AutomationTrigger, AutomationAction } from '@prisma/client';
+import { EventsService } from '../events/events.service';
 
 export interface TriggerPayload {
   organizationId: string;
@@ -32,7 +33,8 @@ export class AutomationEngineService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notificationsService: NotificationsService
+    private readonly notificationsService: NotificationsService,
+    private readonly eventsService: EventsService
   ) {}
 
   async trigger(event: string, payload: TriggerPayload): Promise<void> {
@@ -232,7 +234,7 @@ export class AutomationEngineService {
     error?: string
   ): Promise<void> {
     try {
-      await this.prisma.automationLog.create({
+      const log = await this.prisma.automationLog.create({
         data: {
           ruleId,
           trigger,
@@ -240,6 +242,20 @@ export class AutomationEngineService {
           actionsRun: actionsRun as unknown as object,
           success,
           error: error ?? null
+        }
+      });
+      const rule = await this.prisma.automationRule.findUnique({
+        where: { id: ruleId },
+        select: { organizationId: true }
+      });
+      this.eventsService.emit('automation.rule.executed', {
+        organizationId: rule?.organizationId ?? payload.organizationId ?? null,
+        projectId: payload.projectId ?? null,
+        payload: {
+          ruleId,
+          logId: log.id,
+          trigger,
+          success
         }
       });
     } catch (err) {

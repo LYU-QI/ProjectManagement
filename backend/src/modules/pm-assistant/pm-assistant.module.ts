@@ -5,9 +5,10 @@ import { PmAssistantScheduler } from './pm-assistant.scheduler';
 import { ConfigService } from '../config/config.service';
 import { PrismaService } from '../../database/prisma.service';
 import { FeishuModule } from '../feishu/feishu.module';
+import { CapabilitiesModule } from '../capabilities/capabilities.module';
 
 @Module({
-  imports: [FeishuModule],
+  imports: [FeishuModule, CapabilitiesModule],
   controllers: [PmAssistantController],
   providers: [PmAssistantService, PmAssistantScheduler, ConfigService, PrismaService]
 })

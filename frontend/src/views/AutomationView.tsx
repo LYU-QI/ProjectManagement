@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api/client';
+import useEventStream from '../hooks/useEventStream';
 
 const TRIGGERS = [
   'requirement_created',
@@ -23,8 +24,17 @@ interface AutomationItem {
   createdAt: string;
 }
 
+interface AutomationLogItem {
+  id: string;
+  trigger: string;
+  success: boolean;
+  error?: string | null;
+  executionAt: string;
+}
+
 export default function AutomationView() {
   const [items, setItems] = useState<AutomationItem[]>([]);
+  const [logsByRuleId, setLogsByRuleId] = useState<Record<string, AutomationLogItem[]>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -42,6 +52,10 @@ export default function AutomationView() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    loadItems();
+  }, []);
 
   function submitCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -93,7 +107,9 @@ export default function AutomationView() {
   }
 
   function loadLogs(id: string) {
-    apiGet(`/automations/${id}/logs`).catch((e: Error) => setError(e.message));
+    apiGet<AutomationLogItem[]>(`/automations/${id}/logs`)
+      .then((logs) => setLogsByRuleId((prev) => ({ ...prev, [id]: logs })))
+      .catch((e: Error) => setError(e.message));
   }
 
   function toggleExpand(id: string) {
@@ -104,6 +120,24 @@ export default function AutomationView() {
       loadLogs(id);
     }
   }
+
+  useEventStream({
+    enabled: true,
+    eventTypes: ['automation.rule.changed', 'automation.rule.executed'],
+    onEvent: (event) => {
+      if (event.type === 'automation.rule.changed') {
+        loadItems();
+        return;
+      }
+      if (event.type === 'automation.rule.executed') {
+        loadItems();
+        const ruleId = String(event.payload?.ruleId ?? '');
+        if (ruleId && expandedId === ruleId) {
+          loadLogs(ruleId);
+        }
+      }
+    }
+  });
 
   return (
     <div>
@@ -164,25 +198,46 @@ export default function AutomationView() {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <span style={{ cursor: 'pointer', color: 'var(--color-primary)', textDecoration: 'underline' }} onClick={() => toggleExpand(item.id)}>
-                    {item.name}
-                  </span>
-                  {item.description && <div className="muted" style={{ fontSize: '0.75rem' }}>{item.description}</div>}
-                </td>
-                <td style={{ fontSize: '0.8rem' }}>{item.trigger}</td>
-                <td>
-                  <button className={`btn ${item.enabled ? 'btn-primary' : ''}`} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => toggleItem(item)}>
-                    {item.enabled ? '启用' : '禁用'}
-                  </button>
-                </td>
-                <td style={{ fontSize: '0.8rem' }}>{new Date(item.createdAt).toLocaleString()}</td>
-                <td>
-                  <button className="btn" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => runItem(item)}>运行</button>
-                  <button className="btn warn" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: '0.25rem' }} onClick={() => deleteItem(item)}>删除</button>
-                </td>
-              </tr>
+              <Fragment key={item.id}>
+                <tr key={item.id}>
+                  <td>
+                    <span style={{ cursor: 'pointer', color: 'var(--color-primary)', textDecoration: 'underline' }} onClick={() => toggleExpand(item.id)}>
+                      {item.name}
+                    </span>
+                    {item.description && <div className="muted" style={{ fontSize: '0.75rem' }}>{item.description}</div>}
+                  </td>
+                  <td style={{ fontSize: '0.8rem' }}>{item.trigger}</td>
+                  <td>
+                    <button className={`btn ${item.enabled ? 'btn-primary' : ''}`} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => toggleItem(item)}>
+                      {item.enabled ? '启用' : '禁用'}
+                    </button>
+                  </td>
+                  <td style={{ fontSize: '0.8rem' }}>{new Date(item.createdAt).toLocaleString()}</td>
+                  <td>
+                    <button className="btn" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => runItem(item)}>运行</button>
+                    <button className="btn warn" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', marginLeft: '0.25rem' }} onClick={() => deleteItem(item)}>删除</button>
+                  </td>
+                </tr>
+                {expandedId === item.id && (
+                  <tr key={`${item.id}:logs`}>
+                    <td colSpan={5}>
+                      {(logsByRuleId[item.id] || []).length === 0 ? (
+                        <div className="muted" style={{ fontSize: '0.8rem' }}>暂无执行日志。</div>
+                      ) : (
+                        <div style={{ display: 'grid', gap: '0.35rem' }}>
+                          {logsByRuleId[item.id].map((log) => (
+                            <div key={log.id} style={{ fontSize: '0.8rem' }}>
+                              <strong>{log.success ? '成功' : '失败'}</strong>
+                              {` · ${new Date(log.executionAt).toLocaleString()} · ${log.trigger}`}
+                              {log.error ? ` · ${log.error}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

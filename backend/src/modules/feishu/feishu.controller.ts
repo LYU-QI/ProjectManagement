@@ -5,6 +5,7 @@ import { Roles } from '../auth/roles.decorator';
 import { RisksService } from '../risks/risks.service';
 import { AccessService } from '../access/access.service';
 import { PrismaService } from '../../database/prisma.service';
+import { EventsService } from '../events/events.service';
 
 @Controller('api/v1/feishu')
 export class FeishuController {
@@ -12,7 +13,8 @@ export class FeishuController {
     private readonly feishuService: FeishuService,
     private readonly risksService: RisksService,
     private readonly accessService: AccessService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService
   ) { }
 
   private async getAllowedProjectNames(actor?: { sub?: number; role?: string }) {
@@ -93,7 +95,7 @@ export class FeishuController {
   async createRecord(
     @Body('fields') fields: Record<string, unknown>,
     @Query('projectId') projectId: string | undefined,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
     this.assertProjectAllowed(fields?.['所属项目'], allowedProjectNames);
@@ -101,6 +103,11 @@ export class FeishuController {
     const result = await this.feishuService.createRecord(fields || {}, opts);
     const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
     await this.risksService.triggerAutoNotify(project);
+    this.eventsService.emit('feishu.records.changed', {
+      organizationId: req.org?.id ?? null,
+      projectId: projectId ? Number(projectId) : null,
+      payload: { action: 'created', recordId: (result as Record<string, unknown>)?.['record_id'] as string | undefined }
+    });
     return result;
   }
 
@@ -110,7 +117,7 @@ export class FeishuController {
     @Param('recordId') recordId: string,
     @Body('fields') fields: Record<string, unknown>,
     @Query('projectId') projectId: string | undefined,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
     const opts = await this.resolveFeishuConfig(projectId);
@@ -122,6 +129,11 @@ export class FeishuController {
     const result = await this.feishuService.updateRecord(recordId, fields || {}, opts);
     const project = typeof fields?.['所属项目'] === 'string' ? fields['所属项目'] : undefined;
     await this.risksService.triggerAutoNotify(project);
+    this.eventsService.emit('feishu.records.changed', {
+      organizationId: req.org?.id ?? null,
+      projectId: projectId ? Number(projectId) : null,
+      payload: { action: 'updated', recordId }
+    });
     return result;
   }
 
@@ -130,12 +142,18 @@ export class FeishuController {
   async deleteRecord(
     @Param('recordId') recordId: string,
     @Query('projectId') projectId: string | undefined,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
     const allowedProjectNames = await this.getAllowedProjectNames(req.user);
     const opts = await this.resolveFeishuConfig(projectId);
     const current = await this.feishuService.getRecord(recordId, opts);
     this.assertProjectAllowed(current?.fields?.['所属项目'], allowedProjectNames);
-    return this.feishuService.deleteRecord(recordId, opts);
+    const result = await this.feishuService.deleteRecord(recordId, opts);
+    this.eventsService.emit('feishu.records.changed', {
+      organizationId: req.org?.id ?? null,
+      projectId: projectId ? Number(projectId) : null,
+      payload: { action: 'deleted', recordId }
+    });
+    return result;
   }
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiGet, apiPost } from '../api/client';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import useEventStream from '../hooks/useEventStream';
 
 const COLOR_MAP: Record<string, string> = {
   red: 'var(--color-danger)',
@@ -358,6 +359,42 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
       setAiConfigSaving(false);
     }
   }
+
+  useEventStream({
+    enabled: true,
+    eventTypes: ['pm_assistant.run.completed', 'pm_assistant.config.changed', 'pm_assistant.schedule.changed', 'pm_assistant.prompt.changed'],
+    onEvent: (event) => {
+      if (event.projectId && projectId && event.projectId !== projectId) return;
+      if (event.type === 'pm_assistant.run.completed') {
+        void loadLogs();
+        return;
+      }
+      if (event.type === 'pm_assistant.config.changed') {
+        const qs = projectId ? `?projectId=${projectId}` : '';
+        void apiGet<JobConfig[]>(`/pm-assistant/configs${qs}`).then(setJobConfigs).catch(() => {});
+        return;
+      }
+      if (event.type === 'pm_assistant.schedule.changed') {
+        const qs = projectId ? `?projectId=${projectId}` : '';
+        void apiGet<ScheduleItem[]>(`/pm-assistant/schedules${qs}`).then((res) => {
+          setSchedules(res);
+          if (res.length > 0) {
+            setTimezoneDraft(res[0].timezone);
+          }
+        }).catch(() => {});
+        return;
+      }
+      if (event.type === 'pm_assistant.prompt.changed' && projectId) {
+        void apiGet<Record<string, string>>(`/pm-assistant/prompt-configs?projectId=${projectId}`).then((res) => {
+          const nextDrafts: Record<string, string> = {};
+          jobs.forEach((job) => {
+            nextDrafts[job.id] = res[job.id] || '';
+          });
+          setJobPromptDrafts(nextDrafts);
+        }).catch(() => {});
+      }
+    }
+  });
 
   return (
     <div>

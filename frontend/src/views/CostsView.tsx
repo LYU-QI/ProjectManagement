@@ -1,6 +1,6 @@
 import type { FormEvent, KeyboardEvent } from 'react';
 import { useMemo } from 'react';
-import type { CostEntryItem, CostSummary, Worklog } from '../types';
+import type { CostEntryItem, CostSummary, ProjectItem, Worklog } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
 
@@ -17,6 +17,9 @@ type InlineEditState<T, Id> = {
 
 type Props = {
   canWrite: boolean;
+  projects: ProjectItem[];
+  selectedProjectId: number | null;
+  selectedProjectName: string;
   costSummary: CostSummary | null;
   costEntries: CostEntryItem[];
   worklogs: Worklog[];
@@ -38,6 +41,9 @@ type Props = {
 
 export default function CostsView({
   canWrite,
+  projects,
+  selectedProjectId,
+  selectedProjectName,
   costSummary,
   costEntries,
   worklogs,
@@ -57,6 +63,22 @@ export default function CostsView({
   feishuUserOptions
 }: Props) {
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:costs:compactTable', false);
+  const filteredCostEntries = useMemo(
+    () => (selectedProjectId ? costEntries.filter((entry) => entry.projectId === selectedProjectId) : []),
+    [costEntries, selectedProjectId]
+  );
+  const filteredWorklogs = useMemo(
+    () => (selectedProjectId ? worklogs.filter((worklog) => worklog.projectId === selectedProjectId) : []),
+    [worklogs, selectedProjectId]
+  );
+  const visibleCostSummary = useMemo(
+    () => (selectedProjectId && costSummary?.projectId === selectedProjectId ? costSummary : null),
+    [costSummary, selectedProjectId]
+  );
+  const projectNameMap = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects]
+  );
   const formatCostType = (value: string) => {
     if (value === 'labor') return '人力';
     if (value === 'outsource') return '外包';
@@ -64,15 +86,23 @@ export default function CostsView({
     return value;
   };
   const metrics = useMemo(() => {
-    const budget = costSummary?.budget ?? 0;
-    const actual = costSummary?.actual ?? 0;
-    const varianceRate = costSummary?.varianceRate ?? 0;
-    const worklogCost = worklogs.reduce((sum, item) => sum + Number(item.hours || 0) * Number(item.hourlyRate || 0), 0);
+    const budget = visibleCostSummary?.budget ?? 0;
+    const actual = visibleCostSummary?.actual ?? 0;
+    const varianceRate = visibleCostSummary?.varianceRate ?? 0;
+    const worklogCost = filteredWorklogs.reduce((sum, item) => sum + Number(item.hours || 0) * Number(item.hourlyRate || 0), 0);
     return { budget, actual, varianceRate, worklogCost };
-  }, [costSummary, worklogs]);
+  }, [filteredWorklogs, visibleCostSummary]);
+  const getProjectName = (projectId: number) => projectNameMap.get(projectId) ?? `项目${projectId}`;
 
   return (
     <div className="costs-page">
+      <div className="card compact-card">
+        <div className="section-title-row">
+          <h3>当前项目</h3>
+          <span className="muted">当前列表只展示该项目的成本条目和工时明细</span>
+        </div>
+        <div>{selectedProjectName}</div>
+      </div>
       <section className="metrics-grid">
         <article className="metric-card">
           <p className="metric-label">预算</p>
@@ -150,16 +180,16 @@ export default function CostsView({
                   <th>
                     <input
                       type="checkbox"
-                      checked={costEntries.length > 0 && selectedCostEntryIds.length === costEntries.length}
-                      onChange={(e) => onSelectAllCostEntries(costEntries.map((c) => c.id), e.target.checked)}
+                      checked={filteredCostEntries.length > 0 && selectedCostEntryIds.length === filteredCostEntries.length}
+                      onChange={(e) => onSelectAllCostEntries(filteredCostEntries.map((c) => c.id), e.target.checked)}
                     />
                   </th>
                 )}
-                <th>ID</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}
+                <th>ID</th><th>所属项目</th><th>类型</th><th>金额</th><th>日期</th><th>备注</th>{canWrite && <th>操作</th>}
               </tr>
             </thead>
             <tbody>
-              {costEntries.map((entry) => {
+              {filteredCostEntries.map((entry) => {
               const isEditing = costEdit.editingId === entry.id;
               const rowDraft = isEditing ? (costEdit.draft ?? entry) : entry;
               const isDirty = isEditing && costEdit.hasDirty(entry);
@@ -175,6 +205,7 @@ export default function CostsView({
                     </td>
                   )}
                   <td>{entry.id}</td>
+                  <td>{getProjectName(entry.projectId)}</td>
                   <td
                     className={isEditing && costEdit.editingField === 'type' ? 'editing' : ''}
                     onDoubleClick={() => canWrite && costEdit.startEdit(entry, 'type')}
@@ -272,9 +303,9 @@ export default function CostsView({
         </div>
         <div className="table-wrap">
           <table className={`table ${compactTable ? 'table-compact' : ''}`}>
-            <thead><tr><th>周期</th><th>任务</th><th>负责人</th><th>人天</th><th>人天单价</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
+            <thead><tr><th>所属项目</th><th>周期</th><th>任务</th><th>负责人</th><th>人天</th><th>人天单价</th><th>成本</th>{canWrite && <th>操作</th>}</tr></thead>
             <tbody>
-              {worklogs.map((w) => {
+              {filteredWorklogs.map((w) => {
               const isEditing = worklogEdit.editingId === w.id;
               const rowDraft = isEditing ? (worklogEdit.draft ?? w) : w;
               const isDirty = isEditing && worklogEdit.hasDirty(w);
@@ -285,6 +316,7 @@ export default function CostsView({
               const cost = Number.isFinite(hours) && Number.isFinite(hourlyRate) ? (hours * hourlyRate).toFixed(2) : '-';
               return (
                 <tr key={w.id} className={isEditing ? 'editing-row' : ''}>
+                  <td>{getProjectName(w.projectId)}</td>
                   <td
                     className={isEditing && (worklogEdit.editingField === 'weekStart' || worklogEdit.editingField === 'weekEnd') ? 'editing' : ''}
                     onDoubleClick={() => canWrite && worklogEdit.startEdit(w, 'weekStart')}

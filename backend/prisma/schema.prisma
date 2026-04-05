@@ -183,6 +183,7 @@ model Organization {
   automationRules AutomationRule[]
   orgApiKeys OrgApiKey[]
   webhooks OrgWebhook[]
+  capabilityTemplates CapabilityTemplate[]
 
   allowedIps String?
 
@@ -238,6 +239,26 @@ model Config {
   @@index([organizationId])
 }
 
+model CapabilityTemplate {
+  id                 String        @id @default(cuid())
+  organizationId     String?
+  projectId          Int?
+  scene              String
+  name               String
+  description        String?
+  systemPrompt       String?
+  userPromptTemplate String?
+  enabled            Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  organization       Organization? @relation(fields: [organizationId], references: [id])
+  project            Project?      @relation(fields: [projectId], references: [id])
+
+  @@index([organizationId, scene, enabled])
+  @@index([projectId, scene, enabled])
+  @@unique([organizationId, projectId, scene, name])
+}
+
 model User {
   id            Int                 @id @default(autoincrement())
   name          String
@@ -291,6 +312,7 @@ model Project {
   testPlans      TestPlan[]
   bugs           Bug[]
   wikiPages      WikiPage[]
+  capabilityTemplates CapabilityTemplate[]
 
   @@index([organizationId])
 }
@@ -898,4 +920,3 @@ model OrgWebhookDelivery {
 
   @@index([webhookId])
 }
-

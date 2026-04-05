@@ -46,10 +46,16 @@ import { PlanGuard } from './guards/plan.guard';
 import { CacheModule } from './modules/cache/cache.module';
 import { MonitoringModule } from './modules/monitoring/monitoring.module';
 import { MetricsInterceptor } from './modules/monitoring/metrics.interceptor';
+import { EventsModule } from './modules/events/events.module';
+import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
+import { TaskCenterModule } from './modules/task-center/task-center.module';
 
 @Module({
   imports: [
     CacheModule,
+    EventsModule,
+    CapabilitiesModule,
+    TaskCenterModule,
     DatabaseModule,
     ScheduleModule.forRoot(),
     NotificationsModule,

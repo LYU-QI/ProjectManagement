@@ -43,7 +43,8 @@ export class OrgGuard implements CanActivate {
     }
 
     const headers = request['headers'] as Record<string, string | undefined>;
-    const requestedOrgId = headers?.['x-org-id'];
+    const query = request['query'] as Record<string, string | undefined> | undefined;
+    const requestedOrgId = headers?.['x-org-id'] ?? query?.['orgId'];
     const tokenOrgId = user.organizationId;
     const activeOrgId = requestedOrgId ?? tokenOrgId ?? null;
 

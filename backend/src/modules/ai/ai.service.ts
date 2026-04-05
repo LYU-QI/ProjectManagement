@@ -6,6 +6,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '../config/config.service';
 import { FeishuService } from '../feishu/feishu.service';
 import { AccessService } from '../access/access.service';
+import { CapabilitiesService } from '../capabilities/capabilities.service';
 const pdfParseModule = require('pdf-parse');
 async function parsePdfBuffer(buffer: Buffer) {
   if (typeof pdfParseModule === 'function') {
@@ -65,6 +66,7 @@ export class AiService {
     private readonly configService: ConfigService,
     private readonly feishuService: FeishuService,
     private readonly accessService: AccessService,
+    private readonly capabilitiesService: CapabilitiesService,
   ) { }
 
   async weeklyReport(input: WeeklyReportInput) {
@@ -149,6 +151,24 @@ export class AiService {
       .join('\n');
 
     const projectNames = details.map(d => d.projectName).join('、');
+    const detailBlocks = details.map((d) => {
+      const lines = [
+        `### ${d.projectName}`,
+        `- 任务：总计 ${d.totalTasks}，已完成 ${d.doneTasks}（完成率 ${d.taskCompletionRate}%），阻塞 ${d.blockedTasks}`,
+        `- 需求变更次数：${d.requirementChanges}`,
+        `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}，偏差 ${d.budgetVarianceRate}%`,
+      ];
+      if (d.blockedTaskTitles.length > 0) {
+        lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.join('、')}`);
+      }
+      if (d.highPriorityReqNames.length > 0) {
+        lines.push(`- **高优先级需求**：${d.highPriorityReqNames.join('、')}`);
+      }
+      if (d.worklogNotes.length > 0) {
+        lines.push(`- **本周工时备注**：${d.worklogNotes.slice(0, 15).join('；')}`);
+      }
+      return lines.join('\n');
+    }).join('\n\n');
     const draft = [
       `${projectNames} 周报草稿（${input.weekStart} 至 ${input.weekEnd}）`,
       '',
@@ -169,15 +189,12 @@ export class AiService {
       '- 高风险项目每 2 天跟踪预算偏差。'
     ].join('\n');
 
-    // 尝试调用 AI 模型
-    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
-    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
-    const aiModel = this.configService.getRawValue('AI_MODEL');
-
-    if (aiApiUrl && aiApiKey && aiModel) {
-      try {
-        // 构建增强版 AI 提示词：角色升级为资深 PMO 总监
-        const systemPrompt = `你是一位拥有 15 年经验的资深 PMO 总监。你需要基于多项目周度数据（含任务明细、需求明细、工时备注等一手信息），为管理层生成一份深度分析的《${projectNames} 周报》。
+    const organizationId = projects[0]?.organizationId;
+    const weeklyTemplate = await this.capabilitiesService.resolve('ai.weekly-report', {
+      organizationId,
+      projectId: input.projectIds.length === 1 ? input.projectIds[0] : undefined
+    });
+    const systemPrompt = weeklyTemplate?.systemPrompt?.trim() || `你是一位拥有 15 年经验的资深 PMO 总监。你需要基于多项目周度数据（含任务明细、需求明细、工时备注等一手信息），为管理层生成一份深度分析的《${projectNames} 周报》。
 
 核心要求：
 1. **语言精炼专业**，适合向 CXO 级别汇报，避免流水账。
@@ -193,40 +210,40 @@ export class AiService {
    ## 📋 下周重点事项
 4. 每个章节需结合具体的任务标题、需求名称或工时备注来佐证分析结论。
 5. 行动建议务必具体、可执行，标注建议责任方和时间节点。`;
-
-        // 构建富上下文的用户提示词
-        const detailBlocks = details.map((d) => {
-          const lines = [
-            `### ${d.projectName}`,
-            `- 任务：总计 ${d.totalTasks}，已完成 ${d.doneTasks}（完成率 ${d.taskCompletionRate}%），阻塞 ${d.blockedTasks}`,
-            `- 需求变更次数：${d.requirementChanges}`,
-            `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}，偏差 ${d.budgetVarianceRate}%`,
-          ];
-          if (d.blockedTaskTitles.length > 0) {
-            lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.join('、')}`);
-          }
-          if (d.highPriorityReqNames.length > 0) {
-            lines.push(`- **高优先级需求**：${d.highPriorityReqNames.join('、')}`);
-          }
-          if (d.worklogNotes.length > 0) {
-            lines.push(`- **本周工时备注**：${d.worklogNotes.slice(0, 15).join('；')}`);
-          }
-          return lines.join('\n');
-        }).join('\n\n');
-
-        const userPrompt = `报告周期：${input.weekStart} 至 ${input.weekEnd}
+    const userPrompt = this.applyPromptTemplate(
+      weeklyTemplate?.userPromptTemplate,
+      {
+        projectNames,
+        weekStart: input.weekStart,
+        weekEnd: input.weekEnd,
+        projectCount: details.length,
+        includeRisks: input.includeRisks ? '是' : '否',
+        includeBudget: input.includeBudget ? '是' : '否',
+        detailBlocks,
+        draft
+      },
+      `报告周期：${input.weekStart} 至 ${input.weekEnd}
 涉及项目数：${details.length} 个
 包含风险分析：${input.includeRisks ? '是' : '否'}
 包含预算分析：${input.includeBudget ? '是' : '否'}
 
-${detailBlocks}`;
+${detailBlocks}`
+    );
 
+    // 尝试调用 AI 模型
+    const aiApiUrl = this.configService.getRawValue('AI_API_URL');
+    const aiApiKey = this.configService.getRawValue('AI_API_KEY');
+    const aiModel = this.configService.getRawValue('AI_MODEL');
+
+    if (aiApiUrl && aiApiKey && aiModel) {
+      try {
         const aiReport = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
 
         return {
           generatedAt: new Date().toISOString(),
           evidence: details,
           source: 'ai',
+          templateSource: weeklyTemplate ? 'capability_template' : 'builtin',
           report: aiReport
         };
       } catch (err) {
@@ -235,6 +252,7 @@ ${detailBlocks}`;
           generatedAt: new Date().toISOString(),
           evidence: details,
           source: 'template',
+          templateSource: weeklyTemplate ? 'capability_template' : 'builtin',
           error: `AI 模型调用失败（${detail}），已生成模板周报草稿。`,
           report: `⚠ AI 模型调用失败：${detail}\n⚠ 以下为模板生成的草稿，请到「系统配置」检查 AI 配置。\n\n${draft}`
         };
@@ -246,6 +264,7 @@ ${detailBlocks}`;
       generatedAt: new Date().toISOString(),
       evidence: details,
       source: 'template',
+      templateSource: weeklyTemplate ? 'capability_template' : 'builtin',
       hint: '未配置 AI 模型，当前为模板草稿。可在「系统配置」中设置 AI 密钥以启用 AI 智能总结。',
       report: `💡 提示：未配置 AI 模型，当前为死板的字符串拼接草稿。前往「系统配置 → AI 模型配置」填写端点和密钥即可启用智能总结与汇报建议。\n\n${draft}`
     };
@@ -421,6 +440,22 @@ ${detailBlocks}`;
       endpoint += '/chat/completions';
     }
     return endpoint;
+  }
+
+  private applyPromptTemplate(
+    template: string | null | undefined,
+    variables: Record<string, unknown>,
+    fallback: string
+  ) {
+    if (!template?.trim()) return fallback;
+    return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+      const value = variables[key];
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+      }
+      return JSON.stringify(value, null, 2);
+    });
   }
 
   private async callAiModelWithMessages(
