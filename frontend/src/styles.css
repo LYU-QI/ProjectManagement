@@ -2556,6 +2556,18 @@ body {
   text-align: center;
 }
 
+.requirement-table .operation-cell {
+  width: 120px;
+}
+
+.requirement-table .req-action-menu {
+  z-index: 20;
+}
+
+.requirement-table .req-action-trigger {
+  width: 100%;
+}
+
 /* =========================================================
    Global Button Unification
    ========================================================= */

@@ -618,6 +618,12 @@ button.btn:disabled {
   align-items: center;
 }
 
+.app-global-search-form input[type="text"],
+.app-global-search-form input:not([type]) {
+  width: 100%;
+  min-width: min(720px, 100%);
+}
+
 .app-global-group {
   margin-bottom: 10px;
 }
@@ -727,6 +733,20 @@ button.btn:disabled {
 }
 
 .workitems-table-wrap .req-action-dropdown {
+  z-index: 80;
+}
+
+.requirement-table-wrap {
+  border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent 20%);
+  border-radius: 14px;
+  overflow: visible;
+}
+
+.requirement-table-wrap .req-action-menu {
+  z-index: 20;
+}
+
+.requirement-table-wrap .req-action-dropdown {
   z-index: 80;
 }
 
@@ -1535,6 +1555,11 @@ button.btn:disabled {
 .req-create-card,
 .req-list-card {
   margin-top: 12px;
+}
+
+.req-list-card {
+  position: relative;
+  z-index: 30;
 }
 
 .req-requirement-create-modal {

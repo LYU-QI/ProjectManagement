@@ -416,7 +416,7 @@ export default function RequirementsView({
             <option value="rejected">已驳回</option>
           </ThemedSelect>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap requirement-table-wrap">
           <table className={`table requirement-table ${compactTable ? 'table-compact' : ''}`}>
             <thead>
               <tr>

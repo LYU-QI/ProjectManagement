@@ -24,7 +24,8 @@ import {
   BookOpen,
   Webhook,
   Key,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import GlobalAiChatbot from './chat/GlobalAiChatbot';
 
@@ -99,7 +100,10 @@ interface NavGroup {
 }
 
 const navGroups: NavGroup[] = [
-  { id: 'overview', label: '总览', icon: <LayoutDashboard size={14} />, items: [{ id: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> }] },
+  { id: 'overview', label: '总览', icon: <LayoutDashboard size={14} />, items: [
+    { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> },
+    { id: 'global', label: '全局检索', icon: <Search size={16} /> }
+  ] },
   { id: 'project', label: '项目管理', icon: <ListTodo size={14} />, items: [
     { id: 'requirements', label: '项目与需求', icon: <ListTodo size={16} /> },
     { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={16} /> },
@@ -147,6 +151,7 @@ const navGroups: NavGroup[] = [
 
 const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; allowedOrgRoles?: string[] }> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
+  { id: 'global', label: '全局检索', icon: <Search size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'schedule', label: '进度计划', icon: <CalendarDays size={18} />, platform: 'workspace' },
