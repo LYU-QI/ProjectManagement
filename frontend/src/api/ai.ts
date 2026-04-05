@@ -9,8 +9,12 @@ export interface ChatResponse {
     content: string;
 }
 
-export async function chatWithAi(message: string, history?: ChatMessage[]): Promise<ChatResponse> {
-    return apiPost<ChatResponse>('/ai/chat', { message, history });
+export async function chatWithAi(message: string, history?: ChatMessage[], projectId?: number | null): Promise<ChatResponse> {
+    return apiPost<ChatResponse>('/ai/chat', {
+        message,
+        history,
+        ...(projectId ? { projectId } : {})
+    });
 }
 
 export async function getDashboardSummary(projectId?: number): Promise<{ report: string }> {

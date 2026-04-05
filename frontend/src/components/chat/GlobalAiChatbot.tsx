@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, X, Send, Search, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import { Bot, X, Send, Search, Sparkles, Loader2, Trash2, Radar, Wand2 } from 'lucide-react';
 import type { ViewKey } from '../AstraeaLayout';
 import { chatWithAi, type ChatMessage } from '../../api/ai';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useWorkspaceStore } from '../../store/useWorkspaceStore';
 
 interface GlobalAiChatbotProps {
   onViewChange: (view: ViewKey) => void;
@@ -12,8 +13,8 @@ interface GlobalAiChatbotProps {
 
 export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) {
   const FAB_SIZE = 56;
-  const PANEL_WIDTH = 380;
-  const PANEL_HEIGHT = 600;
+  const PANEL_WIDTH = 460;
+  const PANEL_HEIGHT = 720;
   const EDGE_GAP = 0;
 
   const [isOpen, setIsOpen] = useState(false);
@@ -46,6 +47,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
   } | null>(null);
   const [draggingType, setDraggingType] = useState<'fab' | 'panel' | null>(null);
   const [panelMovedSinceOpen, setPanelMovedSinceOpen] = useState(false);
+  const selectedProjectId = useWorkspaceStore((state) => state.selectedProjectId);
 
   const getViewportSize = () => {
     const vv = window.visualViewport;
@@ -201,7 +203,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
     try {
       // 只携带最近 10 条历史以保持上下文并节省 tokens
       const history = messages.slice(-10);
-      const res = await chatWithAi(text, history);
+      const res = await chatWithAi(text, history, selectedProjectId);
       setMessages(prev => [...prev, { role: 'assistant', content: res.content }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `抱歉，我遇到了点问题：${err instanceof Error ? err.message : '未知错误'}` }]);
@@ -259,11 +261,19 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
                 startDrag('panel', e.clientX, e.clientY);
               }}
             >
-              <div className="chatbot-title">
-                <Sparkles size={16} className="glow-icon" />
-                Astraea AI Assistant
+              <div className="chatbot-header-main">
+                <div className="chatbot-avatar-shell">
+                  <Sparkles size={16} className="glow-icon" />
+                </div>
+                <div className="chatbot-title-block">
+                  <div className="chatbot-title">Astraea AI Assistant</div>
+                  <div className="chatbot-subtitle">
+                    <span className="chatbot-status-dot" />
+                    项目问答、导航、分析入口
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div className="chatbot-header-actions">
                 <button className="icon-btn" title="清除历史" onClick={handleClearHistory}>
                   <Trash2 size={18} />
                 </button>
@@ -278,10 +288,38 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
               <button onClick={() => executeAction('global', '带我去全局检索')}>
                 <Search size={12} /> 全局搜索
               </button>
+              <button onClick={() => executeAction('ai', '带我去 AI 分析')}>
+                <Sparkles size={12} /> AI 分析
+              </button>
+              <button onClick={() => executeAction('task-center', '带我去任务中心')}>
+                <Radar size={12} /> 任务中心
+              </button>
+              <button onClick={() => executeAction('pm-assistant', '带我去 PM 助手')}>
+                <Wand2 size={12} /> PM 助手
+              </button>
             </div>
 
             {/* Messages */}
             <div className="chatbot-messages">
+              {messages.length === 1 && !isLoading && (
+                <div className="chatbot-intro-card">
+                  <div className="chatbot-intro-title">可以这样用我</div>
+                  <div className="chatbot-intro-grid">
+                    <button type="button" className="chatbot-intro-action" onClick={() => void handleSend('帮我总结当前项目的重点风险')}>
+                      总结当前项目风险
+                    </button>
+                    <button type="button" className="chatbot-intro-action" onClick={() => void handleSend('帮我生成一段周报摘要')}>
+                      生成周报摘要
+                    </button>
+                    <button type="button" className="chatbot-intro-action" onClick={() => executeAction('global', '带我去全局检索')}>
+                      打开全局检索
+                    </button>
+                    <button type="button" className="chatbot-intro-action" onClick={() => executeAction('task-center', '带我去任务中心')}>
+                      查看系统任务中心
+                    </button>
+                  </div>
+                </div>
+              )}
               {messages.map((m, i) => (
                 <div key={i} className={`chat-bubble ${m.role === 'assistant' ? 'chat-ai' : 'chat-user'}`}>
                   {m.role === 'assistant' ? (
@@ -304,14 +342,17 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
             {/* Input Form */}
             <div className="chatbot-input-area">
-              <input
-                type="text"
-                placeholder={isLoading ? "正在思考中..." : "在此输入您的疑问或意图..."}
-                value={input}
-                disabled={isLoading}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSend()}
-              />
+              <div className="chatbot-input-shell">
+                <input
+                  type="text"
+                  placeholder={isLoading ? '正在思考中...' : '输入问题、命令或你想去的页面...'}
+                  value={input}
+                  disabled={isLoading}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSend()}
+                />
+                <div className="chatbot-input-hint">Enter 发送</div>
+              </div>
               <button className="send-btn" onClick={() => handleSend()} disabled={!input.trim() || isLoading}>
                 {isLoading ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
               </button>
@@ -348,8 +389,8 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
         .chatbot-panel {
           position: fixed;
-          width: 380px;
-          height: 600px;
+          width: ${PANEL_WIDTH}px;
+          height: ${PANEL_HEIGHT}px;
           max-height: calc(100vh - 48px);
           background:
             linear-gradient(170deg, color-mix(in srgb, var(--glass-specular) 24%, transparent 76%), transparent 42%),
@@ -378,17 +419,61 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           user-select: none;
         }
 
-        .chatbot-title {
+        .chatbot-header-main {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .chatbot-avatar-shell {
+          width: 34px;
+          height: 34px;
+          border-radius: 12px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background:
+            linear-gradient(155deg, color-mix(in srgb, #ffffff 34%, transparent 66%), transparent 42%),
+            linear-gradient(135deg, var(--glow-blue), color-mix(in srgb, var(--glow-purple) 68%, #8dbdff 32%));
+          box-shadow: 0 10px 20px color-mix(in srgb, var(--glow-blue) 26%, transparent 74%);
+          flex-shrink: 0;
+        }
+
+        .chatbot-title {
           color: var(--color-text-primary);
-          font-weight: 600;
-          letter-spacing: 0;
+          font-weight: 700;
+          letter-spacing: 0.01em;
+        }
+
+        .chatbot-title-block {
+          min-width: 0;
+        }
+
+        .chatbot-subtitle {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 2px;
+          color: var(--color-text-muted);
+          font-size: 12px;
+        }
+
+        .chatbot-status-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: var(--color-success);
+          box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 18%, transparent 82%);
         }
 
         .glow-icon {
-          color: var(--color-primary);
+          color: #ffffff;
+        }
+
+        .chatbot-header-actions {
+          display: flex;
+          gap: 8px;
         }
 
         .icon-btn {
@@ -442,12 +527,56 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           display: flex;
           flex-direction: column;
           gap: 16px;
+          background:
+            radial-gradient(circle at top, color-mix(in srgb, var(--color-primary) 8%, transparent 92%), transparent 35%),
+            transparent;
+        }
+
+        .chatbot-intro-card {
+          border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent 20%);
+          border-radius: 16px;
+          padding: 14px;
+          background:
+            linear-gradient(180deg, color-mix(in srgb, var(--glass-specular) 22%, transparent 78%), transparent 40%),
+            color-mix(in srgb, var(--glass-bg) 74%, var(--color-bg-surface) 26%);
+        }
+
+        .chatbot-intro-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: var(--color-text-primary);
+          margin-bottom: 10px;
+        }
+
+        .chatbot-intro-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 8px;
+        }
+
+        .chatbot-intro-action {
+          text-align: left;
+          padding: 10px 12px;
+          border-radius: 12px;
+          border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent 20%);
+          background: color-mix(in srgb, var(--glass-bg) 60%, transparent 40%);
+          color: var(--color-text-secondary);
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+        }
+
+        .chatbot-intro-action:hover {
+          border-color: color-mix(in srgb, var(--color-primary) 44%, var(--color-border) 56%);
+          background: color-mix(in srgb, var(--glass-tint-primary) 60%, transparent 40%);
+          color: var(--color-primary);
         }
 
         .chat-bubble {
           max-width: 85%;
-          padding: 10px 14px;
-          border-radius: 12px;
+          padding: 12px 14px;
+          border-radius: 16px;
           font-size: 14px;
           line-height: 1.5;
           word-break: break-word;
@@ -519,7 +648,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           align-self: flex-start;
           background: color-mix(in srgb, var(--glass-bg) 72%, var(--color-bg-muted) 28%);
           color: var(--color-text-primary);
-          border-bottom-left-radius: 2px;
+          border-bottom-left-radius: 6px;
           border: 1px solid var(--glass-border);
         }
 
@@ -529,7 +658,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
             linear-gradient(155deg, color-mix(in srgb, #ffffff 36%, transparent 64%), transparent 42%),
             linear-gradient(135deg, var(--glow-blue), color-mix(in srgb, var(--glow-blue) 72%, #8dbdff 28%));
           color: #fff;
-          border-bottom-right-radius: 2px;
+          border-bottom-right-radius: 6px;
           box-shadow: 0 8px 18px color-mix(in srgb, var(--glow-blue) 28%, transparent 72%);
         }
 
@@ -557,14 +686,19 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
           border-top: 1px solid var(--glass-border);
           display: flex;
           gap: 12px;
+          align-items: flex-end;
+        }
+
+        .chatbot-input-shell {
+          flex: 1;
         }
 
         .chatbot-input-area input {
-          flex: 1;
+          width: 100%;
           background: color-mix(in srgb, var(--glass-bg) 80%, var(--color-bg-surface) 20%);
           border: 1px solid var(--glass-border);
-          border-radius: 8px;
-          padding: 10px 16px;
+          border-radius: 14px;
+          padding: 12px 16px;
           color: var(--color-text-primary);
           font-size: 14px;
           outline: none;
@@ -575,9 +709,9 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
         }
 
         .send-btn {
-          width: 40px;
-          height: 40px;
-          border-radius: 8px;
+          width: 46px;
+          height: 46px;
+          border-radius: 14px;
           background:
             linear-gradient(155deg, color-mix(in srgb, #ffffff 40%, transparent 60%), transparent 44%),
             linear-gradient(135deg, var(--glow-blue), color-mix(in srgb, var(--glow-blue) 70%, #8dbdff 30%));
@@ -596,6 +730,29 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
         }
         .send-btn:not(:disabled):hover {
           filter: brightness(1.2);
+        }
+
+        .chatbot-input-hint {
+          margin-top: 6px;
+          padding-left: 4px;
+          color: var(--color-text-muted);
+          font-size: 11px;
+        }
+
+        @media (max-width: 720px) {
+          .chatbot-panel {
+            width: min(100vw - 16px, 420px);
+            height: min(78vh, 640px);
+            max-height: min(78vh, 640px);
+          }
+
+          .chatbot-intro-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .chat-bubble {
+            max-width: 92%;
+          }
         }
       `}</style>
     </>

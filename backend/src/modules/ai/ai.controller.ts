@@ -69,6 +69,10 @@ class ChatDto {
   @IsNotEmpty()
   message!: string;
 
+  @IsNumber()
+  @IsOptional()
+  projectId?: number;
+
   @IsArray()
   @IsOptional()
   history?: { role: 'user' | 'assistant'; content: string }[];

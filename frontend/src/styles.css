@@ -19,6 +19,11 @@
 
   --border-glass: rgba(255, 255, 255, 0.08);
   --border-focus: rgba(59, 130, 246, 0.5);
+
+  --layout-sidebar-width: clamp(248px, 15vw, 320px);
+  --layout-page-padding: clamp(24px, 2.2vw, 44px);
+  --layout-header-control-width: clamp(200px, 13vw, 340px);
+  --layout-header-gap: clamp(8px, 0.8vw, 14px);
 }
 
 * {
@@ -41,7 +46,7 @@ body {
 /* Astraea全局布局骨架 */
 .astraea-root {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr);
   height: 100vh;
   width: 100vw;
   overflow: hidden;
@@ -84,21 +89,24 @@ body {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--layout-header-gap);
+  min-width: 0;
 }
 
 .header-center {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--layout-header-gap);
   position: relative;
   z-index: 300;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .header-center select,
 .header-center .glass-input {
-  min-width: 200px;
-  max-width: 280px;
+  min-width: min(220px, 100%);
+  max-width: var(--layout-header-control-width);
 }
 
 .header-actions {
@@ -126,12 +134,13 @@ body {
   bottom: auto !important;
   width: auto !important;
   height: auto !important;
-  padding: 10px 32px;
+  padding: 10px var(--layout-page-padding);
   display: flex;
   align-items: center;
   justify-content: space-between;
   pointer-events: all !important;
   z-index: 200 !important;
+  gap: clamp(12px, 1vw, 18px);
 }
 
 /* 极光背景层 */
@@ -166,7 +175,7 @@ body {
 
 /* 侧边栏导航 */
 .astraea-sidebar {
-  width: 260px;
+  width: var(--layout-sidebar-width);
   background: rgba(10, 10, 12, 0.7);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -411,9 +420,13 @@ body {
 .astraea-content-scroll {
   height: 100%;
   overflow-y: auto;
-  padding: 0 32px 40px 32px;
+  padding: 0 var(--layout-page-padding) 40px var(--layout-page-padding);
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.astraea-content-scroll > * {
+  max-width: 100%;
 }
 
 .astraea-content-scroll::-webkit-scrollbar {
@@ -1486,6 +1499,14 @@ select option {
 
   .dashboard-panels {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1680px) {
+  :root {
+    --layout-sidebar-width: clamp(280px, 16vw, 340px);
+    --layout-page-padding: clamp(32px, 2.6vw, 56px);
+    --layout-header-control-width: clamp(240px, 15vw, 380px);
   }
 }
 

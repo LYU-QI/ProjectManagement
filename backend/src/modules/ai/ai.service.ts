@@ -834,6 +834,14 @@ ${detailBlocks}`
     return date.toISOString().slice(0, 10);
   }
 
+  private getCurrentWeekRange(base: Date) {
+    const day = base.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const weekStart = this.toDateString(this.addDays(base, diffToMonday));
+    const weekEnd = this.toDateString(this.addDays(base, diffToMonday + 6));
+    return { weekStart, weekEnd };
+  }
+
   private resolveRelativeDateText(text: string): string | null {
     const value = text.trim().toLowerCase();
     const base = new Date();
@@ -1155,7 +1163,7 @@ ${detailBlocks}`
 
   /** 通用 AI 聊天对话 */
   async chat(
-    input: { message: string, history?: { role: 'user' | 'assistant', content: string }[] },
+    input: { message: string, projectId?: number, history?: { role: 'user' | 'assistant', content: string }[] },
     actor?: ChatActor
   ) {
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
@@ -1204,20 +1212,31 @@ ${detailBlocks}`
       return { content: '当前账号暂无可访问项目，请联系管理员分配项目权限。' };
     }
 
-    // 根据用户提问里的项目名优先做项目范围过滤；未命中则回退全局。
+    const currentProject = input.projectId
+      ? projects.find((project) => project.id === input.projectId) || null
+      : null;
+
+    // 优先级：消息里显式提到的项目 > 页面当前选中项目 > 全部可访问项目。
     const normalizedMessage = input.message.toLowerCase();
-    const scopedProjectIds = projects
+    const matchedProjectIds = projects
       .filter((project) =>
         this.fuzzyIncludes(normalizedMessage, project.name)
         || this.fuzzyIncludes(normalizedMessage, project.alias || '')
       )
       .map((project) => project.id);
+    const scopedProjectIds = matchedProjectIds.length > 0
+      ? matchedProjectIds
+      : currentProject
+        ? [currentProject.id]
+        : [];
     const scopedWhere = scopedProjectIds.length > 0 ? { projectId: { in: scopedProjectIds } } : {};
 
-    const [taskStats, requirementStats, costAgg, taskDetails, requirementDetails, costDetails] = await Promise.all([
+    const now = new Date();
+    const currentWeek = this.getCurrentWeekRange(now);
+
+    const [taskStats, requirementStats, taskDetails, requirementDetails, costDetails, worklogDetails] = await Promise.all([
       this.prisma.task.groupBy({ by: ['status'], _count: { _all: true }, where: scopedWhere }),
       this.prisma.requirement.groupBy({ by: ['status'], _count: { _all: true }, where: scopedWhere }),
-      this.prisma.costEntry.aggregate({ _sum: { amount: true }, where: scopedWhere }),
       this.prisma.task.findMany({
         where: scopedWhere,
         orderBy: [{ projectId: 'asc' }, { id: 'asc' }],
@@ -1256,11 +1275,28 @@ ${detailBlocks}`
           note: true,
           project: { select: { name: true } }
         }
+      }),
+      this.prisma.worklog.findMany({
+        where: scopedWhere,
+        orderBy: [{ projectId: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          taskTitle: true,
+          assigneeName: true,
+          workedOn: true,
+          weekStart: true,
+          weekEnd: true,
+          hours: true,
+          hourlyRate: true,
+          project: { select: { name: true } }
+        }
       })
     ]);
     const scopedProjects = scopedProjectIds.length > 0 ? projects.filter((p) => scopedProjectIds.includes(p.id)) : projects;
     const totalBudget = scopedProjects.reduce((sum, p) => sum + p.budget, 0);
-    const totalActualCost = costAgg._sum.amount || 0;
+    const totalDirectCost = costDetails.reduce((sum, item) => sum + item.amount, 0);
+    const totalLaborCost = worklogDetails.reduce((sum, item) => sum + (item.hours * item.hourlyRate), 0);
+    const totalActualCost = totalDirectCost + totalLaborCost;
     const taskSummary = taskStats.map(t => `${t.status}: ${t._count._all}`).join(', ');
     const reqSummary = requirementStats.map(r => `${r.status}: ${r._count._all}`).join(', ');
     const projectList = scopedProjects
@@ -1271,7 +1307,19 @@ ${detailBlocks}`
     const clippedTaskDetails = taskDetails.slice(0, DETAIL_LIMIT);
     const clippedRequirementDetails = requirementDetails.slice(0, DETAIL_LIMIT);
     const clippedCostDetails = costDetails.slice(0, DETAIL_LIMIT);
+    const clippedWorklogDetails = worklogDetails.slice(0, DETAIL_LIMIT);
     const scopedProjectNames = new Set(scopedProjects.map((project) => project.name));
+    const isDateWithinWeek = (value: string | null | undefined) => {
+      if (!value) return false;
+      return value >= currentWeek.weekStart && value <= currentWeek.weekEnd;
+    };
+    const currentWeekDirectCost = costDetails
+      .filter((item) => isDateWithinWeek(item.occurredOn))
+      .reduce((sum, item) => sum + item.amount, 0);
+    const currentWeekLaborCost = worklogDetails
+      .filter((item) => isDateWithinWeek(item.workedOn) || isDateWithinWeek(item.weekEnd) || isDateWithinWeek(item.weekStart))
+      .reduce((sum, item) => sum + (item.hours * item.hourlyRate), 0);
+    const currentWeekActualCost = currentWeekDirectCost + currentWeekLaborCost;
 
     let feishuTaskDetails: Array<{
       recordId: string;
@@ -1322,10 +1370,11 @@ ${detailBlocks}`
     }
     const clippedFeishuTaskDetails = feishuTaskDetails.slice(0, DETAIL_LIMIT);
 
-    const detailScope = scopedProjectIds.length > 0
-      ? `已按问题命中项目范围过滤（${scopedProjects.map((p) => p.name).join('、')}）。`
-      : '未命中具体项目名，使用全项目范围。';
-    const now = new Date();
+    const detailScope = matchedProjectIds.length > 0
+      ? `已按问题中提到的项目范围过滤（${scopedProjects.map((p) => p.name).join('、')}）。`
+      : currentProject
+        ? `已按当前选中项目过滤（${currentProject.name}）。`
+        : '未命中具体项目名，且当前未选中项目，使用全项目范围。';
     const localDate = new Intl.DateTimeFormat('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -1373,6 +1422,12 @@ ${detailBlocks}`
       )).join('\n')
       : '- 暂无成本数据';
 
+    const worklogDetailLines = clippedWorklogDetails.length > 0
+      ? clippedWorklogDetails.map((item) => (
+        `- [工时#${item.id}] 项目=${item.project.name} | 任务=${item.taskTitle || '-'} | 负责人=${item.assigneeName || '-'} | 工时=${item.hours}h | 时薪=¥${item.hourlyRate.toLocaleString()} | 成本=¥${(item.hours * item.hourlyRate).toLocaleString()} | 日期=${item.workedOn || item.weekEnd || item.weekStart || '-'}`
+      )).join('\n')
+      : '- 暂无工时数据';
+
     const feishuTaskDetailLines = clippedFeishuTaskDetails.length > 0
       ? clippedFeishuTaskDetails.map((item) => (
         `- [飞书记录#${item.recordId || '-'}] 项目=${item.projectName || '-'} | 任务=${item.taskName} | 负责人=${item.assignee} | 状态=${item.status} | 开始=${item.start} | 截止=${item.end}`
@@ -1383,22 +1438,27 @@ ${detailBlocks}`
 当前系统实时数据摘要：
 0. 当前时间锚点：今天是 ${localDate}，当前本地时间 ${localDateTime}（ISO 日期 ${isoDate}）。
 范围：${detailScope}
+当前页面选中项目：${currentProject ? currentProject.name : '未选择'}
 1. 活跃项目清单：
 ${projectList}
 2. 全局任务分布：${taskSummary || '暂无任务'}
 3. 全局需求分布：${reqSummary || '暂无需求'}
-4. 整体财务状况：总预算 ¥${totalBudget.toLocaleString()}，实际已支出 ¥${totalActualCost.toLocaleString()}。
+4. 整体财务状况：总预算 ¥${totalBudget.toLocaleString()}，直接成本 ¥${totalDirectCost.toLocaleString()}，工时成本 ¥${totalLaborCost.toLocaleString()}，实际已支出 ¥${totalActualCost.toLocaleString()}。
+5. 本周财务口径（${currentWeek.weekStart} 至 ${currentWeek.weekEnd}）：本周新增直接成本 ¥${currentWeekDirectCost.toLocaleString()}，本周新增工时成本 ¥${currentWeekLaborCost.toLocaleString()}，本周新增总支出 ¥${currentWeekActualCost.toLocaleString()}。
 
-5. 任务逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedTaskDetails.length}/${taskDetails.length}）：
+6. 任务逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedTaskDetails.length}/${taskDetails.length}）：
 ${taskDetailLines}
 
-6. 需求逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedRequirementDetails.length}/${requirementDetails.length}）：
+7. 需求逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedRequirementDetails.length}/${requirementDetails.length}）：
 ${requirementDetailLines}
 
-7. 成本逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedCostDetails.length}/${costDetails.length}）：
+8. 成本逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedCostDetails.length}/${costDetails.length}）：
 ${costDetailLines}
 
-8. 飞书进度任务明细（与进度计划页面同源，最多 ${DETAIL_LIMIT} 条，当前 ${clippedFeishuTaskDetails.length}/${feishuTaskDetails.length}）：
+9. 工时逐条明细（最多 ${DETAIL_LIMIT} 条，当前 ${clippedWorklogDetails.length}/${worklogDetails.length}）：
+${worklogDetailLines}
+
+10. 飞书进度任务明细（与进度计划页面同源，最多 ${DETAIL_LIMIT} 条，当前 ${clippedFeishuTaskDetails.length}/${feishuTaskDetails.length}）：
 ${feishuTaskDetailLines}
 `;
 
@@ -1409,6 +1469,9 @@ ${feishuTaskDetailLines}
 ${dataContext}
 
 注意：
+- 如果当前页面已选中项目，那么用户提到“当前项目”“本项目”“这个项目”时，默认指当前页面选中项目；只有当用户明确点名其他项目时，才切换解释范围。
+- 财务口径必须统一：实际已支出 = 直接成本 + 工时成本。不要只拿成本条目金额当作实际已支出。
+- 当用户询问“本周新增支出/本周花费”时，优先使用上面的“本周财务口径”数字，不要自行猜测。
 - 如果用户询问特定项目的进展，请基于上述数据回答。
 - 当用户提到“今天/明天/昨天”时，请以上述“当前时间锚点”为准进行换算后回答，并在答案中带上具体日期（YYYY-MM-DD）。
 - 如果系统 Task 明细为空但飞书进度明细存在，优先使用飞书进度明细回答任务问题，并明确标注数据来源为“飞书进度记录”。
@@ -1421,7 +1484,7 @@ ${input.history.map(h => `${h.role === 'user' ? '用户' : '助理'}: ${h.conten
 
 当前的提问：${input.message}`
       : input.message;
-    let auditProjectId: number | undefined = scopedProjectIds[0];
+    let auditProjectId: number | undefined = scopedProjectIds[0] ?? currentProject?.id;
 
     try {
       const projectNameToId = new Map<string, number>();
