@@ -12,6 +12,9 @@
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "prisma:seed": "ts-node prisma/seed.ts",
     "test:api": "jest --config test/jest-e2e.json --testPathPattern=api",
+    "test:api:audit": "jest --config test/jest-e2e.json test/api/audit.spec.ts",
+    "test:api:permissions": "jest --config test/jest-e2e.json test/api/permissions.spec.ts",
+    "test:api:users": "jest --config test/jest-e2e.json test/api/users.spec.ts",
     "test:e2e": "npx playwright test --config playwright.config.ts"
   },
   "dependencies": {

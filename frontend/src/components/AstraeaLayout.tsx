@@ -149,7 +149,14 @@ const navGroups: NavGroup[] = [
   ]},
 ];
 
-const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: PlatformMode; allowedOrgRoles?: string[] }> = [
+const navItems: Array<{
+  id: ViewKey;
+  label: string;
+  icon: ReactNode;
+  platform: PlatformMode;
+  allowedOrgRoles?: string[];
+  allowedUserRoles?: string[];
+}> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
   { id: 'global', label: '全局检索', icon: <Search size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
@@ -181,9 +188,9 @@ const navItems: Array<{ id: ViewKey; label: string; icon: ReactNode; platform: P
   { id: 'feishu-users', label: '飞书成员', icon: <Users size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] },
   { id: 'org-members', label: '成员管理', icon: <Users size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin'] },
   { id: 'org-settings', label: '组织设置', icon: <Settings size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin'] },
-  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] },
+  { id: 'audit', label: '审计日志', icon: <Activity size={18} />, platform: 'admin', allowedUserRoles: ['pm', 'project_manager', 'super_admin'] },
   { id: 'project-access', label: '项目授权', icon: <ShieldCheck size={18} />, platform: 'admin', allowedOrgRoles: ['owner', 'admin', 'member'] },
-  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedOrgRoles: ['owner'] }
+  { id: 'settings', label: '系统设置', icon: <Settings size={18} />, platform: 'admin', allowedUserRoles: ['pm', 'project_manager', 'super_admin'] }
 ];
 
 const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
@@ -242,6 +249,7 @@ export default function AstraeaLayout({
     () => {
       return navItems.filter((item) => {
         if (item.platform !== platform) return false;
+        if (item.allowedUserRoles) return item.allowedUserRoles.includes(role);
         // super_admin bypasses all org-level role checks
         if (isSuperAdmin) return true;
         // project_manager also bypasses (global role)
@@ -251,7 +259,7 @@ export default function AstraeaLayout({
         return true;
       });
     },
-    [platform, myOrgRole, isSuperAdmin, isProjectManager]
+    [platform, myOrgRole, isSuperAdmin, isProjectManager, role]
   );
   const visibleNavItems = configurableNavItems.filter((item) => !hiddenNavItems.includes(item.id));
 

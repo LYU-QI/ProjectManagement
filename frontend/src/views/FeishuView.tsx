@@ -1,4 +1,4 @@
-import { useRef, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { FeishuRecord } from '../api/feishu';
 import type { FeishuFormState } from '../types';
 import { FEISHU_FIELDS } from '../feishuConfig';
@@ -7,9 +7,12 @@ import PaginationBar from '../components/PaginationBar';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import AutocompleteOwner from '../components/ui/AutocompleteOwner';
+import ScopeContextBar from '../components/ScopeContextBar';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 type Props = {
   canWrite: boolean;
+  activeOrgName?: string | null;
   selectedProjectName: string;
   selectedProjectId: number | null;
   feishuForm: FeishuFormState;
@@ -69,6 +72,7 @@ type Props = {
 
 export default function FeishuView({
   canWrite,
+  activeOrgName,
   selectedProjectName,
   selectedProjectId,
   feishuForm,
@@ -125,7 +129,11 @@ export default function FeishuView({
   formatProgressValue,
   getAssigneeName
 }: Props) {
+  const recoveryContext = useWorkspaceStore((state) => state.recoveryContext);
+  const clearRecoveryContext = useWorkspaceStore((state) => state.clearRecoveryContext);
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const recoveryHandledRef = useRef<string | null>(null);
+  const [pageRecoveryContext, setPageRecoveryContext] = useState<typeof recoveryContext>(null);
   const columnHintMap: Partial<Record<keyof FeishuFormState, string>> = {
     任务ID: '唯一任务标识',
     任务名称: '任务标题展示',
@@ -163,8 +171,53 @@ export default function FeishuView({
   const [submitFormOpen, setSubmitFormOpen] = usePersistentBoolean('ui:feishu:submitFormOpen', true);
   const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
   const usingProjectScopedTable = selectedProjectId != null;
+  const showIncomingRecovery = recoveryContext?.from === 'task-center' && recoveryContext.source === 'feishu';
+  const showRecoveryBanner = pageRecoveryContext?.from === 'task-center' && pageRecoveryContext.source === 'feishu';
+
+  useEffect(() => {
+    if (!showIncomingRecovery) return;
+    const recoveryKey = [
+      recoveryContext.source,
+      recoveryContext.errorCode || '',
+      recoveryContext.projectName || '',
+      usingProjectScopedTable ? 'project-scoped' : 'org-scoped'
+    ].join(':');
+    if (recoveryHandledRef.current === recoveryKey) return;
+    recoveryHandledRef.current = recoveryKey;
+    setPageRecoveryContext(recoveryContext);
+    if (!usingProjectScopedTable && recoveryContext.projectName) {
+      onSetFeishuFilterProject(recoveryContext.projectName);
+    }
+    onLoadFeishu();
+    clearRecoveryContext();
+  }, [showIncomingRecovery, usingProjectScopedTable, recoveryContext, onLoadFeishu, onSetFeishuFilterProject, clearRecoveryContext]);
+
   return (
     <div>
+      <ScopeContextBar
+        moduleLabel="飞书集成作用域"
+        orgName={activeOrgName}
+        projectName={selectedProjectName}
+        projectId={selectedProjectId}
+        scopeLabel={usingProjectScopedTable ? '项目级作用域' : '组织级作用域'}
+        sourceLabel={usingProjectScopedTable ? '项目绑定飞书多维表' : '全局飞书多维表'}
+        note={usingProjectScopedTable ? '当前列表已经按项目绑定的数据表读取，页面内不再把“所属项目”作为切表逻辑。' : '当前读取的是组织级全局飞书表，页面筛选只影响列表，不改变数据源。'}
+      />
+      {showRecoveryBanner && (
+        <div className="task-center-recovery-banner">
+          <div>
+            <strong>来自任务中心的恢复上下文</strong>
+            <div className="muted">
+              当前建议优先检查飞书集成问题
+              {pageRecoveryContext?.errorCode ? `（${pageRecoveryContext.errorCode}）` : ''}
+              {pageRecoveryContext?.projectName ? `，项目：${pageRecoveryContext.projectName}` : ''}。
+            </div>
+          </div>
+          <button type="button" className="btn" onClick={() => setPageRecoveryContext(null)}>
+            关闭提示
+          </button>
+        </div>
+      )}
       <div className="card feishu-config-card">
         <h3>飞书多维表格</h3>
         <p className="muted">

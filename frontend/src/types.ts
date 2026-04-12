@@ -213,7 +213,16 @@ export interface AuditLogItem {
   userRole?: string;
   method: string;
   path: string;
+  source?: string;
   projectId?: number;
+  organizationId?: string;
+  outcome?: 'success' | 'failed';
+  statusCode?: number;
+  errorMessage?: string;
+  resourceType?: string;
+  resourceId?: string;
+  beforeSnapshot?: unknown;
+  afterSnapshot?: unknown;
   createdAt: string;
 }
 
@@ -228,7 +237,14 @@ export interface ChatbotAuditItem {
   userName?: string;
   userRole?: string;
   projectId?: number;
+  organizationId?: string;
   createdAt: string;
+  outcome?: 'success' | 'failed';
+  source?: string;
+  statusCode?: number;
+  errorMessage?: string;
+  resourceType?: string;
+  resourceId?: string;
   mode: string;
   message: string;
   resultContent: string;
@@ -356,4 +372,3 @@ export interface EfficiencyData {
     onTimeDeliveryRate: number;
   };
 }
-

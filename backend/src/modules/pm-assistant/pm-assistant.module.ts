@@ -10,6 +10,7 @@ import { CapabilitiesModule } from '../capabilities/capabilities.module';
 @Module({
   imports: [FeishuModule, CapabilitiesModule],
   controllers: [PmAssistantController],
-  providers: [PmAssistantService, PmAssistantScheduler, ConfigService, PrismaService]
+  providers: [PmAssistantService, PmAssistantScheduler, ConfigService, PrismaService],
+  exports: [PmAssistantService]
 })
 export class PmAssistantModule {}

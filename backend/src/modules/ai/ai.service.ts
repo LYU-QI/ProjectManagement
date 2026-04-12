@@ -7,6 +7,7 @@ import { ConfigService } from '../config/config.service';
 import { FeishuService } from '../feishu/feishu.service';
 import { AccessService } from '../access/access.service';
 import { CapabilitiesService } from '../capabilities/capabilities.service';
+import { ProjectMetricsService } from '../project-metrics/project-metrics.service';
 const pdfParseModule = require('pdf-parse');
 async function parsePdfBuffer(buffer: Buffer) {
   if (typeof pdfParseModule === 'function') {
@@ -57,6 +58,7 @@ interface ChatActor {
   sub?: number;
   name?: string;
   role?: string;
+  organizationId?: string | null;
 }
 
 @Injectable()
@@ -67,10 +69,11 @@ export class AiService {
     private readonly feishuService: FeishuService,
     private readonly accessService: AccessService,
     private readonly capabilitiesService: CapabilitiesService,
+    private readonly projectMetricsService: ProjectMetricsService,
   ) { }
 
   async weeklyReport(input: WeeklyReportInput) {
-    const [projects, requirements, costs, tasks, worklogs] = await Promise.all([
+    const [projects, requirements, tasks, worklogs, metricRows] = await Promise.all([
       this.prisma.project.findMany({
         where: { id: { in: input.projectIds } },
         orderBy: { id: 'asc' }
@@ -78,22 +81,28 @@ export class AiService {
       this.prisma.requirement.findMany({
         where: { projectId: { in: input.projectIds } }
       }),
-      this.prisma.costEntry.findMany({
-        where: { projectId: { in: input.projectIds } }
-      }),
       this.prisma.task.findMany({
         where: { projectId: { in: input.projectIds } }
       }),
       this.prisma.worklog.findMany({
         where: { projectId: { in: input.projectIds } }
+      }),
+      this.projectMetricsService.summarizeProjects(input.projectIds, {
+        start: input.weekStart,
+        end: input.weekEnd
       })
     ]);
+    const metricsMap = new Map(metricRows.map((item) => [item.projectId, item]));
+    const inReportPeriod = (value?: string | null) => {
+      if (!value) return false;
+      return value >= input.weekStart && value <= input.weekEnd;
+    };
 
     const details = projects.map((project) => {
       const projectRequirements = requirements.filter((item) => item.projectId === project.id);
-      const projectCosts = costs.filter((item) => item.projectId === project.id);
       const projectTasks = tasks.filter((item) => item.projectId === project.id);
       const projectWorklogs = worklogs.filter((item) => item.projectId === project.id);
+      const metrics = metricsMap.get(project.id);
 
       // 基础指标
       const totalTasks = projectTasks.length;
@@ -101,9 +110,6 @@ export class AiService {
       const blockedTasksList = projectTasks.filter((t) => t.status === TaskStatus.blocked);
       const blocked = blockedTasksList.length;
       const taskCompletionRate = totalTasks > 0 ? Number(((doneTasks / totalTasks) * 100).toFixed(1)) : 0;
-      const worklogLaborCost = projectWorklogs.reduce((sum, item) => sum + item.hours * item.hourlyRate, 0);
-      const actualCost = projectCosts.reduce((sum, item) => sum + item.amount, 0) + worklogLaborCost;
-      const budgetRate = project.budget === 0 ? 0 : Number((((actualCost - project.budget) / project.budget) * 100).toFixed(2));
 
       // 文本明细：阻塞任务标题列表
       const blockedTaskTitles = blockedTasksList.map((t) => t.title);
@@ -115,6 +121,7 @@ export class AiService {
 
       // 文本明细：本周工时备注（从 worklog 中提取非空备注）
       const worklogNotes = projectWorklogs
+        .filter((w) => inReportPeriod(w.workedOn) || inReportPeriod(w.weekEnd) || inReportPeriod(w.weekStart))
         .map((w) => {
           // 备注来源：taskTitle 字段中组员填写的工作说明
           const parts: string[] = [];
@@ -136,8 +143,10 @@ export class AiService {
         highPriorityReqNames,
         worklogNotes,
         budget: project.budget,
-        actualCost,
-        budgetVarianceRate: budgetRate
+        directCost: metrics?.directCost ?? 0,
+        laborCost: metrics?.laborCost ?? 0,
+        actualCost: metrics?.actualCost ?? 0,
+        budgetVarianceRate: metrics?.varianceRate ?? 0
       };
     });
 
@@ -156,7 +165,7 @@ export class AiService {
         `### ${d.projectName}`,
         `- 任务：总计 ${d.totalTasks}，已完成 ${d.doneTasks}（完成率 ${d.taskCompletionRate}%），阻塞 ${d.blockedTasks}`,
         `- 需求变更次数：${d.requirementChanges}`,
-        `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}，偏差 ${d.budgetVarianceRate}%`,
+        `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}（直接成本 ¥${d.directCost} + 工时成本 ¥${d.laborCost}），偏差 ${d.budgetVarianceRate}%`,
       ];
       if (d.blockedTaskTitles.length > 0) {
         lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.join('、')}`);
@@ -281,12 +290,12 @@ ${detailBlocks}`
     }
 
     // 并行查询所有指标数据
-    const [requirements, costs, tasks, worklogs, milestones] = await Promise.all([
+    const [requirements, tasks, worklogs, milestones, metrics] = await Promise.all([
       this.prisma.requirement.findMany({ where: { projectId: input.projectId } }),
-      this.prisma.costEntry.findMany({ where: { projectId: input.projectId } }),
       this.prisma.task.findMany({ where: { projectId: input.projectId } }),
       this.prisma.worklog.findMany({ where: { projectId: input.projectId } }),
       this.prisma.milestone.findMany({ where: { projectId: input.projectId } }),
+      this.projectMetricsService.summarizeProject(input.projectId),
     ]);
 
     // ======= 计算指标 =======
@@ -305,12 +314,12 @@ ${detailBlocks}`
     const highPriorityReqs = requirements.filter((r) => r.priority === 'high').length;
 
     const budget = project.budget;
-    const directCost = costs.reduce((sum, c) => sum + c.amount, 0);
-    const laborCost = worklogs.reduce((sum, w) => sum + w.hours * w.hourlyRate, 0);
+    const directCost = metrics?.directCost ?? 0;
+    const laborCost = metrics?.laborCost ?? 0;
     const totalHours = worklogs.reduce((sum, w) => sum + w.hours, 0);
-    const actualCost = directCost + laborCost;
-    const budgetVariance = budget > 0 ? (((actualCost - budget) / budget) * 100).toFixed(1) : '0';
-    const budgetRemaining = budget - actualCost;
+    const actualCost = metrics?.actualCost ?? 0;
+    const budgetVariance = metrics ? metrics.varianceRate.toFixed(1) : '0';
+    const budgetRemaining = metrics?.budgetRemaining ?? budget;
 
     const totalMilestones = milestones.length;
     const completedMilestones = milestones.filter((m) => m.actualDate).length;
@@ -1144,8 +1153,15 @@ ${detailBlocks}`
           userRole: input.actor?.role,
           method: 'AI_CHAT',
           path: '/api/v1/ai/chat',
+          source: 'ai_chatbot',
           projectId: input.projectId,
-          requestBody: payload as unknown as Prisma.InputJsonValue
+          organizationId: input.actor?.organizationId ?? undefined,
+          requestBody: payload as unknown as Prisma.InputJsonValue,
+          outcome: input.error ? 'failed' : 'success',
+          statusCode: input.error ? 500 : 200,
+          errorMessage: input.error || undefined,
+          resourceType: 'ai-chat',
+          resourceId: input.projectId ? String(input.projectId) : undefined
         }
       });
     } catch (error) {
@@ -1233,6 +1249,11 @@ ${detailBlocks}`
 
     const now = new Date();
     const currentWeek = this.getCurrentWeekRange(now);
+    const scopedProjects = scopedProjectIds.length > 0 ? projects.filter((p) => scopedProjectIds.includes(p.id)) : projects;
+    const metricRows = await this.projectMetricsService.summarizeProjects(
+      scopedProjects.map((project) => project.id),
+      { start: currentWeek.weekStart, end: currentWeek.weekEnd }
+    );
 
     const [taskStats, requirementStats, taskDetails, requirementDetails, costDetails, worklogDetails] = await Promise.all([
       this.prisma.task.groupBy({ by: ['status'], _count: { _all: true }, where: scopedWhere }),
@@ -1292,11 +1313,10 @@ ${detailBlocks}`
         }
       })
     ]);
-    const scopedProjects = scopedProjectIds.length > 0 ? projects.filter((p) => scopedProjectIds.includes(p.id)) : projects;
     const totalBudget = scopedProjects.reduce((sum, p) => sum + p.budget, 0);
-    const totalDirectCost = costDetails.reduce((sum, item) => sum + item.amount, 0);
-    const totalLaborCost = worklogDetails.reduce((sum, item) => sum + (item.hours * item.hourlyRate), 0);
-    const totalActualCost = totalDirectCost + totalLaborCost;
+    const totalDirectCost = metricRows.reduce((sum, item) => sum + item.directCost, 0);
+    const totalLaborCost = metricRows.reduce((sum, item) => sum + item.laborCost, 0);
+    const totalActualCost = metricRows.reduce((sum, item) => sum + item.actualCost, 0);
     const taskSummary = taskStats.map(t => `${t.status}: ${t._count._all}`).join(', ');
     const reqSummary = requirementStats.map(r => `${r.status}: ${r._count._all}`).join(', ');
     const projectList = scopedProjects
@@ -1309,17 +1329,9 @@ ${detailBlocks}`
     const clippedCostDetails = costDetails.slice(0, DETAIL_LIMIT);
     const clippedWorklogDetails = worklogDetails.slice(0, DETAIL_LIMIT);
     const scopedProjectNames = new Set(scopedProjects.map((project) => project.name));
-    const isDateWithinWeek = (value: string | null | undefined) => {
-      if (!value) return false;
-      return value >= currentWeek.weekStart && value <= currentWeek.weekEnd;
-    };
-    const currentWeekDirectCost = costDetails
-      .filter((item) => isDateWithinWeek(item.occurredOn))
-      .reduce((sum, item) => sum + item.amount, 0);
-    const currentWeekLaborCost = worklogDetails
-      .filter((item) => isDateWithinWeek(item.workedOn) || isDateWithinWeek(item.weekEnd) || isDateWithinWeek(item.weekStart))
-      .reduce((sum, item) => sum + (item.hours * item.hourlyRate), 0);
-    const currentWeekActualCost = currentWeekDirectCost + currentWeekLaborCost;
+    const currentWeekDirectCost = metricRows.reduce((sum, item) => sum + (item.period?.directCost ?? 0), 0);
+    const currentWeekLaborCost = metricRows.reduce((sum, item) => sum + (item.period?.laborCost ?? 0), 0);
+    const currentWeekActualCost = metricRows.reduce((sum, item) => sum + (item.period?.actualCost ?? 0), 0);
 
     let feishuTaskDetails: Array<{
       recordId: string;

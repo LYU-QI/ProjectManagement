@@ -1,4 +1,4 @@
-import { apiPatch, apiPost } from './client';
+import { apiDelete, apiPatch, apiPost } from './client';
 import type { UserItem } from '../types';
 
 export function updateUserRole(id: number, role: UserItem['role']) {
@@ -16,4 +16,8 @@ export function createUser(input: {
 
 export function resetUserPassword(id: number, password: string) {
   return apiPatch<{ ok: true; id: number; username?: string }>(`/users/${id}/password`, { password });
+}
+
+export function deleteUser(id: number) {
+  return apiDelete(`/users/${id}`);
 }

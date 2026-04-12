@@ -1,5 +1,5 @@
-import { Controller, Get, Query, Req } from '@nestjs/common';
-import { TaskCenterService, TaskCenterSource, TaskCenterStatus } from './task-center.service';
+import { BadRequestException, Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
+import { TaskCenterService, TaskCenterSeverity, TaskCenterSource, TaskCenterStatus } from './task-center.service';
 
 @Controller('api/v1/task-center')
 export class TaskCenterController {
@@ -11,6 +11,8 @@ export class TaskCenterController {
     @Query('projectId') projectIdRaw?: string,
     @Query('source') source?: TaskCenterSource,
     @Query('status') status?: TaskCenterStatus,
+    @Query('severity') severity?: TaskCenterSeverity,
+    @Query('errorCode') errorCode?: string,
     @Query('limit') limitRaw?: string
   ) {
     const actor = req.user as { sub?: number; role?: string } | undefined;
@@ -21,6 +23,8 @@ export class TaskCenterController {
       projectId,
       source,
       status,
+      severity,
+      errorCode,
       limit
     });
   }
@@ -41,5 +45,18 @@ export class TaskCenterController {
       source,
       days
     });
+  }
+
+  @Post('retry')
+  retry(
+    @Req() req: Record<string, unknown>,
+    @Body() body: { source?: TaskCenterSource; retryMeta?: Record<string, unknown> | null }
+  ) {
+    if (!body?.source || !body?.retryMeta || typeof body.retryMeta !== 'object') {
+      throw new BadRequestException('source 和 retryMeta 为必填项');
+    }
+    const actor = req.user as { sub?: number; role?: string } | undefined;
+    const org = req.org as { id?: string | null } | undefined;
+    return this.taskCenterService.retry(actor, org?.id ?? '', body.source, body.retryMeta);
   }
 }

@@ -207,6 +207,8 @@ export class PmAssistantService {
   ): Promise<PmRunResult> {
     const job = this.getJob(jobId);
     const triggeredBy = opts?.triggeredBy ?? 'manual';
+    const resolvedOrganizationId = opts?.organizationId
+      ?? (opts?.projectId ? await this.ensureProjectExists(opts.projectId) : undefined);
     const globalConfig = await this.prisma.pmAssistantJobConfig.findUnique({ where: { jobId } });
     const scopedConfig = opts?.projectId
       ? await this.prisma.pmAssistantProjectJobConfig.findUnique({
@@ -221,7 +223,7 @@ export class PmAssistantService {
     const enabled = scopedConfig?.enabled ?? globalConfig?.enabled ?? true;
     if (!enabled) {
       const log = await this.pushLog({
-        organizationId: opts?.organizationId,
+        organizationId: resolvedOrganizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -231,7 +233,7 @@ export class PmAssistantService {
         aiSummary: `任务已禁用：${job.name}`
       });
       if (log) {
-        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'skipped', false);
+        this.emitRunEvent(resolvedOrganizationId, opts?.projectId, log.id, jobId, 'skipped', false);
       }
       return { jobId, sent: false, summary: `任务已禁用：${job.name}`, card: {} };
     }
@@ -267,7 +269,7 @@ export class PmAssistantService {
 
       if (opts?.dryRun) {
         const log = await this.pushLog({
-          organizationId: opts?.organizationId,
+          organizationId: resolvedOrganizationId,
           projectId: opts?.projectId,
           jobId,
           triggeredBy,
@@ -277,7 +279,7 @@ export class PmAssistantService {
           aiSummary: summarized
         });
         if (log) {
-          this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'dry-run', false);
+          this.emitRunEvent(resolvedOrganizationId, opts?.projectId, log.id, jobId, 'dry-run', false);
         }
         return { jobId, sent: false, summary: finalText, card };
       }
@@ -306,7 +308,7 @@ export class PmAssistantService {
       })));
 
       const log = await this.pushLog({
-        organizationId: opts?.organizationId,
+        organizationId: resolvedOrganizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -316,13 +318,13 @@ export class PmAssistantService {
         aiSummary: summarized
       });
       if (log) {
-        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'success', true);
+        this.emitRunEvent(resolvedOrganizationId, opts?.projectId, log.id, jobId, 'success', true);
       }
       return { jobId, sent: true, summary: finalText, card };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       const log = await this.pushLog({
-        organizationId: opts?.organizationId,
+        organizationId: resolvedOrganizationId,
         projectId: opts?.projectId,
         jobId,
         triggeredBy,
@@ -331,7 +333,7 @@ export class PmAssistantService {
         error: detail
       });
       if (log) {
-        this.emitRunEvent(opts?.organizationId, opts?.projectId, log.id, jobId, 'failed', false);
+        this.emitRunEvent(resolvedOrganizationId, opts?.projectId, log.id, jobId, 'failed', false);
       }
       throw err;
     }

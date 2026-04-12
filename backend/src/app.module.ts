@@ -16,6 +16,7 @@ import { WorklogsModule } from './modules/worklogs/worklogs.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
+import { AuditModule } from './audit/audit.module';
 import { FeishuModule } from './modules/feishu/feishu.module';
 import { UsersModule } from './modules/users/users.module';
 import { RisksModule } from './modules/risks/risks.module';
@@ -56,6 +57,7 @@ import { TaskCenterModule } from './modules/task-center/task-center.module';
     EventsModule,
     CapabilitiesModule,
     TaskCenterModule,
+    AuditModule,
     DatabaseModule,
     ScheduleModule.forRoot(),
     NotificationsModule,

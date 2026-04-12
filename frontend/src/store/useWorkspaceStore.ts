@@ -57,13 +57,26 @@ function getInitialProjectId(): number | null {
   return Number.isFinite(raw) && raw > 0 ? raw : null;
 }
 
+export type RecoveryContext = {
+  source: 'feishu' | 'pm_assistant' | 'automation' | 'ai_chat';
+  errorCode?: string | null;
+  severity?: 'info' | 'warning' | 'critical' | null;
+  recoveryEntry?: string | null;
+  projectId?: number | null;
+  projectName?: string | null;
+  from: 'task-center';
+};
+
 interface WorkspaceStore {
   view: ViewKey;
   platform: PlatformMode;
   selectedProjectId: number | null;
+  recoveryContext: RecoveryContext | null;
   setView: (view: ViewKey) => void;
   setPlatform: (platform: PlatformMode) => void;
   setSelectedProjectId: (projectId: number | null) => void;
+  setRecoveryContext: (context: RecoveryContext | null) => void;
+  clearRecoveryContext: () => void;
   clear: () => void;
 }
 
@@ -71,6 +84,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   view: getInitialView(),
   platform: getInitialPlatform(),
   selectedProjectId: getInitialProjectId(),
+  recoveryContext: null,
 
   setView: (view) => {
     localStorage.setItem(VIEW_STORAGE_KEY, view);
@@ -91,6 +105,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     set({ selectedProjectId: projectId });
   },
 
+  setRecoveryContext: (recoveryContext) => {
+    set({ recoveryContext });
+  },
+
+  clearRecoveryContext: () => {
+    set({ recoveryContext: null });
+  },
+
   clear: () => {
     localStorage.removeItem(VIEW_STORAGE_KEY);
     localStorage.removeItem(PLATFORM_STORAGE_KEY);
@@ -98,7 +120,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
     set({
       view: 'dashboard',
       platform: 'workspace',
-      selectedProjectId: null
+      selectedProjectId: null,
+      recoveryContext: null
     });
   }
 }));

@@ -26,21 +26,32 @@ async function ensureOk(res: Response, method: string, path: string) {
   if (res.ok) {
     return;
   }
+  let body: any = null;
+  let message = '';
+  try {
+    body = await res.json();
+    message = typeof body?.message === 'string' ? body.message : '';
+  } catch {
+    body = null;
+    message = '';
+  }
   if (res.status === 401) {
-    throw new Error('UNAUTHORIZED');
+    const error = new Error(message || 'UNAUTHORIZED') as Error & { status?: number; errorCode?: string | null };
+    error.status = 401;
+    error.errorCode = typeof body?.errorCode === 'string' ? body.errorCode : 'HTTP-401';
+    throw error;
   }
   if (res.status === 403) {
-    throw new Error('FORBIDDEN');
+    const error = new Error(message || 'FORBIDDEN') as Error & { status?: number; errorCode?: string | null };
+    error.status = 403;
+    error.errorCode = typeof body?.errorCode === 'string' ? body.errorCode : 'HTTP-403';
+    throw error;
   }
-  let detail = '';
-  try {
-    const body = await res.json();
-    const raw = typeof body?.message === 'string' ? body.message : '';
-    detail = raw ? `: ${raw}` : '';
-  } catch {
-    detail = '';
-  }
-  throw new Error(`${method} ${path} failed${detail}`);
+  const detail = message ? `: ${message}` : '';
+  const error = new Error(`${method} ${path} failed${detail}`) as Error & { status?: number; errorCode?: string | null };
+  error.status = res.status;
+  error.errorCode = typeof body?.errorCode === 'string' ? body.errorCode : `HTTP-${res.status}`;
+  throw error;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

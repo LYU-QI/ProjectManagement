@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { apiPost } from '../api/client';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import ScopeContextBar from '../components/ScopeContextBar';
 
 type ProjectItem = {
   id: number;
@@ -14,12 +15,23 @@ type Props = {
   aiReport: string;
   aiReportSource: string;
   onGenerate: () => void;
+  activeOrgName?: string | null;
   projects: ProjectItem[];
   selectedProjectId: number | null;
+  selectedProjectName?: string;
   onSelectProject: (id: number | null) => void;
 };
 
-export default function AiView({ aiReport, aiReportSource, onGenerate, projects, selectedProjectId, onSelectProject }: Props) {
+export default function AiView({
+  aiReport,
+  aiReportSource,
+  onGenerate,
+  activeOrgName,
+  projects,
+  selectedProjectId,
+  selectedProjectName,
+  onSelectProject
+}: Props) {
   const [weeklyDraft, setWeeklyDraft] = useState(aiReport);
   const [progressDraft, setProgressDraft] = useState('');
   const [copiedWeekly, setCopiedWeekly] = useState(false);
@@ -294,6 +306,15 @@ export default function AiView({ aiReport, aiReportSource, onGenerate, projects,
 
   return (
     <div>
+      <ScopeContextBar
+        moduleLabel="AI 分析作用域"
+        orgName={activeOrgName}
+        projectName={selectedProjectName}
+        projectId={selectedProjectId}
+        scopeLabel={selectedProjectId ? '项目级作用域' : '组织级作用域'}
+        sourceLabel="统一项目指标 / 需求 / 任务 / 工时 / 飞书进度"
+        note={selectedProjectId ? '周报、项目进展分析和聊天中的“当前项目”默认都以这里选中的项目为准。' : '未选择项目时，部分 AI 功能会回退为组织范围或要求先选定目标工作区。'}
+      />
       {/* 目标工作区选择器 */}
       <div className="card ai-workspace-card">
         <div className="form ai-workspace-form">

@@ -9,21 +9,35 @@ export class AuditLogsService {
     private readonly accessService: AccessService
   ) {}
 
+  private buildAuditScope(actor: AuthActor | undefined, projectId?: number) {
+    const normalizedRole = this.accessService.normalizeRole(actor?.role);
+    const isGlobalAuditReader = normalizedRole === 'super_admin' || normalizedRole === 'project_manager' || normalizedRole === 'project_director';
+    return this.accessService.getAccessibleProjectIds(actor).then((accessible) => ({
+      accessible,
+      includeOrgLevel: isGlobalAuditReader || Boolean(projectId)
+    }));
+  }
+
   async list(actor: AuthActor | undefined, projectId?: number) {
     if (projectId) {
       await this.accessService.assertProjectAccess(actor, projectId);
     }
-    const accessible = await this.accessService.getAccessibleProjectIds(actor);
+    const { accessible, includeOrgLevel } = await this.buildAuditScope(actor, projectId);
     return this.prisma.auditLog.findMany({
       where: {
         ...(projectId ? { projectId } : {}),
         ...(accessible === null
           ? {}
           : {
-            OR: [
-              { projectId: null },
-              { projectId: { in: accessible } }
-            ]
+            projectId: includeOrgLevel ? undefined : { in: accessible },
+            ...(includeOrgLevel
+              ? {
+                OR: [
+                  { projectId: null },
+                  { projectId: { in: accessible } }
+                ]
+              }
+              : {})
           })
       },
       orderBy: { id: 'desc' },
@@ -35,7 +49,7 @@ export class AuditLogsService {
     if (projectId) {
       await this.accessService.assertProjectAccess(actor, projectId);
     }
-    const accessible = await this.accessService.getAccessibleProjectIds(actor);
+    const { accessible, includeOrgLevel } = await this.buildAuditScope(actor, projectId);
     const rows = await this.prisma.auditLog.findMany({
       where: {
         method: 'AI_CHAT',
@@ -43,10 +57,15 @@ export class AuditLogsService {
         ...(accessible === null
           ? {}
           : {
-            OR: [
-              { projectId: null },
-              { projectId: { in: accessible } }
-            ]
+            projectId: includeOrgLevel ? undefined : { in: accessible },
+            ...(includeOrgLevel
+              ? {
+                OR: [
+                  { projectId: null },
+                  { projectId: { in: accessible } }
+                ]
+              }
+              : {})
           })
       },
       orderBy: { id: 'desc' },
@@ -62,7 +81,14 @@ export class AuditLogsService {
         userName: row.userName,
         userRole: row.userRole,
         projectId: row.projectId,
+        organizationId: row.organizationId,
         createdAt: row.createdAt,
+        source: row.source,
+        outcome: row.outcome,
+        statusCode: row.statusCode,
+        errorMessage: row.errorMessage,
+        resourceType: row.resourceType,
+        resourceId: row.resourceId,
         mode: String(payload.mode || ''),
         message: String(payload.message || ''),
         resultContent: String(payload.resultContent || ''),
@@ -76,24 +102,32 @@ export class AuditLogsService {
   }
 
   async exportCsv(actor: AuthActor | undefined, projectId?: number): Promise<string> {
-    const accessible = await this.accessService.getAccessibleProjectIds(actor);
+    if (projectId) {
+      await this.accessService.assertProjectAccess(actor, projectId);
+    }
+    const { accessible, includeOrgLevel } = await this.buildAuditScope(actor, projectId);
     const rows = await this.prisma.auditLog.findMany({
       where: {
         ...(projectId ? { projectId } : {}),
         ...(accessible === null
           ? {}
           : {
-            OR: [
-              { projectId: null },
-              { projectId: { in: accessible } }
-            ]
+            projectId: includeOrgLevel ? undefined : { in: accessible },
+            ...(includeOrgLevel
+              ? {
+                OR: [
+                  { projectId: null },
+                  { projectId: { in: accessible } }
+                ]
+              }
+              : {})
           })
       },
       orderBy: { id: 'desc' },
       take: 5000
     });
 
-    const headers = ['ID', '时间', '用户ID', '用户名', '角色', '项目ID', '组织ID', '方法', '路径'];
+    const headers = ['ID', '时间', '用户ID', '用户名', '角色', '项目ID', '组织ID', '来源', '结果', '状态码', '错误信息', '资源类型', '资源ID', '变更前', '变更后', '方法', '路径'];
     const lines = [headers.join(',')];
 
     for (const row of rows) {
@@ -105,6 +139,14 @@ export class AuditLogsService {
         String(row.userRole ?? ''),
         String(row.projectId ?? ''),
         String(row.organizationId ?? ''),
+        String(row.source ?? ''),
+        String(row.outcome ?? ''),
+        String(row.statusCode ?? ''),
+        String(row.errorMessage ?? '').replace(/,/g, ';'),
+        String(row.resourceType ?? ''),
+        String(row.resourceId ?? ''),
+        JSON.stringify(row.beforeSnapshot ?? '').replace(/,/g, ';'),
+        JSON.stringify(row.afterSnapshot ?? '').replace(/,/g, ';'),
         String(row.method ?? ''),
         String(row.path ?? '').replace(/,/g, ';')
       ].map(v => `"${v.replace(/"/g, '""')}"`).join(','));

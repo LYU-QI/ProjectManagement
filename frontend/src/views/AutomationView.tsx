@@ -1,17 +1,21 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api/client';
 import useEventStream from '../hooks/useEventStream';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 const TRIGGERS = [
-  'requirement_created',
-  'requirement_status_changed',
-  'workitem_created',
-  'workitem_status_changed',
-  'bug_created',
-  'bug_severity_critical',
-  'cost_over_budget',
-  'milestone_due_soon'
-];
+  { value: 'requirement_created', label: '需求创建时' },
+  { value: 'requirement_status_changed', label: '需求状态变更时' },
+  { value: 'workitem_created', label: '任务创建时' },
+  { value: 'workitem_status_changed', label: '任务状态变更时' },
+  { value: 'bug_created', label: '缺陷创建时' },
+  { value: 'bug_severity_critical', label: '严重缺陷出现时' },
+  { value: 'cost_over_budget', label: '成本超预算时' },
+  { value: 'milestone_due_soon', label: '里程碑临近时' }
+] as const;
+
+type TriggerValue = typeof TRIGGERS[number]['value'];
+const TRIGGER_LABEL_MAP = new Map<string, string>(TRIGGERS.map((item) => [item.value, item.label]));
 
 interface AutomationItem {
   id: string;
@@ -33,6 +37,10 @@ interface AutomationLogItem {
 }
 
 export default function AutomationView() {
+  const recoveryContext = useWorkspaceStore((state) => state.recoveryContext);
+  const clearRecoveryContext = useWorkspaceStore((state) => state.clearRecoveryContext);
+  const [pageRecoveryContext, setPageRecoveryContext] = useState<typeof recoveryContext>(null);
+  const recoveryHandledRef = useRef<string | null>(null);
   const [items, setItems] = useState<AutomationItem[]>([]);
   const [logsByRuleId, setLogsByRuleId] = useState<Record<string, AutomationLogItem[]>>({});
   const [loading, setLoading] = useState(false);
@@ -41,8 +49,15 @@ export default function AutomationView() {
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
-  const [createTrigger, setCreateTrigger] = useState(TRIGGERS[0]);
+  const [createTrigger, setCreateTrigger] = useState<TriggerValue>(TRIGGERS[0].value);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [triggerFilter, setTriggerFilter] = useState<'all' | TriggerValue>('all');
+  const [logStatusFilter, setLogStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
+
+  function getTriggerLabel(trigger: string) {
+    return TRIGGER_LABEL_MAP.get(trigger) ?? trigger;
+  }
 
   function loadItems() {
     setLoading(true);
@@ -106,10 +121,15 @@ export default function AutomationView() {
       .catch((e: Error) => setError(e.message));
   }
 
-  function loadLogs(id: string) {
-    apiGet<AutomationLogItem[]>(`/automations/${id}/logs`)
-      .then((logs) => setLogsByRuleId((prev) => ({ ...prev, [id]: logs })))
-      .catch((e: Error) => setError(e.message));
+  async function loadLogs(id: string) {
+    try {
+      const logs = await apiGet<AutomationLogItem[]>(`/automations/${id}/logs`);
+      setLogsByRuleId((prev) => ({ ...prev, [id]: logs }));
+      return logs;
+    } catch (e: any) {
+      setError(e.message || '加载执行日志失败');
+      return [];
+    }
   }
 
   function toggleExpand(id: string) {
@@ -139,13 +159,89 @@ export default function AutomationView() {
     }
   });
 
+  const filteredItems = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return items.filter((item) => {
+      if (triggerFilter !== 'all' && item.trigger !== triggerFilter) return false;
+      if (!query) return true;
+      const haystack = [item.name, item.description || '', getTriggerLabel(item.trigger)].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [items, searchQuery, triggerFilter]);
+
+  function getVisibleLogs(ruleId: string) {
+    const logs = logsByRuleId[ruleId] || [];
+    if (logStatusFilter === 'all') return logs;
+    return logs.filter((log) => (logStatusFilter === 'success' ? log.success : !log.success));
+  }
+
+  useEffect(() => {
+    if (!(recoveryContext?.from === 'task-center' && recoveryContext.source === 'automation')) return;
+    if (items.length === 0) return;
+    const recoveryKey = [
+      recoveryContext.errorCode || '',
+      recoveryContext.projectName || '',
+      items.length
+    ].join(':');
+    if (recoveryHandledRef.current === recoveryKey) return;
+    recoveryHandledRef.current = recoveryKey;
+    setPageRecoveryContext(recoveryContext);
+    setLogStatusFilter('failed');
+    void (async () => {
+      const entries = await Promise.all(items.map(async (item) => ({
+        id: item.id,
+        logs: await loadLogs(item.id)
+      })));
+      const failedTarget = entries.find((entry) => entry.logs.some((log) => !log.success));
+      setExpandedId(failedTarget?.id ?? items[0]?.id ?? null);
+    })();
+    clearRecoveryContext();
+  }, [items, recoveryContext, clearRecoveryContext]);
+
   return (
     <div>
+      {pageRecoveryContext?.from === 'task-center' && pageRecoveryContext.source === 'automation' && (
+        <div className="task-center-recovery-banner">
+          <div>
+            <strong>来自任务中心的恢复上下文</strong>
+            <div className="muted">
+              当前建议优先检查自动化规则执行结果
+              {pageRecoveryContext.errorCode ? `（${pageRecoveryContext.errorCode}）` : ''}
+              {pageRecoveryContext.projectName ? `，项目：${pageRecoveryContext.projectName}` : ''}。
+            </div>
+          </div>
+          <button type="button" className="btn" onClick={() => setPageRecoveryContext(null)}>
+            关闭提示
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <button className="btn" onClick={loadItems}>刷新</button>
           <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => { setShowCreate(true); loadItems(); }}>新建规则</button>
         </div>
+      </div>
+
+      <div className="toolbar" style={{ marginBottom: '1rem', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索规则名称/描述"
+        />
+        <select value={triggerFilter} onChange={(e) => setTriggerFilter(e.target.value as 'all' | TriggerValue)}>
+          <option value="all">全部触发器</option>
+          {TRIGGERS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <select value={logStatusFilter} onChange={(e) => setLogStatusFilter(e.target.value as 'all' | 'success' | 'failed')}>
+          <option value="all">全部日志</option>
+          <option value="failed">失败日志</option>
+          <option value="success">成功日志</option>
+        </select>
+        <span className="muted">当前显示 {filteredItems.length} 条规则</span>
       </div>
 
       {error && <p className="warn">{error}</p>}
@@ -165,9 +261,9 @@ export default function AutomationView() {
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.2rem' }}>触发器</label>
-              <select className="glass-input" value={createTrigger} onChange={(e) => setCreateTrigger(e.target.value)}>
+              <select className="glass-input" value={createTrigger} onChange={(e) => setCreateTrigger(e.target.value as TriggerValue)}>
                 {TRIGGERS.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
             </div>
@@ -181,11 +277,11 @@ export default function AutomationView() {
 
       {loading && <p>加载中...</p>}
 
-      {!loading && items.length === 0 && (
+      {!loading && filteredItems.length === 0 && (
         <p className="muted">暂无自动化规则。</p>
       )}
 
-      {!loading && items.length > 0 && (
+      {!loading && filteredItems.length > 0 && (
         <table className="table">
           <thead>
             <tr>
@@ -197,7 +293,7 @@ export default function AutomationView() {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {filteredItems.map((item) => (
               <Fragment key={item.id}>
                 <tr key={item.id}>
                   <td>
@@ -206,7 +302,7 @@ export default function AutomationView() {
                     </span>
                     {item.description && <div className="muted" style={{ fontSize: '0.75rem' }}>{item.description}</div>}
                   </td>
-                  <td style={{ fontSize: '0.8rem' }}>{item.trigger}</td>
+                  <td style={{ fontSize: '0.8rem' }}>{getTriggerLabel(item.trigger)}</td>
                   <td>
                     <button className={`btn ${item.enabled ? 'btn-primary' : ''}`} style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} onClick={() => toggleItem(item)}>
                       {item.enabled ? '启用' : '禁用'}
@@ -221,14 +317,14 @@ export default function AutomationView() {
                 {expandedId === item.id && (
                   <tr key={`${item.id}:logs`}>
                     <td colSpan={5}>
-                      {(logsByRuleId[item.id] || []).length === 0 ? (
+                      {getVisibleLogs(item.id).length === 0 ? (
                         <div className="muted" style={{ fontSize: '0.8rem' }}>暂无执行日志。</div>
                       ) : (
                         <div style={{ display: 'grid', gap: '0.35rem' }}>
-                          {logsByRuleId[item.id].map((log) => (
+                          {getVisibleLogs(item.id).map((log) => (
                             <div key={log.id} style={{ fontSize: '0.8rem' }}>
                               <strong>{log.success ? '成功' : '失败'}</strong>
-                              {` · ${new Date(log.executionAt).toLocaleString()} · ${log.trigger}`}
+                              {` · ${new Date(log.executionAt).toLocaleString()} · ${getTriggerLabel(log.trigger)}`}
                               {log.error ? ` · ${log.error}` : ''}
                             </div>
                           ))}

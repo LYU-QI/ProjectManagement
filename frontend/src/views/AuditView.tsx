@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { AuditLogItem, ChatbotAuditItem } from '../types';
+import { API_BASE, TOKEN_KEY } from '../api/client';
 
 type Props = {
   auditLogs: AuditLogItem[];
@@ -9,6 +10,7 @@ type Props = {
 
 export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Props) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedSystemAuditId, setSelectedSystemAuditId] = useState<number | null>(null);
   const [keyword, setKeyword] = useState('');
   const [onlyFailed, setOnlyFailed] = useState(false);
   const [onlyMutation, setOnlyMutation] = useState(false);
@@ -27,6 +29,11 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
     if (selectedId === null) return null;
     return filteredChatbotLogs.find((item) => item.id === selectedId) || null;
   }, [filteredChatbotLogs, selectedId]);
+
+  const selectedSystemAudit = useMemo(() => {
+    if (selectedSystemAuditId === null) return null;
+    return auditLogs.find((item) => item.id === selectedSystemAuditId) || null;
+  }, [auditLogs, selectedSystemAuditId]);
 
   const timelineNodes = useMemo(() => {
     if (!selected) return [];
@@ -66,6 +73,28 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
     URL.revokeObjectURL(url);
   };
 
+  const exportAuditCsv = async () => {
+    const token = window.localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    const res = await fetch(`${API_BASE}/audit-logs/export`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    });
+    if (!res.ok) {
+      throw new Error(`导出审计日志失败（${res.status}）`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const parseObservation = (value: unknown) => {
     if (typeof value !== 'string') return value;
     try {
@@ -80,7 +109,10 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
       <div className="card">
         <div className="audit-head-row">
           <h3 className="audit-title">Chatbot 操作审计</h3>
-          <button className="btn btn-small" onClick={() => onRefresh?.()}>刷新</button>
+          <div className="audit-actions">
+            <button className="btn btn-small" onClick={() => { void exportAuditCsv(); }}>导出系统审计 CSV</button>
+            <button className="btn btn-small" onClick={() => onRefresh?.()}>刷新</button>
+          </div>
         </div>
         <div className="audit-toolbar">
           <input
@@ -98,12 +130,14 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
           </label>
         </div>
         <table className="table table-wrap">
-          <thead><tr><th>时间</th><th>用户</th><th>模式</th><th>问题</th><th>结果</th><th>流程</th></tr></thead>
+          <thead><tr><th>时间</th><th>用户</th><th>结果</th><th>状态</th><th>模式</th><th>问题</th><th>流程</th></tr></thead>
           <tbody>
             {filteredChatbotLogs.map((log) => (
               <tr key={log.id} className={selected?.id === log.id ? 'audit-row-selected' : ''}>
                 <td>{new Date(log.createdAt).toLocaleString()}</td>
                 <td>{log.userName || '-'}</td>
+                <td>{log.outcome === 'failed' ? <span className="audit-error">失败</span> : '成功'}</td>
+                <td>{log.statusCode ?? '-'}</td>
                 <td><span className={`audit-chip ${log.mode}`}>{log.mode || '-'}</span></td>
                 <td>{log.message || '-'}</td>
                 <td>
@@ -115,7 +149,7 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
               </tr>
             ))}
             {filteredChatbotLogs.length === 0 && (
-              <tr><td colSpan={6} className="audit-empty-cell">暂无 chatbot 操作审计记录</td></tr>
+              <tr><td colSpan={7} className="audit-empty-cell">暂无 chatbot 操作审计记录</td></tr>
             )}
           </tbody>
         </table>
@@ -134,6 +168,7 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
             <div>问题：{selected.message}</div>
             <div>范围：{selected.detailScope || '-'}</div>
             <div>命中项目：{selected.scopedProjectNames?.join('、') || '-'}</div>
+            <div>作用资源：{selected.resourceType || '-'} / {selected.resourceId || '-'}</div>
             <div>最终结果：{selected.error ? `失败: ${selected.error}` : selected.resultContent || '-'}</div>
           </div>
           <div className="audit-timeline">
@@ -173,20 +208,52 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
       <div className="card">
         <h3>系统审计日志</h3>
         <table className="table">
-          <thead><tr><th>时间</th><th>用户</th><th>角色</th><th>方法</th><th>路径</th></tr></thead>
+          <thead><tr><th>时间</th><th>用户</th><th>角色</th><th>来源</th><th>结果</th><th>状态码</th><th>资源</th><th>方法</th><th>路径</th><th>详情</th></tr></thead>
           <tbody>
             {auditLogs.map((log) => (
               <tr key={log.id}>
                 <td>{new Date(log.createdAt).toLocaleString()}</td>
                 <td>{log.userName || '-'}</td>
                 <td>{log.userRole || '-'}</td>
+                <td>{log.source || '-'}</td>
+                <td>{log.outcome === 'failed' ? <span className="audit-error">失败</span> : '成功'}</td>
+                <td>{log.statusCode ?? '-'}</td>
+                <td>{[log.resourceType || '-', log.resourceId || '-'].join(' / ')}</td>
                 <td>{log.method}</td>
                 <td>{log.path}</td>
+                <td><button className="btn btn-small" onClick={() => setSelectedSystemAuditId(log.id)}>查看</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {selectedSystemAudit && (
+        <div className="card">
+          <div className="audit-head-row">
+            <h3 className="audit-title">系统审计详情（#{selectedSystemAudit.id}）</h3>
+            <div className="audit-actions">
+              <button className="btn btn-small" onClick={() => setSelectedSystemAuditId(null)}>收起详情</button>
+            </div>
+          </div>
+          <div className="audit-summary">
+            <div>来源：{selectedSystemAudit.source || '-'}</div>
+            <div>结果：{selectedSystemAudit.outcome === 'failed' ? '失败' : '成功'}</div>
+            <div>资源：{selectedSystemAudit.resourceType || '-'} / {selectedSystemAudit.resourceId || '-'}</div>
+            <div>错误：{selectedSystemAudit.errorMessage || '-'}</div>
+          </div>
+          <div className="audit-tool-grid">
+            <div className="audit-tool-block">
+              <div className="audit-tool-label">变更前</div>
+              <pre className="audit-node-json">{JSON.stringify(selectedSystemAudit.beforeSnapshot ?? null, null, 2)}</pre>
+            </div>
+            <div className="audit-tool-block">
+              <div className="audit-tool-label">变更后</div>
+              <pre className="audit-node-json">{JSON.stringify(selectedSystemAudit.afterSnapshot ?? null, null, 2)}</pre>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

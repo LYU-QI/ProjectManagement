@@ -2,31 +2,39 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
-type Role = 'super_admin' | 'project_manager' | 'member' | 'pm' | 'viewer';
+type Role = 'super_admin' | 'project_manager' | 'project_director' | 'member' | 'pm' | 'lead' | 'viewer';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   private expandRoles(role: Role): Set<Role> {
-    const roles = new Set<Role>([role]);
-    if (role === 'super_admin') {
+    const normalizedRole = role === 'lead' ? 'project_director' : role;
+    const roles = new Set<Role>([role, normalizedRole]);
+    if (normalizedRole === 'super_admin') {
       // platform admin implies all roles
       roles.add('project_manager');
+      roles.add('project_director');
+      roles.add('member');
+      roles.add('pm');
+      roles.add('lead');
+      roles.add('viewer');
+    }
+    if (normalizedRole === 'project_director') {
+      roles.add('project_manager');
+      roles.add('member');
+      roles.add('pm');
+      roles.add('lead');
+      roles.add('viewer');
+    }
+    // project_manager: org-level global role, implies member (can read org data)
+    if (normalizedRole === 'project_manager') {
       roles.add('member');
       roles.add('pm');
       roles.add('viewer');
     }
-    // project_manager: org-level global role, implies member (can read org data)
-    if (role === 'project_manager') {
-      roles.add('member');
-    }
     // member: basic org member, implies viewer (can read org data)
-    if (role === 'member') {
-      roles.add('viewer');
-    }
-    // pm: project manager role, implies viewer (can read project data)
-    if (role === 'pm') {
+    if (normalizedRole === 'member') {
       roles.add('viewer');
     }
     return roles;

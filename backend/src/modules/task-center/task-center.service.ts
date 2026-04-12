@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
+import { AutomationService } from '../automation/automation.service';
+import { PmAssistantService } from '../pm-assistant/pm-assistant.service';
 
 export type TaskCenterSource = 'pm_assistant' | 'automation' | 'feishu' | 'ai_chat';
 export type TaskCenterStatus = 'success' | 'failed' | 'dry-run' | 'skipped' | 'unknown';
+export type TaskCenterSeverity = 'info' | 'warning' | 'critical';
 
 export interface TaskCenterItem {
   id: string;
@@ -18,6 +21,12 @@ export interface TaskCenterItem {
   projectName?: string | null;
   createdAt: string;
   detail?: string | null;
+  errorCode?: string | null;
+  errorCategory?: string | null;
+  severity?: 'info' | 'warning' | 'critical';
+  recoveryHint?: string | null;
+  recoveryEntry?: string | null;
+  recoveryChecklist?: string[];
   retryable?: boolean;
   retryMeta?: Record<string, unknown> | null;
 }
@@ -28,6 +37,12 @@ export interface TaskCenterStats {
   byStatus: Record<TaskCenterStatus, number>;
   bySourceStatus: Record<TaskCenterSource, Record<TaskCenterStatus, number>>;
   successRate: number;
+  topErrorCodes: Array<{
+    errorCode: string;
+    count: number;
+    severity: TaskCenterSeverity;
+    sourceLabel: string;
+  }>;
   recentFailures: Array<{
     id: string;
     title: string;
@@ -45,13 +60,186 @@ export interface TaskCenterStats {
 export class TaskCenterService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly pmAssistantService: PmAssistantService,
+    private readonly automationService: AutomationService
   ) {}
+
+  private classifyFailure(
+    source: TaskCenterSource,
+    status: TaskCenterStatus,
+    detail: string | null | undefined,
+    summary: string
+  ) {
+    const text = `${summary}\n${detail || ''}`.toLowerCase();
+
+    if (status !== 'failed' && source !== 'feishu') {
+      return {
+        errorCode: null,
+        errorCategory: null,
+        severity: status === 'success' ? 'info' as const : 'warning' as const,
+        recoveryHint: null,
+        recoveryEntry: null,
+        recoveryChecklist: []
+      };
+    }
+
+    if (source === 'feishu') {
+      if (text.includes('91403') || text.includes('forbidden') || text.includes('权限不足')) {
+        return {
+          errorCode: 'TC-FEI-403',
+          errorCategory: 'feishu_permission',
+          severity: 'critical' as const,
+          recoveryHint: '检查飞书应用是否已添加为多维表协作者，并确认应用具备多维表格读写权限。',
+          recoveryEntry: '项目管理 > 飞书集成配置',
+          recoveryChecklist: [
+            '确认当前项目已配置正确的 feishuAppToken 和 feishuTableId。',
+            '在飞书多维表格中把当前应用添加为协作者。',
+            '检查应用是否开通多维表格读写权限，而不只是只读权限。',
+            '确认 FEISHU_APP_ID / FEISHU_APP_SECRET 与当前表属于同一应用和租户。'
+          ]
+        };
+      }
+      if (text.includes('userfieldconvfail')) {
+        return {
+          errorCode: 'TC-FEI-422',
+          errorCategory: 'feishu_user_mapping',
+          severity: 'warning' as const,
+          recoveryHint: '检查负责人字段映射，确认当前写入值能被飞书识别为有效成员。',
+          recoveryEntry: '飞书集成 > 人员映射',
+          recoveryChecklist: [
+            '检查写入字段是否为飞书成员字段，而不是普通文本字段。',
+            '确认当前负责人名称已能映射到有效的飞书 open_id。',
+            '在飞书集成页核对人员映射数据是否已同步到最新。'
+          ]
+        };
+      }
+      return {
+        errorCode: 'TC-FEI-000',
+        errorCategory: 'feishu_write_pending',
+        severity: 'warning' as const,
+        recoveryHint: '如果飞书数据未更新，请对照审计日志中的请求体与实际多维表字段，确认写回是否成功。',
+        recoveryEntry: '任务中心详情 / 审计日志',
+        recoveryChecklist: [
+          '先核对任务中心详情中的请求体与飞书表字段名是否一致。',
+          '确认当前项目作用域是否指向了正确的飞书表。',
+          '如果页面已更新但飞书未变，重新查询飞书并检查是否存在旧分页或旧筛选条件。'
+        ]
+      };
+    }
+
+    if (text.includes('missing_ai_config') || text.includes('ai 模型未配置')) {
+      return {
+        errorCode: 'TC-AI-401',
+        errorCategory: 'ai_config_missing',
+        severity: 'critical' as const,
+        recoveryHint: '前往系统配置补齐 AI_API_URL、AI_API_KEY 和 AI_MODEL。',
+        recoveryEntry: '系统配置 > AI',
+        recoveryChecklist: []
+      };
+    }
+    if (text.includes('timeout')) {
+      return {
+        errorCode: 'TC-CMN-408',
+        errorCategory: 'request_timeout',
+        severity: 'warning' as const,
+        recoveryHint: '目标服务响应超时，建议稍后重试，并检查外部服务连通性。',
+        recoveryEntry: '任务中心 > 重试',
+        recoveryChecklist: []
+      };
+    }
+    if (text.includes('未找到可用群聊 chat id') || text.includes('chat id')) {
+      return {
+        errorCode: 'TC-PMA-404',
+        errorCategory: 'chat_id_missing',
+        severity: 'critical' as const,
+        recoveryHint: '请先在项目配置中补充飞书群 chat_id，再重新执行任务。',
+        recoveryEntry: '项目管理 > 飞书群配置',
+        recoveryChecklist: []
+      };
+    }
+    if (text.includes('forbidden') || text.includes('no access') || text.includes('无权限')) {
+      return {
+        errorCode: 'TC-AUTH-403',
+        errorCategory: 'permission_denied',
+        severity: 'critical' as const,
+        recoveryHint: '请检查当前账号的组织/项目权限，确认该任务对应资源可访问。',
+        recoveryEntry: '组织成员 / 项目权限',
+        recoveryChecklist: []
+      };
+    }
+    if (text.includes('缺少') || text.includes('missing')) {
+      return {
+        errorCode: 'TC-REQ-400',
+        errorCategory: 'input_missing',
+        severity: 'warning' as const,
+        recoveryHint: '请补全任务执行所需的输入条件后再重试。',
+        recoveryEntry: '原业务页面补全输入',
+        recoveryChecklist: []
+      };
+    }
+    return {
+      errorCode: source === 'pm_assistant'
+        ? 'TC-PMA-500'
+        : source === 'automation'
+          ? 'TC-AUT-500'
+          : source === 'ai_chat'
+            ? 'TC-AI-500'
+            : 'TC-CMN-500',
+      errorCategory: 'execution_failed',
+      severity: 'warning' as const,
+      recoveryHint: '请查看详情中的错误上下文，修正配置或数据后再重试。',
+      recoveryEntry: '任务中心详情 / 重试',
+      recoveryChecklist: []
+    };
+  }
+
+  async retry(
+    actor: AuthActor | undefined,
+    _organizationId: string,
+    source: TaskCenterSource,
+    retryMeta: Record<string, unknown>
+  ) {
+    if (source === 'pm_assistant') {
+      const jobId = String(retryMeta.jobId || '').trim();
+      const projectId = typeof retryMeta.projectId === 'number' ? retryMeta.projectId : undefined;
+      if (!jobId) throw new BadRequestException('缺少 PM 助手任务标识');
+      if (projectId) {
+        await this.accessService.assertProjectAccess(actor, projectId);
+      }
+      await this.pmAssistantService.runJob(jobId as any, {
+        projectId,
+        triggeredBy: 'manual'
+      });
+      return { success: true, errorCode: null, message: `已重新触发 PM 助手任务：${jobId}` };
+    }
+
+    if (source === 'automation') {
+      const ruleId = String(retryMeta.ruleId || '').trim();
+      if (!ruleId) throw new BadRequestException('缺少自动化规则标识');
+      const payload = retryMeta.payload && typeof retryMeta.payload === 'object' ? retryMeta.payload : {};
+      const result = await this.automationService.testRule(actor, ruleId, payload);
+      return {
+        success: result.success,
+        errorCode: result.success ? null : 'TC-AUT-500',
+        message: result.message
+      };
+    }
+
+    throw new BadRequestException('当前来源暂不支持统一重试');
+  }
 
   async list(
     actor: AuthActor | undefined,
     organizationId: string,
-    params?: { projectId?: number; source?: TaskCenterSource; status?: TaskCenterStatus; limit?: number }
+    params?: {
+      projectId?: number;
+      source?: TaskCenterSource;
+      status?: TaskCenterStatus;
+      severity?: TaskCenterSeverity;
+      errorCode?: string;
+      limit?: number;
+    }
   ) {
     if (params?.projectId) {
       await this.accessService.assertProjectAccess(actor, params.projectId);
@@ -77,6 +265,8 @@ export class TaskCenterService {
 
     return [...pmItems, ...automationItems, ...feishuItems, ...aiChatItems]
       .filter((item) => (params?.status ? item.status === params.status : true))
+      .filter((item) => (params?.severity ? item.severity === params.severity : true))
+      .filter((item) => (params?.errorCode ? item.errorCode === params.errorCode : true))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
   }
@@ -133,6 +323,28 @@ export class TaskCenterService {
 
     const successBase = byStatus.success + byStatus.failed + byStatus['dry-run'] + byStatus.skipped;
     const successRate = successBase > 0 ? Math.round((byStatus.success / successBase) * 100) : 0;
+    const topErrorCodes = Array.from(
+      recentItems
+        .filter((item) => item.status === 'failed' && item.errorCode)
+        .reduce((acc, item) => {
+          const key = String(item.errorCode);
+          const current = acc.get(key) || {
+            errorCode: key,
+            count: 0,
+            severity: (item.severity || 'warning') as TaskCenterSeverity,
+            sourceLabel: item.sourceLabel
+          };
+          current.count += 1;
+          if (current.severity !== 'critical' && item.severity === 'critical') {
+            current.severity = 'critical';
+          }
+          acc.set(key, current);
+          return acc;
+        }, new Map<string, { errorCode: string; count: number; severity: TaskCenterSeverity; sourceLabel: string }>())
+        .values()
+    )
+      .sort((a, b) => b.count - a.count || a.errorCode.localeCompare(b.errorCode))
+      .slice(0, 5);
 
     const recentFailures = recentItems
       .filter((item) => item.status === 'failed')
@@ -168,6 +380,7 @@ export class TaskCenterService {
       byStatus,
       bySourceStatus,
       successRate,
+      topErrorCodes,
       recentFailures,
       trend: Array.from(trendMap.entries()).map(([day, value]) => ({
         day: day.slice(5),
@@ -217,39 +430,48 @@ export class TaskCenterService {
       take
     });
     const projectMap = await this.getProjectNameMap(rows.map((row) => row.projectId));
-    return rows.map((row) => ({
-      id: `pm-${row.id}`,
-      source: 'pm_assistant' as const,
-      sourceLabel: 'PM 助手',
-      status: row.status as TaskCenterStatus,
-      title: `PM 助手 · ${row.jobId}`,
-      summary: row.summary || row.error || 'PM 助手任务执行',
-      trigger: row.triggeredBy,
-      projectId: row.projectId,
-      projectName: row.projectId ? (projectMap.get(row.projectId) ?? null) : null,
-      createdAt: row.createdAt.toISOString(),
-      detail: [
+    return rows.map((row) => {
+      const status = row.status as TaskCenterStatus;
+      const detail = [
         row.error ? `错误：${row.error}` : '',
         row.rawSummary ? `原始摘要：\n${row.rawSummary}` : '',
         row.aiSummary ? `AI 摘要：\n${row.aiSummary}` : ''
-      ].filter(Boolean).join('\n\n') || null,
-      retryable: true,
-      retryMeta: {
-        jobId: row.jobId,
-        projectId: row.projectId
-      }
-    }));
+      ].filter(Boolean).join('\n\n') || null;
+      const summary = row.summary || row.error || 'PM 助手任务执行';
+      const failure = this.classifyFailure('pm_assistant', status, detail, summary);
+      return {
+        id: `pm-${row.id}`,
+        source: 'pm_assistant' as const,
+        sourceLabel: 'PM 助手',
+        status,
+        title: `PM 助手 · ${row.jobId}`,
+        summary,
+        trigger: row.triggeredBy,
+        projectId: row.projectId,
+        projectName: row.projectId ? (projectMap.get(row.projectId) ?? null) : null,
+        createdAt: row.createdAt.toISOString(),
+        detail,
+        errorCode: failure.errorCode,
+        errorCategory: failure.errorCategory,
+        severity: failure.severity,
+        recoveryHint: failure.recoveryHint,
+        recoveryEntry: failure.recoveryEntry,
+        recoveryChecklist: failure.recoveryChecklist,
+        retryable: true,
+        retryMeta: {
+          jobId: row.jobId,
+          projectId: row.projectId
+        }
+      };
+    });
   }
 
   private async loadAutomationItems(
     organizationId: string,
     _accessibleProjectIds: number[] | null,
-    projectId: number | undefined,
+    _projectId: number | undefined,
     take: number
   ) {
-    if (projectId) {
-      return [];
-    }
     const rows = await this.prisma.automationLog.findMany({
       where: {
         rule: {
@@ -266,29 +488,41 @@ export class TaskCenterService {
       orderBy: { executionAt: 'desc' },
       take
     });
-    return rows.map((row) => ({
-      id: `automation-${row.id}`,
-      source: 'automation' as const,
-      sourceLabel: '自动化规则',
-      status: row.success ? 'success' : 'failed',
-      title: `自动化 · ${row.rule.name}`,
-      summary: row.error || `触发器 ${row.trigger} 执行完成`,
-      trigger: row.trigger,
-      projectId: null,
-      projectName: null,
-      createdAt: row.executionAt.toISOString(),
-      detail: [
+    return rows.map((row) => {
+      const status = row.success ? 'success' as const : 'failed' as const;
+      const detail = [
         row.error ? `错误：${row.error}` : '',
         `触发器：${row.trigger}`,
         `输入载荷：\n${JSON.stringify(row.payload, null, 2)}`,
         `执行动作：\n${JSON.stringify(row.actionsRun, null, 2)}`
-      ].filter(Boolean).join('\n\n'),
-      retryable: true,
-      retryMeta: {
-        ruleId: row.ruleId,
-        payload: row.payload
-      }
-    }));
+      ].filter(Boolean).join('\n\n');
+      const summary = row.error || `触发器 ${row.trigger} 执行完成`;
+      const failure = this.classifyFailure('automation', status, detail, summary);
+      return {
+        id: `automation-${row.id}`,
+        source: 'automation' as const,
+        sourceLabel: '自动化规则',
+        status,
+        title: `自动化 · ${row.rule.name}`,
+        summary,
+        trigger: row.trigger,
+        projectId: null,
+        projectName: null,
+        createdAt: row.executionAt.toISOString(),
+        detail,
+        errorCode: failure.errorCode,
+        errorCategory: failure.errorCategory,
+        severity: failure.severity,
+        recoveryHint: failure.recoveryHint,
+        recoveryEntry: failure.recoveryEntry,
+        recoveryChecklist: failure.recoveryChecklist,
+        retryable: true,
+        retryMeta: {
+          ruleId: row.ruleId,
+          payload: row.payload
+        }
+      };
+    });
   }
 
   private async loadFeishuItems(
@@ -316,21 +550,35 @@ export class TaskCenterService {
       take
     });
     const projectMap = await this.getProjectNameMap(rows.map((row) => row.projectId));
-    return rows.map((row) => ({
-      id: `feishu-${row.id}`,
-      source: 'feishu' as const,
-      sourceLabel: '飞书集成',
-      status: 'unknown' as const,
-      title: `飞书 · ${row.method} ${this.simplifyPath(row.path)}`,
-      summary: this.buildFeishuSummary(row.method, row.path, row.requestBody),
-      actorName: row.userName ?? undefined,
-      projectId: row.projectId,
-      projectName: row.projectId ? (projectMap.get(row.projectId) ?? null) : null,
-      createdAt: row.createdAt.toISOString(),
-      detail: `路径：${row.path}\n\n请求体：\n${JSON.stringify(row.requestBody ?? {}, null, 2)}`,
-      retryable: false,
-      retryMeta: null
-    }));
+    return rows.map((row) => {
+      const summary = this.buildFeishuSummary(row.method, row.path, row.requestBody);
+      const detail = `路径：${row.path}\n\n请求体：\n${JSON.stringify(row.requestBody ?? {}, null, 2)}`;
+      const failure = this.classifyFailure('feishu', 'unknown', detail, summary);
+      const status = failure.errorCode && failure.errorCode !== 'TC-FEI-000'
+        ? 'failed' as const
+        : 'unknown' as const;
+      return {
+        id: `feishu-${row.id}`,
+        source: 'feishu' as const,
+        sourceLabel: '飞书集成',
+        status,
+        title: `飞书 · ${row.method} ${this.simplifyPath(row.path)}`,
+        summary,
+        actorName: row.userName ?? undefined,
+        projectId: row.projectId,
+        projectName: row.projectId ? (projectMap.get(row.projectId) ?? null) : null,
+        createdAt: row.createdAt.toISOString(),
+        detail,
+        errorCode: failure.errorCode,
+        errorCategory: failure.errorCategory,
+        severity: failure.severity,
+        recoveryHint: failure.recoveryHint,
+        recoveryEntry: failure.recoveryEntry,
+        recoveryChecklist: failure.recoveryChecklist,
+        retryable: false,
+        retryMeta: null
+      };
+    });
   }
 
   private async loadAiChatItems(
@@ -364,23 +612,33 @@ export class TaskCenterService {
       const error = typeof body.error === 'string' ? body.error : '';
       const message = typeof body.message === 'string' ? body.message : '';
       const mode = typeof body.mode === 'string' ? body.mode : 'chat';
+      const status = error ? 'failed' as const : 'success' as const;
+      const summary = error || message || 'AI 对话已执行';
+      const detail = [
+        error ? `错误：${error}` : '',
+        message ? `消息：\n${message}` : '',
+        `模式：${mode}`,
+        `请求体：\n${JSON.stringify(body, null, 2)}`
+      ].filter(Boolean).join('\n\n');
+      const failure = this.classifyFailure('ai_chat', status, detail, summary);
       return {
         id: `ai-chat-${row.id}`,
         source: 'ai_chat' as const,
         sourceLabel: 'AI 对话',
-        status: error ? 'failed' as const : 'success' as const,
+        status,
         title: `AI · ${mode}`,
-        summary: error || message || 'AI 对话已执行',
+        summary,
         actorName: row.userName ?? undefined,
         projectId: row.projectId,
         projectName: row.projectId ? (projectMap.get(row.projectId) ?? null) : null,
         createdAt: row.createdAt.toISOString(),
-        detail: [
-          error ? `错误：${error}` : '',
-          message ? `消息：\n${message}` : '',
-          `模式：${mode}`,
-          `请求体：\n${JSON.stringify(body, null, 2)}`
-        ].filter(Boolean).join('\n\n'),
+        detail,
+        errorCode: failure.errorCode,
+        errorCategory: failure.errorCategory,
+        severity: failure.severity,
+        recoveryHint: failure.recoveryHint,
+        recoveryEntry: failure.recoveryEntry,
+        recoveryChecklist: failure.recoveryChecklist,
         retryable: false,
         retryMeta: null
       };

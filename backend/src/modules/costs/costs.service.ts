@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { NotificationLevel } from '@prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AccessService, AuthActor } from '../access/access.service';
+import { ProjectMetricsService } from '../project-metrics/project-metrics.service';
 
 interface CreateCostInput {
   projectId: number;
@@ -24,7 +25,8 @@ export class CostsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly projectMetricsService: ProjectMetricsService
   ) {}
 
   async list(actor: AuthActor | undefined, projectId?: number) {
@@ -70,29 +72,17 @@ export class CostsService {
 
   async summary(actor: AuthActor | undefined, projectId: number) {
     await this.accessService.assertProjectAccess(actor, projectId);
-    const [project, rows, worklogs] = await Promise.all([
-      this.prisma.project.findUnique({ where: { id: projectId } }),
-      this.prisma.costEntry.findMany({ where: { projectId } }),
-      this.prisma.worklog.findMany({ where: { projectId } })
-    ]);
-    if (!project) {
+    const summary = await this.projectMetricsService.summarizeProject(projectId);
+    if (!summary) {
       throw new NotFoundException('Project not found');
     }
-
-    const worklogLaborCost = worklogs.reduce((sum, item) => sum + item.hours * item.hourlyRate, 0);
-    const entryCost = rows.reduce((sum, item) => sum + item.amount, 0);
-    const actual = entryCost + worklogLaborCost;
-    const byType = rows.reduce(
-      (acc, item) => {
-        acc[item.type] += item.amount;
-        return acc;
-      },
-      { labor: 0, outsource: 0, cloud: 0 }
-    );
-    byType.labor += worklogLaborCost;
-    const budget = project.budget;
-    const varianceRate = budget === 0 ? 0 : Number((((actual - budget) / budget) * 100).toFixed(2));
-    return { projectId, budget, actual, varianceRate, byType };
+    return {
+      projectId,
+      budget: summary.budget,
+      actual: summary.actualCost,
+      varianceRate: summary.varianceRate,
+      byType: summary.byType
+    };
   }
 
   async update(actor: AuthActor | undefined, id: number, input: UpdateCostInput) {

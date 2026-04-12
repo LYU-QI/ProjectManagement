@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Req } from '@nestjs/common';
 import { IsIn, IsNumber } from 'class-validator';
+import { AuditableRequest } from '../../audit/audit.types';
 import { Roles } from '../auth/roles.decorator';
 import { ProjectMembershipsService } from './project-memberships.service';
 
@@ -28,17 +29,17 @@ export class ProjectMembershipsController {
   @Post()
   create(
     @Body() body: CreateProjectMembershipDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: AuditableRequest
   ) {
-    return this.projectMembershipsService.create(req.user, body);
+    return this.projectMembershipsService.create(req.user, body, req);
   }
 
   @Roles('super_admin', 'project_manager', 'pm')
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: AuditableRequest
   ) {
-    return this.projectMembershipsService.remove(req.user, id);
+    return this.projectMembershipsService.remove(req.user, id, req);
   }
 }

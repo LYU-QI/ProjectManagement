@@ -1,11 +1,25 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { apiPost } from '../api/client';
-import { getTaskCenterStats, listTaskCenterItems, TaskCenterItem, TaskCenterSource, TaskCenterStats, TaskCenterStatus } from '../api/taskCenter';
+import { getTaskCenterStats, listTaskCenterItems, retryTaskCenterItem, TaskCenterItem, TaskCenterSeverity, TaskCenterSource, TaskCenterStats, TaskCenterStatus } from '../api/taskCenter';
 import useEventStream from '../hooks/useEventStream';
+import ScopeContextBar from '../components/ScopeContextBar';
+import type { ViewKey } from '../components/AstraeaLayout';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 type Props = {
+  orgName?: string | null;
   projectId?: number | null;
   projectName?: string;
+  onNavigate?: (view: ViewKey) => void;
+};
+
+type RetryResult = {
+  id: string;
+  title: string;
+  sourceLabel: string;
+  status: 'success' | 'failed';
+  errorCode?: string | null;
+  message: string;
+  at: string;
 };
 
 const SOURCE_OPTIONS: Array<{ value: TaskCenterSource | 'all'; label: string }> = [
@@ -25,6 +39,13 @@ const STATUS_OPTIONS: Array<{ value: TaskCenterStatus | 'all'; label: string }> 
   { value: 'unknown', label: '未归类' }
 ];
 
+const SEVERITY_OPTIONS: Array<{ value: TaskCenterSeverity | 'all'; label: string }> = [
+  { value: 'all', label: '全部严重级别' },
+  { value: 'critical', label: '高风险' },
+  { value: 'warning', label: '需关注' },
+  { value: 'info', label: '正常' }
+];
+
 const SOURCE_HEALTH_META: Array<{ key: TaskCenterSource; label: string }> = [
   { key: 'pm_assistant', label: 'PM 助手' },
   { key: 'automation', label: '自动化规则' },
@@ -32,17 +53,21 @@ const SOURCE_HEALTH_META: Array<{ key: TaskCenterSource; label: string }> = [
   { key: 'ai_chat', label: 'AI 对话' }
 ];
 
-export default function TaskCenterView({ projectId, projectName }: Props) {
+export default function TaskCenterView({ orgName, projectId, projectName, onNavigate }: Props) {
+  const setRecoveryContext = useWorkspaceStore((state) => state.setRecoveryContext);
   const [items, setItems] = useState<TaskCenterItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [source, setSource] = useState<TaskCenterSource | 'all'>('all');
   const [status, setStatus] = useState<TaskCenterStatus | 'all'>('all');
+  const [severity, setSeverity] = useState<TaskCenterSeverity | 'all'>('all');
+  const [errorCodeQuery, setErrorCodeQuery] = useState('');
   const [limit, setLimit] = useState(60);
   const [keyword, setKeyword] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [lastRetryMessage, setLastRetryMessage] = useState('');
+  const [recentRetryResults, setRecentRetryResults] = useState<RetryResult[]>([]);
   const [stats, setStats] = useState<TaskCenterStats | null>(null);
   const [statsDays, setStatsDays] = useState(7);
 
@@ -54,6 +79,8 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
         projectId,
         source,
         status,
+        severity,
+        errorCode: errorCodeQuery.trim(),
         limit
       });
       setItems(res);
@@ -79,7 +106,7 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
 
   useEffect(() => {
     void loadItems();
-  }, [projectId, source, status, limit]);
+  }, [projectId, source, status, severity, errorCodeQuery, limit]);
 
   useEffect(() => {
     void loadStats();
@@ -107,6 +134,8 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
         item.sourceLabel,
         item.title,
         item.summary,
+        item.errorCode || '',
+        item.errorCategory || '',
         item.trigger || '',
         item.actorName || '',
         item.projectName || ''
@@ -124,6 +153,7 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
     ai_chat: { success: 0, failed: 0, 'dry-run': 0, skipped: 0, unknown: 0 }
   };
   const successRate = `${stats?.successRate ?? 0}%`;
+  const topErrorCodes = stats?.topErrorCodes ?? [];
   const recentFailures = stats?.recentFailures ?? [];
   const weeklyTrend = stats?.trend ?? [];
   const sourceHealthCards = useMemo(() => {
@@ -157,28 +187,85 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
     return 'var(--color-primary)';
   }
 
+  function getSeverityLabel(item: TaskCenterItem) {
+    if (item.severity === 'critical') return '高风险';
+    if (item.severity === 'warning') return '需关注';
+    return '正常';
+  }
+
+  function getRetryLabel(item: TaskCenterItem) {
+    if (item.source === 'pm_assistant') return '重新执行';
+    if (item.source === 'automation') return '重新试跑';
+    return '重试';
+  }
+
+  function sourceFromLabel(sourceLabel: string): TaskCenterSource {
+    if (sourceLabel === '飞书集成') return 'feishu';
+    if (sourceLabel === 'PM 助手') return 'pm_assistant';
+    if (sourceLabel === '自动化规则') return 'automation';
+    return 'ai_chat';
+  }
+
+  function getRecoveryView(item: Pick<TaskCenterItem, 'source' | 'errorCode'>): ViewKey | null {
+    if (item.errorCode?.startsWith('TC-FEI')) return 'feishu';
+    if (item.errorCode?.startsWith('TC-PMA')) return 'pm-assistant';
+    if (item.errorCode?.startsWith('TC-AUT')) return 'automation';
+    if (item.errorCode?.startsWith('TC-AI-401')) return 'settings';
+    if (item.source === 'feishu') return 'feishu';
+    if (item.source === 'pm_assistant') return 'pm-assistant';
+    if (item.source === 'automation') return 'automation';
+    return null;
+  }
+
+  function navigateToRecovery(item: Pick<TaskCenterItem, 'source' | 'errorCode' | 'severity' | 'recoveryEntry'>) {
+    const nextView = getRecoveryView(item);
+    if (!nextView || !onNavigate) return;
+    setRecoveryContext({
+      from: 'task-center',
+      source: item.source,
+      errorCode: item.errorCode ?? null,
+      severity: item.severity ?? null,
+      recoveryEntry: item.recoveryEntry ?? null,
+      projectId: projectId ?? null,
+      projectName: projectName ?? null
+    });
+    onNavigate(nextView);
+  }
+
   async function retryItem(item: TaskCenterItem) {
     if (!item.retryable || !item.retryMeta) return;
     setRetryingId(item.id);
     setError('');
     setLastRetryMessage('');
+    const pushRetryResult = (result: RetryResult) => {
+      setRecentRetryResults((prev) => [result, ...prev].slice(0, 5));
+    };
     try {
-      if (item.source === 'pm_assistant') {
-        await apiPost('/pm-assistant/run', {
-          jobId: item.retryMeta.jobId,
-          projectId: item.retryMeta.projectId || undefined,
-          dryRun: false
-        });
-      } else if (item.source === 'automation') {
-        await apiPost(`/automations/${String(item.retryMeta.ruleId)}/run`, {
-          payload: item.retryMeta.payload && typeof item.retryMeta.payload === 'object' ? item.retryMeta.payload as Record<string, unknown> : {}
-        });
-      }
-      setLastRetryMessage(`已触发重试：${item.title}`);
+      const result = await retryTaskCenterItem(item.source, item.retryMeta);
+      setLastRetryMessage(`${result.message}${result.errorCode ? `（${result.errorCode}）` : ''}`);
+      pushRetryResult({
+        id: `${item.id}-${Date.now()}`,
+        title: item.title,
+        sourceLabel: item.sourceLabel,
+        status: result.success ? 'success' : 'failed',
+        errorCode: result.errorCode,
+        message: result.message,
+        at: new Date().toISOString()
+      });
       await loadItems();
       await loadStats();
     } catch (err: any) {
-      setError(err.message || '重试失败');
+      const detail = err.message || '重试失败';
+      setError(detail);
+      pushRetryResult({
+        id: `${item.id}-${Date.now()}`,
+        title: item.title,
+        sourceLabel: item.sourceLabel,
+        status: 'failed',
+        errorCode: err?.errorCode || null,
+        message: detail,
+        at: new Date().toISOString()
+      });
     } finally {
       setRetryingId(null);
     }
@@ -186,6 +273,15 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
 
   return (
     <div>
+      <ScopeContextBar
+        moduleLabel="任务中心作用域"
+        orgName={orgName}
+        projectName={projectName}
+        projectId={projectId}
+        scopeLabel={projectId ? '项目级作用域' : '组织级作用域'}
+        sourceLabel="PM 助手 / 自动化 / 飞书 / AI 对话"
+        note={projectId ? '当前页面只聚合当前项目相关任务与日志。' : '当前页面展示当前组织全部项目范围内的任务与执行记录。'}
+      />
       <div className="card">
         <div className="section-title-row">
           <h3>统一任务中心</h3>
@@ -216,6 +312,14 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
         </div>
         <div className="task-center-summary-grid task-center-summary-grid-secondary">
           <div className="task-center-summary-card">
+            <div className="muted">高频错误码</div>
+            <div className="task-center-summary-list">
+              {topErrorCodes.length === 0
+                ? '暂无失败错误码'
+                : topErrorCodes.map((item) => `${item.errorCode} × ${item.count}`).join(' / ')}
+            </div>
+          </div>
+          <div className="task-center-summary-card">
             <div className="muted">来源分布</div>
             <div className="task-center-summary-inline">PM {counts.pm_assistant} / 自动化 {counts.automation} / 飞书 {counts.feishu} / AI {counts.ai_chat}</div>
           </div>
@@ -244,6 +348,62 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
                   <span>失 {bucket.failed}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+        <div className="task-center-summary-grid task-center-summary-grid-secondary">
+          {topErrorCodes.length > 0 && (
+            <div className="task-center-summary-card task-center-error-code-card">
+              <div className="muted">失败聚合</div>
+              <div className="task-center-error-code-list">
+                {topErrorCodes.map((item) => (
+                  <div key={item.errorCode} className={`task-center-error-code-chip is-${item.severity}`}>
+                    <span>{item.errorCode}</span>
+                    <span>{item.sourceLabel}</span>
+                    <strong>{item.count}</strong>
+                    <div className="task-center-error-code-actions">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setStatus('failed');
+                          setSeverity(item.severity);
+                          setErrorCodeQuery(item.errorCode);
+                        }}
+                      >
+                        筛选
+                      </button>
+                      {getRecoveryView({ source: sourceFromLabel(item.sourceLabel), errorCode: item.errorCode }) && (
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => {
+                            setStatus('failed');
+                            setSeverity(item.severity);
+                            setErrorCodeQuery(item.errorCode);
+                            navigateToRecovery({
+                              source: sourceFromLabel(item.sourceLabel),
+                              errorCode: item.errorCode,
+                              severity: item.severity,
+                              recoveryEntry: null
+                            });
+                          }}
+                        >
+                          前往处理
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="task-center-summary-card">
+            <div className="muted">最近恢复结果</div>
+            <div className="task-center-summary-list">
+              {recentRetryResults.length === 0
+                ? '暂无重试记录'
+                : recentRetryResults.map((item) => `${item.sourceLabel}/${item.title} · ${item.status === 'success' ? '已触发' : '失败'}`).join(' / ')}
             </div>
           </div>
         </div>
@@ -285,6 +445,18 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
               </option>
             ))}
           </select>
+          <select value={severity} onChange={(e) => setSeverity(e.target.value as TaskCenterSeverity | 'all')}>
+            {SEVERITY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            value={errorCodeQuery}
+            onChange={(e) => setErrorCodeQuery(e.target.value)}
+            placeholder="错误码，如 TC-FEI-403"
+          />
           <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
             {[30, 60, 100].map((value) => (
               <option key={value} value={value}>
@@ -301,6 +473,20 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
       </div>
 
       <div className="card task-center-card-gap">
+        {recentRetryResults.length > 0 && (
+          <div className="task-center-retry-history">
+            {recentRetryResults.map((item) => (
+              <div key={item.id} className={`task-center-retry-history-item is-${item.status}`}>
+                <div className="task-center-retry-history-head">
+                  <strong>{item.sourceLabel}</strong>
+                  <span>{item.at.replace('T', ' ').slice(0, 19)}</span>
+                </div>
+                <div>{item.title}</div>
+                <div className="muted">{item.message}{item.errorCode ? `（${item.errorCode}）` : ''}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <table className="table table-wrap">
           <thead>
             <tr>
@@ -339,7 +525,7 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
                       </button>
                       {item.retryable && (
                         <button className="btn" type="button" onClick={() => void retryItem(item)} disabled={retryingId === item.id}>
-                          {retryingId === item.id ? '重试中...' : '重试'}
+                          {retryingId === item.id ? '执行中...' : getRetryLabel(item)}
                         </button>
                       )}
                     </div>
@@ -349,6 +535,50 @@ export default function TaskCenterView({ projectId, projectName }: Props) {
                   <tr key={`${item.id}-detail`}>
                     <td colSpan={8} className="task-center-detail-cell">
                       <div className="task-center-detail-title">详情</div>
+                      <div className="task-center-detail-meta">
+                        {item.errorCode ? (
+                          <span className="task-center-detail-badge is-info">
+                            错误码：{item.errorCode}
+                          </span>
+                        ) : null}
+                        {item.errorCategory ? (
+                          <span className={`task-center-detail-badge is-${item.severity || 'info'}`}>
+                            错误分类：{item.errorCategory}
+                          </span>
+                        ) : null}
+                        <span className={`task-center-detail-badge is-${item.severity || 'info'}`}>
+                          严重级别：{getSeverityLabel(item)}
+                        </span>
+                      </div>
+                      {item.recoveryHint ? (
+                        <div className="task-center-detail-hint">
+                          恢复建议：{item.recoveryHint}
+                        </div>
+                      ) : null}
+                      {item.recoveryEntry ? (
+                        <div className="task-center-detail-entry">
+                          推荐入口：{item.recoveryEntry}
+                          {getRecoveryView(item) && onNavigate ? (
+                            <button
+                              type="button"
+                              className="btn task-center-detail-entry-btn"
+                              onClick={() => navigateToRecovery(item)}
+                            >
+                              前往处理
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {item.recoveryChecklist && item.recoveryChecklist.length > 0 ? (
+                        <div className="task-center-detail-checklist">
+                          {item.recoveryChecklist.map((step, index) => (
+                            <div key={`${item.id}-step-${index}`} className="task-center-detail-checklist-item">
+                              <span className="task-center-detail-checklist-index">{index + 1}</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <pre className="task-center-detail-pre">{item.detail || '暂无更多上下文。'}</pre>
                     </td>
                   </tr>

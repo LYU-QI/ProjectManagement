@@ -3,6 +3,7 @@ import { apiGet, apiPost } from '../api/client';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import useEventStream from '../hooks/useEventStream';
+import { useWorkspaceStore } from '../store/useWorkspaceStore';
 
 const COLOR_MAP: Record<string, string> = {
   red: 'var(--color-danger)',
@@ -62,6 +63,9 @@ type PmAssistantViewProps = {
 };
 
 export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
+  const recoveryContext = useWorkspaceStore((state) => state.recoveryContext);
+  const clearRecoveryContext = useWorkspaceStore((state) => state.clearRecoveryContext);
+  const [pageRecoveryContext, setPageRecoveryContext] = useState<typeof recoveryContext>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [jobsError, setJobsError] = useState('');
@@ -204,6 +208,18 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
 
   const selectedJob = useMemo(() => jobs.find((job) => job.id === selectedJobId), [jobs, selectedJobId]);
   const filteredJobs = useMemo(() => jobs, [jobs]);
+  const showIncomingRecovery = recoveryContext?.from === 'task-center' && recoveryContext.source === 'pm_assistant';
+  const showRecoveryBanner = pageRecoveryContext?.from === 'task-center' && pageRecoveryContext.source === 'pm_assistant';
+
+  useEffect(() => {
+    if (!showIncomingRecovery) return;
+    setPageRecoveryContext(recoveryContext);
+    setLogFiltersOpen(true);
+    setLogFilterStatus('failed');
+    setLogFilterToday(false);
+    clearRecoveryContext();
+  }, [showIncomingRecovery, setLogFiltersOpen, recoveryContext, clearRecoveryContext]);
+
   const filteredLogs = useMemo(() => {
     const keyword = logSearch.trim().toLowerCase();
     const today = new Date().toISOString().slice(0, 10);
@@ -398,6 +414,21 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
 
   return (
     <div>
+      {showRecoveryBanner && (
+        <div className="task-center-recovery-banner">
+          <div>
+            <strong>来自任务中心的恢复上下文</strong>
+            <div className="muted">
+              当前建议优先检查 PM 助手执行与配置
+              {pageRecoveryContext?.errorCode ? `（${pageRecoveryContext.errorCode}）` : ''}
+              {pageRecoveryContext?.projectName ? `，项目：${pageRecoveryContext.projectName}` : ''}。
+            </div>
+          </div>
+          <button type="button" className="btn" onClick={() => setPageRecoveryContext(null)}>
+            关闭提示
+          </button>
+        </div>
+      )}
       <div className="card pm-intro-card">
         <div className="pm-intro-text">
           PM Assistant 会根据飞书多维表格任务数据生成卡片，并按配置发送到飞书群。定时任务由后端自动触发，这里提供手动校验入口。

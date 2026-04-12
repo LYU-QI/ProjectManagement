@@ -22,6 +22,11 @@ enum OrgRole {
   viewer
 }
 
+enum AuditOutcome {
+  success
+  failed
+}
+
 enum Plan {
   FREE
   PRO
@@ -668,12 +673,23 @@ model AuditLog {
   userRole       String?
   method         String
   path           String
+  source         String?
   projectId      Int?
   organizationId String?
   requestBody    Json?
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  outcome        AuditOutcome @default(success)
+  statusCode     Int?
+  errorMessage   String?
+  resourceType   String?
+  resourceId     String?
   createdAt      DateTime @default(now())
 
   @@index([organizationId])
+  @@index([outcome])
+  @@index([source])
+  @@index([resourceType])
 }
 
 model TestCase {

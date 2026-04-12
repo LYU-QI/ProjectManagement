@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
 import { IsIn, IsNotEmpty, MinLength } from 'class-validator';
+import { AuditableRequest } from '../../audit/audit.types';
 import { Roles } from '../auth/roles.decorator';
 import { UsersService } from './users.service';
 
@@ -43,9 +44,9 @@ export class UsersController {
   @Post()
   create(
     @Body() body: CreateUserDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: AuditableRequest
   ) {
-    return this.usersService.createUser(req.user, body);
+    return this.usersService.createUser(req.user, body, req);
   }
 
   @Roles('super_admin', 'project_manager')
@@ -53,9 +54,9 @@ export class UsersController {
   updateRole(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateUserRoleDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: AuditableRequest
   ) {
-    return this.usersService.updateRole(req.user, id, body.role);
+    return this.usersService.updateRole(req.user, id, body.role, req);
   }
 
   @Roles('super_admin', 'project_manager')
@@ -63,8 +64,17 @@ export class UsersController {
   resetPassword(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: ResetPasswordDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: AuditableRequest
   ) {
-    return this.usersService.resetPassword(req.user, id, body.password);
+    return this.usersService.resetPassword(req.user, id, body.password, req);
+  }
+
+  @Roles('super_admin')
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: AuditableRequest
+  ) {
+    return this.usersService.removeUser(req.user, id, req);
   }
 }

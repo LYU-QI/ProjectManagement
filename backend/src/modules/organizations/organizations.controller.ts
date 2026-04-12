@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Patch, Delete,
   Body, Param, Req, ForbiddenException
 } from '@nestjs/common';
+import { AuditableRequest } from '../../audit/audit.types';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
@@ -22,9 +23,9 @@ export class OrganizationsController {
   @Post()
   async create(
     @Body() dto: CreateOrganizationDto,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
-    return this.orgService.create(dto, req.user as { sub?: number; role?: string });
+    return this.orgService.create(dto, req.user as { sub?: number; role?: string }, req);
   }
 
   @Get(':id')
@@ -44,21 +45,21 @@ export class OrganizationsController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateOrganizationDto,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
-    return this.orgService.update(id, dto, actorOrg?.orgRole ?? null, globalRole);
+    return this.orgService.update(id, dto, actorOrg?.orgRole ?? null, globalRole, req);
   }
 
   @Delete(':id')
   async remove(
     @Param('id') id: string,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
-    return this.orgService.delete(id, actorOrg?.orgRole ?? null, globalRole);
+    return this.orgService.delete(id, actorOrg?.orgRole ?? null, globalRole, req);
   }
 
   @Get(':id/members')
@@ -75,11 +76,11 @@ export class OrganizationsController {
   async inviteMember(
     @Param('id') id: string,
     @Body() dto: InviteMemberDto,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
-    return this.orgService.inviteMember(id, Number(dto.userId), dto.role ?? 'member', actorOrg?.orgRole ?? null, globalRole);
+    return this.orgService.inviteMember(id, Number(dto.userId), dto.role ?? 'member', actorOrg?.orgRole ?? null, globalRole, req);
   }
 
   @Patch(':id/members/:userId')
@@ -87,21 +88,21 @@ export class OrganizationsController {
     @Param('id') id: string,
     @Param('userId') userId: string,
     @Body() dto: UpdateMemberRoleDto,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
-    return this.orgService.updateMemberRole(id, Number(userId), dto.role, actorOrg?.orgRole ?? null, globalRole);
+    return this.orgService.updateMemberRole(id, Number(userId), dto.role, actorOrg?.orgRole ?? null, globalRole, req);
   }
 
   @Delete(':id/members/:userId')
   async removeMember(
     @Param('id') id: string,
     @Param('userId') userId: string,
-    @Req() req: Record<string, unknown>
+    @Req() req: AuditableRequest
   ) {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
-    return this.orgService.removeMember(id, Number(userId), actorOrg?.orgRole ?? null, globalRole);
+    return this.orgService.removeMember(id, Number(userId), actorOrg?.orgRole ?? null, globalRole, req);
   }
 }

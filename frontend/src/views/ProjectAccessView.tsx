@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createProjectMembership, listProjectMemberships, removeProjectMembership } from '../api/projectMemberships';
-import { createUser, resetUserPassword, updateUserRole } from '../api/users';
+import { createUser, deleteUser, resetUserPassword, updateUserRole } from '../api/users';
 import type { ProjectItem, ProjectMembershipItem, UserItem } from '../types';
 import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
   users: UserItem[];
   projects: ProjectItem[];
-  canManageUsers: boolean;
+  canManageUserAccounts: boolean;
+  canDeleteUserAccounts: boolean;
   canManageProjectMembership: boolean;
+  currentUserId?: number;
   onError: (msg: string) => void;
   onMessage: (msg: string) => void;
   onReloadUsers: () => Promise<void>;
@@ -16,7 +18,17 @@ type Props = {
 
 const USER_ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_manager', 'pm', 'member', 'viewer'];
 
-export default function ProjectAccessView({ users, projects, canManageUsers, canManageProjectMembership, onError, onMessage, onReloadUsers }: Props) {
+export default function ProjectAccessView({
+  users,
+  projects,
+  canManageUserAccounts,
+  canDeleteUserAccounts,
+  canManageProjectMembership,
+  currentUserId,
+  onError,
+  onMessage,
+  onReloadUsers
+}: Props) {
   const [rows, setRows] = useState<ProjectMembershipItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
@@ -81,7 +93,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
   };
 
   const onCreateUser = async () => {
-    if (!canManageUsers) return;
+    if (!canManageUserAccounts) return;
     if (!newUserForm.username.trim() || !newUserForm.name.trim() || !newUserForm.password.trim()) {
       onError('请填写账号、姓名和密码');
       return;
@@ -111,7 +123,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
   };
 
   const onResetPassword = async (user: UserItem) => {
-    if (!canManageUsers) return;
+    if (!canManageUserAccounts) return;
     const next = window.prompt(`为 ${user.username} 设置新密码（至少 6 位）`, '123456');
     if (!next) return;
     if (next.trim().length < 6) {
@@ -127,7 +139,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
   };
 
   const onUpdateRole = async (user: UserItem, role: UserItem['role']) => {
-    if (!canManageUsers) return;
+    if (!canManageUserAccounts) return;
     if (role === user.role) return;
     try {
       setUpdatingUserId(user.id);
@@ -141,13 +153,32 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
     }
   };
 
+  const onDeleteUser = async (user: UserItem) => {
+    if (!canDeleteUserAccounts) return;
+    if (user.id === currentUserId) {
+      onError('不能删除当前登录账号。');
+      return;
+    }
+    if (!window.confirm(`确认删除用户 ${user.username} 吗？此操作不可恢复。`)) return;
+    try {
+      setUpdatingUserId(user.id);
+      await deleteUser(user.id);
+      onMessage(`用户 ${user.username} 已删除`);
+      await onReloadUsers();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : '删除用户失败');
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   return (
     <div className="project-access-page">
-      {canManageUsers && (
+      {canManageUserAccounts && (
         <div className="card">
           <h3>管理后台 · 用户角色</h3>
           <p className="project-access-hint">
-            仅超级管理员/项目主管可管理用户。不可分配超级管理员。
+            仅超级管理员/项目主管可管理用户。仅超级管理员可删除账号；不可分配超级管理员。
           </p>
           <div className="form project-access-user-form">
             <input
@@ -174,7 +205,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
                 <option key={`new-role-${item}`} value={item}>{item}</option>
               ))}
             </ThemedSelect>
-            <button className="btn btn-primary" type="button" disabled={!canManageUsers} onClick={() => void onCreateUser()}>
+            <button className="btn btn-primary" type="button" disabled={!canManageUserAccounts} onClick={() => void onCreateUser()}>
               新增用户
             </button>
           </div>
@@ -187,6 +218,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
                 <th>当前角色</th>
                 <th>目标角色</th>
                 <th>密码</th>
+                <th>删除</th>
               </tr>
             </thead>
             <tbody>
@@ -199,7 +231,7 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
                   <td>
                     <ThemedSelect
                       value={u.role}
-                      disabled={!canManageUsers || updatingUserId === u.id}
+                      disabled={!canManageUserAccounts || updatingUserId === u.id}
                       onChange={(e) => void onUpdateRole(u, e.target.value as UserItem['role'])}
                     >
                       {USER_ROLE_OPTIONS.map((item) => (
@@ -211,17 +243,27 @@ export default function ProjectAccessView({ users, projects, canManageUsers, can
                     <button
                       className="btn btn-small"
                       type="button"
-                      disabled={!canManageUsers || updatingUserId === u.id}
+                      disabled={!canManageUserAccounts || updatingUserId === u.id}
                       onClick={() => void onResetPassword(u)}
                     >
                       重置密码
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-small"
+                      type="button"
+                      disabled={!canDeleteUserAccounts || updatingUserId === u.id || u.id === currentUserId}
+                      onClick={() => void onDeleteUser(u)}
+                    >
+                      删除
                     </button>
                   </td>
                 </tr>
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="project-access-empty-cell">暂无用户数据</td>
+                  <td colSpan={7} className="project-access-empty-cell">暂无用户数据</td>
                 </tr>
               )}
             </tbody>

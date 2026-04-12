@@ -19,9 +19,18 @@ interface SettingsViewProps {
     onMessage: (msg: string) => void;
     theme: 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
     onThemeChange: (theme: 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal') => void;
+    canRevealSensitive: boolean;
+    canSaveConfig: boolean;
 }
 
-export default function SettingsView({ onError, onMessage, theme, onThemeChange }: SettingsViewProps) {
+export default function SettingsView({
+    onError,
+    onMessage,
+    theme,
+    onThemeChange,
+    canRevealSensitive,
+    canSaveConfig
+}: SettingsViewProps) {
     const [items, setItems] = useState<ConfigItem[]>([]);
     const [editValues, setEditValues] = useState<Record<string, string>>({});
     const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
@@ -30,12 +39,13 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
     const [hasChanges, setHasChanges] = useState(false);
     const [aiHealthLoading, setAiHealthLoading] = useState(false);
     const [aiHealthResult, setAiHealthResult] = useState<{ ok: boolean; message: string; detail?: string } | null>(null);
+    const [rawValuesLoaded, setRawValuesLoaded] = useState(false);
 
     /** 加载配置项 */
-    async function loadConfig() {
+    async function loadConfig(reveal = false) {
         setLoading(true);
         try {
-            const data = await getConfigItems(true);
+            const data = await getConfigItems(reveal && canRevealSensitive);
             setItems(data);
             const vals: Record<string, string> = {};
             for (const item of data) {
@@ -43,6 +53,7 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
             }
             setEditValues(vals);
             setHasChanges(false);
+            setRawValuesLoaded(reveal && canRevealSensitive);
         } catch (err) {
             onError('加载配置项失败，请确认是否有权限。');
         } finally {
@@ -65,7 +76,14 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
     }
 
     /** 切换敏感字段显示 */
-    function toggleReveal(key: string) {
+    async function toggleReveal(key: string) {
+        if (!canRevealSensitive) {
+            onError('仅 super_admin 可查看敏感配置原值。');
+            return;
+        }
+        if (!rawValuesLoaded) {
+            await loadConfig(true);
+        }
         setRevealedKeys((prev) => {
             const next = new Set(prev);
             if (next.has(key)) {
@@ -79,6 +97,10 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
 
     /** 保存所有配置 */
     async function handleSave() {
+        if (!canSaveConfig) {
+            onError('仅 super_admin 可保存系统配置。');
+            return;
+        }
         setSaving(true);
         try {
             // 只发送变更的字段
@@ -96,7 +118,7 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
             const result = await saveConfigItems(updates);
             if (result.success) {
                 onMessage(result.message);
-                await loadConfig();
+                await loadConfig(rawValuesLoaded);
             } else {
                 onError(result.message);
             }
@@ -206,6 +228,9 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                         <p className="settings-subtitle">
                             管理 backend/.env 中的环境变量，修改后部分配置需要重启后端服务才能生效。
                         </p>
+                        <p className="settings-subtitle">
+                            当前权限：所有可访问角色仅可查看掩码配置；仅 super_admin 可查看敏感原值并保存。
+                        </p>
                     </div>
                     <div className="settings-actions">
                         <ThemedSelect
@@ -238,7 +263,8 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                         <button
                             className={`btn settings-mini-btn settings-save-btn ${hasChanges ? 'has-changes' : 'settings-btn-dim'}`}
                             onClick={handleSave}
-                            disabled={saving || !hasChanges}
+                            disabled={saving || !hasChanges || !canSaveConfig}
+                            title={canSaveConfig ? '保存配置' : '仅 super_admin 可保存系统配置'}
                         >
                             {saving ? '[ 保存中... ]' : '[ 保存配置 ]'}
                         </button>
@@ -304,6 +330,7 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                                         value={displayValue}
                                         onChange={(e) => handleChange(item.key, e.target.value)}
                                         className="settings-item-input"
+                                        disabled={!canSaveConfig}
                                     />
 
                                     {/* 操作按钮 */}
@@ -311,10 +338,10 @@ export default function SettingsView({ onError, onMessage, theme, onThemeChange 
                                         {item.sensitive && (
                                             <button
                                                 className="btn settings-item-toggle"
-                                                onClick={() => toggleReveal(item.key)}
-                                                title={isRevealed ? '隐藏' : '显示'}
+                                                onClick={() => { void toggleReveal(item.key); }}
+                                                title={canRevealSensitive ? (isRevealed ? '隐藏' : '显示') : '仅 super_admin 可查看'}
                                             >
-                                                {isRevealed ? '🙈' : '👁️'}
+                                                {canRevealSensitive ? (isRevealed ? '🙈' : '👁️') : '🔒'}
                                             </button>
                                         )}
                                         {isModified && (

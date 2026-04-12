@@ -7,19 +7,19 @@ import { AuditLogsService } from './audit-logs.service';
 export class AuditLogsController {
   constructor(private readonly auditLogsService: AuditLogsService) {}
 
-  @Roles('super_admin')
+  @Roles('project_manager', 'pm', 'super_admin')
   @Get()
   list(@Query('projectId') projectId?: string, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.auditLogsService.list(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('super_admin')
+  @Roles('project_manager', 'pm', 'super_admin')
   @Get('chatbot')
   listChatbot(@Query('projectId') projectId?: string, @Req() req?: { user?: { sub?: number; role?: string } }) {
     return this.auditLogsService.listChatbot(req?.user, projectId ? Number(projectId) : undefined);
   }
 
-  @Roles('super_admin')
+  @Roles('project_manager', 'pm', 'super_admin')
   @Get('export')
   async exportCsv(
     @Query('projectId') projectId?: string,

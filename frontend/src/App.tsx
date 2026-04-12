@@ -269,9 +269,15 @@ function App() {
     } catch (err) {
       if (signal.aborted) return;
       console.error('[refreshAll] error:', err);
-      if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+      if (err instanceof Error && (err.message === 'UNAUTHORIZED' || (err as Error & { status?: number }).status === 401)) {
         logout();
         setError('登录已失效，请重新登录。');
+      } else if (err instanceof Error && ((err as Error & { status?: number }).status === 403 || err.message === 'FORBIDDEN')) {
+        if (err.message.includes('No membership in organization')) {
+          setError('当前账号尚未加入组织，无法加载数据。请联系管理员为该账号添加组织成员关系。');
+        } else {
+          setError('当前账号暂无访问权限，请联系管理员检查组织或项目授权。');
+        }
       } else {
         setError('数据加载失败，请确认后端服务已启动。');
       }
@@ -370,9 +376,12 @@ function App() {
   const userRole = String(user?.role || '');
   const { activeOrgId, orgList } = useOrgStore();
   const myOrgRole = orgList.find(o => o.id === activeOrgId)?.orgRole ?? null;
+  const activeOrgName = orgList.find((o) => o.id === activeOrgId)?.name ?? '未选择';
   const isSuperAdmin = userRole === 'super_admin';
   const isProjectManager = userRole === 'project_manager';
-  const canManageUsers = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
+  const canAccessAuditLogs = isSuperAdmin || isProjectManager || userRole === 'pm';
+  const canAccessSystemConfig = isSuperAdmin || isProjectManager || userRole === 'pm';
+  const canManageUserAccounts = isSuperAdmin || isProjectManager;
   const canWrite = isSuperAdmin || isProjectManager || ['owner', 'admin', 'member'].includes(myOrgRole ?? '');
   const canManageAdmin = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
   const canAccessAdminPlatform = canManageAdmin;
@@ -1128,10 +1137,20 @@ function App() {
   }, [canManageAdmin, view]);
 
   useEffect(() => {
-    if (view === 'audit' && canManageUsers) {
+    if (view === 'audit' && !canAccessAuditLogs) {
+      setView('dashboard');
+      return;
+    }
+    if (view === 'audit' && canAccessAuditLogs) {
       void loadAuditLogs();
     }
-  }, [view, selectedProjectId, canManageUsers]);
+  }, [view, selectedProjectId, canAccessAuditLogs]);
+
+  useEffect(() => {
+    if (view === 'settings' && !canAccessSystemConfig) {
+      setView('dashboard');
+    }
+  }, [view, canAccessSystemConfig]);
 
   const [feishuRecords, setFeishuRecords] = useState<FeishuRecord[]>([]);
   const [feishuLoading, setFeishuLoading] = useState(false);
@@ -2571,6 +2590,7 @@ function App() {
         {view === 'feishu' && (
           <FeishuView
             canWrite={canWrite}
+            activeOrgName={activeOrgName}
             selectedProjectName={selectedProjectName}
             selectedProjectId={selectedProjectId}
             feishuForm={feishuForm}
@@ -2642,8 +2662,10 @@ function App() {
             aiReport={aiReport}
             aiReportSource={aiReportSource}
             onGenerate={generateReport}
+            activeOrgName={activeOrgName}
             projects={projects}
             selectedProjectId={selectedProjectId}
+            selectedProjectName={selectedProjectName}
             onSelectProject={handleProjectSelect}
           />
         )}
@@ -2657,7 +2679,7 @@ function App() {
           />
         )}
 
-        {view === 'audit' && canManageUsers && (
+        {view === 'audit' && canAccessAuditLogs && (
           <AuditView
             auditLogs={auditLogs}
             chatbotAuditLogs={chatbotAuditLogs}
@@ -2665,16 +2687,25 @@ function App() {
           />
         )}
 
-        {view === 'settings' && canManageUsers && (
-          <SettingsView onError={setError} onMessage={setMessage} theme={theme} onThemeChange={setTheme} />
+        {view === 'settings' && canAccessSystemConfig && (
+          <SettingsView
+            onError={setError}
+            onMessage={setMessage}
+            theme={theme}
+            onThemeChange={setTheme}
+            canRevealSensitive={isSuperAdmin}
+            canSaveConfig={isSuperAdmin}
+          />
         )}
 
         {view === 'project-access' && canManageAdmin && (
           <ProjectAccessView
             users={users}
             projects={projects}
-            canManageUsers={canManageUsers}
+            canManageUserAccounts={canManageUserAccounts}
+            canDeleteUserAccounts={isSuperAdmin}
             canManageProjectMembership={canManageAdmin}
+            currentUserId={user?.id}
             onError={setError}
             onMessage={setMessage}
             onReloadUsers={async () => {
@@ -2732,8 +2763,10 @@ function App() {
 
         {view === 'task-center' && (
           <TaskCenterView
+            orgName={activeOrgName}
             projectId={selectedProjectId}
             projectName={selectedProjectName}
+            onNavigate={setView}
           />
         )}
 

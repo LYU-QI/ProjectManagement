@@ -1,26 +1,16 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { Observable, tap } from 'rxjs';
-import { PrismaService } from '../database/prisma.service';
-
-type AuthUser = {
-  sub?: number;
-  name?: string;
-  role?: string;
-};
+import { AuditOutcome } from '@prisma/client';
+import { Observable, catchError, tap, throwError } from 'rxjs';
+import { AuditLogWriterService } from './audit-log-writer.service';
+import { AuditableRequest } from './audit.types';
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly auditLogWriter: AuditLogWriterService) { }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = context.switchToHttp().getRequest<{
-      method: string;
-      originalUrl?: string;
-      body?: Record<string, unknown>;
-      user?: AuthUser;
-      params?: Record<string, string>;
-    }>();
+    const req = context.switchToHttp().getRequest<AuditableRequest>();
+    const res = context.switchToHttp().getResponse<{ statusCode?: number }>();
 
     const method = req.method?.toUpperCase();
     if (!method || method === 'GET' || method === 'OPTIONS') {
@@ -30,34 +20,27 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => {
-          const path = req.originalUrl ?? '';
-          const isLogin = path.includes('/api/v1/auth/login');
-          const rawBody = isLogin ? { username: req.body?.username } : req.body;
-          const requestBody = rawBody
-            ? (JSON.parse(JSON.stringify(rawBody)) as Prisma.InputJsonValue)
-            : undefined;
-          const projectIdFromBody = Number(req.body?.projectId);
-          const projectIdFromParam = Number(req.params?.id);
-          const projectId = Number.isFinite(projectIdFromBody)
-            ? projectIdFromBody
-            : Number.isFinite(projectIdFromParam)
-              ? projectIdFromParam
-              : null;
-
-          void this.prisma.auditLog
-            .create({
-              data: {
-                userId: req.user?.sub,
-                userName: req.user?.name,
-                userRole: req.user?.role,
-                method,
-                path,
-                projectId: projectId ?? undefined,
-                requestBody: requestBody as any
-              }
-            })
-            .catch(() => undefined);
+          void this.auditLogWriter.write({
+            req,
+            outcome: 'success',
+            statusCode: res.statusCode ?? 200
+          });
         }
+      }),
+      catchError((error: unknown) => {
+        const errorStatus = typeof error === 'object' && error !== null && 'status' in error
+          ? Number((error as { status?: unknown }).status)
+          : undefined;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        void this.auditLogWriter.write({
+          req,
+          outcome: 'failed',
+          statusCode: Number.isFinite(errorStatus) ? errorStatus : 500,
+          errorMessage
+        });
+
+        return throwError(() => error);
       })
     );
   }
