@@ -101,11 +101,19 @@ export default function SettingsView({
             onError('仅 super_admin 可保存系统配置。');
             return;
         }
+        const changedItems = items.filter((item) => editValues[item.key] !== item.value);
+        const sensitiveChangedItems = changedItems.filter((item) => item.sensitive);
+        const confirmMessage = sensitiveChangedItems.length > 0
+            ? `确认保存 ${changedItems.length} 项配置变更吗？其中包含 ${sensitiveChangedItems.length} 项敏感配置，部分变更可能需要重启后端服务才能生效。`
+            : `确认保存 ${changedItems.length} 项配置变更吗？部分变更可能需要重启后端服务才能生效。`;
+        if (!window.confirm(confirmMessage)) {
+            return;
+        }
         setSaving(true);
         try {
             // 只发送变更的字段
             const updates: Record<string, string> = {};
-            for (const item of items) {
+            for (const item of changedItems) {
                 if (editValues[item.key] !== item.value) {
                     updates[item.key] = editValues[item.key];
                 }

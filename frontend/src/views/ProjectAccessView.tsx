@@ -18,6 +18,18 @@ type Props = {
 
 const USER_ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_manager', 'pm', 'member', 'viewer'];
 
+const USER_ROLE_LABELS: Record<UserItem['role'], string> = {
+  super_admin: '超级管理员',
+  project_manager: '项目主管',
+  pm: '项目经理',
+  member: '成员',
+  viewer: '访客'
+};
+
+function getUserRoleLabel(role: UserItem['role']) {
+  return USER_ROLE_LABELS[role] ?? role;
+}
+
 export default function ProjectAccessView({
   users,
   projects,
@@ -68,6 +80,9 @@ export default function ProjectAccessView({
       onError('请选择用户和项目');
       return;
     }
+    const userLabel = userOptions.find((item) => item.value === form.userId)?.label ?? `用户 #${form.userId}`;
+    const projectLabel = projectOptions.find((item) => item.value === form.projectId)?.label ?? `项目 #${form.projectId}`;
+    if (!window.confirm(`确认授予 ${userLabel} 在 ${projectLabel} 中的「${form.role}」权限吗？`)) return;
     try {
       await createProjectMembership({
         userId: Number(form.userId),
@@ -130,6 +145,7 @@ export default function ProjectAccessView({
       onError('密码至少 6 位');
       return;
     }
+    if (!window.confirm(`确认将用户 ${user.username} 的密码重置为新值吗？此操作会立即生效。`)) return;
     try {
       await resetUserPassword(user.id, next.trim());
       onMessage(`用户 ${user.username} 密码已重置`);
@@ -141,10 +157,13 @@ export default function ProjectAccessView({
   const onUpdateRole = async (user: UserItem, role: UserItem['role']) => {
     if (!canManageUserAccounts) return;
     if (role === user.role) return;
+    if (!window.confirm(`确认将用户 ${user.username} 的角色从「${getUserRoleLabel(user.role)}」调整为「${getUserRoleLabel(role)}」吗？`)) {
+      return;
+    }
     try {
       setUpdatingUserId(user.id);
       await updateUserRole(user.id, role);
-      onMessage(`用户 ${user.username} 角色已更新为 ${role}`);
+      onMessage(`用户 ${user.username} 角色已更新为 ${getUserRoleLabel(role)}`);
       await onReloadUsers();
     } catch (err) {
       onError(err instanceof Error ? err.message : '更新用户角色失败');
@@ -202,7 +221,7 @@ export default function ProjectAccessView({
               onChange={(e) => setNewUserForm((prev) => ({ ...prev, role: e.target.value as UserItem['role'] }))}
             >
               {USER_ROLE_OPTIONS.map((item) => (
-                <option key={`new-role-${item}`} value={item}>{item}</option>
+                <option key={`new-role-${item}`} value={item}>{getUserRoleLabel(item)}</option>
               ))}
             </ThemedSelect>
             <button className="btn btn-primary" type="button" disabled={!canManageUserAccounts} onClick={() => void onCreateUser()}>
@@ -227,7 +246,7 @@ export default function ProjectAccessView({
                   <td>{u.id}</td>
                   <td>{u.name}</td>
                   <td>{u.username}</td>
-                  <td>{u.role}</td>
+                  <td>{getUserRoleLabel(u.role)}</td>
                   <td>
                     <ThemedSelect
                       value={u.role}
@@ -235,7 +254,7 @@ export default function ProjectAccessView({
                       onChange={(e) => void onUpdateRole(u, e.target.value as UserItem['role'])}
                     >
                       {USER_ROLE_OPTIONS.map((item) => (
-                        <option key={item} value={item}>{item}</option>
+                        <option key={item} value={item}>{getUserRoleLabel(item)}</option>
                       ))}
                     </ThemedSelect>
                   </td>
