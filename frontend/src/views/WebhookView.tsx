@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import React, { Fragment, useState, type FormEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 const AVAILABLE_EVENTS = [
   'requirement.created',
@@ -64,7 +65,7 @@ export default function WebhookView() {
     );
   }
 
-  function submitCreate(e: React.FormEvent) {
+  function submitCreate(e: FormEvent) {
     e.preventDefault();
     if (!createName.trim() || !createUrl.trim() || createEvents.length === 0) {
       setError('请填写名称、URL并选择至少一个事件');
@@ -183,10 +184,20 @@ export default function WebhookView() {
         </div>
       )}
 
-      {loading && <p>加载中...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载 Webhook"
+          description="正在同步回调地址、订阅事件和最近投递状态。"
+        />
+      )}
 
       {!loading && webhooks.length === 0 && (
-        <p className="muted">暂无 Webhook，请创建一个。</p>
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无 Webhook"
+          description="当前还没有创建任何 Webhook。创建后即可接收项目事件回调。"
+        />
       )}
 
       {!loading && webhooks.length > 0 && (
@@ -203,7 +214,7 @@ export default function WebhookView() {
           </thead>
           <tbody>
             {webhooks.map((wh) => (
-              <>
+              <Fragment key={wh.id}>
                 <tr key={wh.id}>
                   <td>{wh.name}</td>
                   <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wh.url}</td>
@@ -239,7 +250,13 @@ export default function WebhookView() {
                             <button className="btn" style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }} disabled={deliveryPage * 20 >= deliveriesTotal} onClick={() => loadDeliveries(wh.id, deliveryPage + 1)}>下一页</button>
                           </div>
                         </div>
-                        {deliveries.length === 0 && <p className="muted">暂无投递记录</p>}
+                        {deliveries.length === 0 && (
+                          <AsyncStatePanel
+                            tone="empty"
+                            title="暂无投递记录"
+                            description="该 Webhook 还没有历史投递结果，可以先发送一次测试消息。"
+                          />
+                        )}
                         {deliveries.map((d) => (
                           <div key={d.id} style={{ display: 'flex', gap: '1rem', padding: '0.3rem 0', borderBottom: '1px solid var(--color-border)', fontSize: '0.85rem' }}>
                             <span style={{ color: d.success ? 'var(--color-success, green)' : 'var(--color-error, red)', minWidth: 60 }}>
@@ -255,7 +272,7 @@ export default function WebhookView() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

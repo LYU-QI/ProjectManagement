@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { apiDelete, apiGet, apiPost, apiPatch } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 export type FeishuUserItem = {
     id: number;
@@ -145,8 +146,19 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
             )}
 
             {loading ? (
-                <p>加载中...</p>
+                <AsyncStatePanel
+                    tone="loading"
+                    title="正在加载飞书负责人映射"
+                    description="正在同步显示名称与飞书 Open ID 的映射关系。"
+                />
             ) : (
+                users.length === 0 ? (
+                    <AsyncStatePanel
+                        tone="empty"
+                        title="暂无负责人映射"
+                        description="当前还没有登记任何飞书负责人。新增后，任务指派同步才能进行安全匹配。"
+                    />
+                ) : (
                 <table className="table">
                     <thead>
                         <tr>
@@ -157,14 +169,7 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                         </tr>
                     </thead>
                     <tbody>
-                        {users.length === 0 ? (
-                            <tr>
-                                <td colSpan={canWrite ? 4 : 3} className="feishu-users-empty">
-                                    暂未登记任何负责人映射。
-                                </td>
-                            </tr>
-                        ) : (
-                            users.map((u) => (
+                        {users.map((u) => (
                                 <tr key={u.id}>
                                     <td>{u.id}</td>
                                     <td>
@@ -214,10 +219,10 @@ export default function FeishuUsersView({ canWrite }: FeishuUsersViewProps) {
                                         </td>
                                     )}
                                 </tr>
-                            ))
-                        )}
+                            ))}
                     </tbody>
                 </table>
+                )
             )}
         </div>
     );

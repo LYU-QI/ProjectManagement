@@ -20,17 +20,17 @@ type Props = {
 };
 
 const STATUS_COLS: Array<{ key: SprintStatus; label: string }> = [
-  { key: 'planning', label: 'Planning' },
-  { key: 'active', label: 'Active' },
-  { key: 'completed', label: 'Completed' },
-  { key: 'cancelled', label: 'Cancelled' }
+  { key: 'planning', label: '规划中' },
+  { key: 'active', label: '进行中' },
+  { key: 'completed', label: '已完成' },
+  { key: 'cancelled', label: '已取消' }
 ];
 
 const STATUS_LABELS: Record<SprintStatus, string> = {
-  planning: 'Planning',
-  active: 'Active',
-  completed: 'Completed',
-  cancelled: 'Cancelled'
+  planning: '规划中',
+  active: '进行中',
+  completed: '已完成',
+  cancelled: '已取消'
 };
 
 const STATUS_BADGE: Record<SprintStatus, string> = {

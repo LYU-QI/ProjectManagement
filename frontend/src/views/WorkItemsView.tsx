@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import TableToolbar from '../components/TableToolbar';
+import PaginationBar from '../components/PaginationBar';
 import { createWorkItem, deleteWorkItem, getWorkItemHistory, listWorkItems, updateWorkItem } from '../api/work-items';
 import type { ProjectItem, UserItem, WorkItem, WorkItemHistory } from '../types';
 
@@ -29,6 +32,11 @@ const STATUS_LABELS: Record<WorkItemStatus, string> = {
   in_review: '审核中',
   done: '已完成',
   closed: '已关闭',
+};
+
+const TYPE_LABELS: Record<'todo' | 'issue', string> = {
+  todo: '待办事项',
+  issue: '问题项',
 };
 
 const PAGE_SIZE = 20;
@@ -111,7 +119,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
       }
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
-      setError(`加载 Todo/问题失败。（${detail}）`);
+      setError(`加载待办事项/问题项失败。（${detail}）`);
     } finally {
       setLoading(false);
     }
@@ -287,7 +295,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
 
   return (
     <div className="card workitems-page">
-      <div className="table-toolbar workitems-toolbar">
+      <TableToolbar className="workitems-toolbar">
         <div className="workitems-filters-grid">
           <div className="workitems-filter-item">
             <ThemedSelect value={scope} onChange={(e) => { setScope(e.target.value as Scope); setPage(1); }}>
@@ -306,8 +314,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
           <div className="workitems-filter-item">
             <ThemedSelect value={type} onChange={(e) => { setType(e.target.value as '' | 'todo' | 'issue'); setPage(1); }}>
               <option value="">全部类型</option>
-              <option value="todo">Todo</option>
-              <option value="issue">Issue</option>
+              <option value="todo">{TYPE_LABELS.todo}</option>
+              <option value="issue">{TYPE_LABELS.issue}</option>
             </ThemedSelect>
           </div>
           <div className="workitems-filter-item">
@@ -335,9 +343,15 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
             {canWrite && <button className="btn btn-primary" type="button" onClick={openCreate}>新增</button>}
           </div>
         </div>
-      </div>
+      </TableToolbar>
 
-      {loading && <p>Loading...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载工作项"
+          description="正在同步当前筛选条件下的任务与问题记录。"
+        />
+      )}
       {message && <p>{message}</p>}
       {error && <p className="warn">{error}</p>}
 
@@ -380,13 +394,13 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                   <strong>{item.title}</strong>
                   {item.description ? <div className="text-secondary">{item.description}</div> : null}
                 </td>
-                <td>{item.type === 'todo' ? 'Todo' : 'Issue'}</td>
+                <td>{TYPE_LABELS[item.type]}</td>
                 <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
                 <td>{item.assignee?.name || item.assigneeName || '-'}</td>
                 <td>{item.dueDate || '-'}</td>
                 <td>{item.project?.name || '个人'}</td>
                 <td className="operation-cell">
-                  <div className="req-action-menu">
+                  <div className="req-action-menu table-row-actions">
                     <button
                       className="btn req-action-trigger"
                       type="button"
@@ -409,25 +423,31 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         </table>
       </div>
 
-      <div className="panel-actions workitems-pagination">
-        <button className="btn" type="button" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>上一页</button>
-        <span>第 {page} / {totalPages} 页，记录数 {total}</span>
-        <button className="btn" type="button" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>下一页</button>
-      </div>
+      <PaginationBar
+        className="workitems-pagination"
+        onPrev={() => setPage((p) => Math.max(1, p - 1))}
+        onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+        hasPrev={page > 1}
+        hasNext={page < totalPages}
+        summary={`第 ${page} / ${totalPages} 页，记录数 ${total}`}
+      />
 
       {showEditor && canUsePortal && createPortal(
         <div className="req-modal-backdrop" onClick={() => setShowEditor(false)}>
-          <div className="req-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="req-modal-head">
-              <h3>{editing ? '编辑工作项' : '新增工作项'}</h3>
-              <div className="workitems-modal-head-actions">
+          <div className="req-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head modal-section-header">
+              <div className="modal-section-title">
+                <h3>{editing ? '编辑工作项' : '新增工作项'}</h3>
+                <div className="modal-section-subtitle">统一维护待办事项/问题项的归属、负责人、优先级和截止时间。</div>
+              </div>
+              <div className="modal-section-actions workitems-modal-head-actions">
                 <button className="btn btn-primary" form="workitems-editor-form" type="submit">
                   {editing ? '保存' : '创建'}
                 </button>
                 <button className="btn" type="button" onClick={() => setShowEditor(false)}>关闭</button>
               </div>
             </div>
-            <form id="workitems-editor-form" className="workitems-editor-form" onSubmit={submit}>
+            <form id="workitems-editor-form" className="workitems-editor-form modal-section-body" onSubmit={submit}>
               <div className="workitems-editor-row1">
                 <div className="workitems-field">
                   <label>归属</label>
@@ -454,8 +474,8 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 <div className="workitems-field">
                   <label>类型</label>
                   <ThemedSelect value={form.type} onChange={(e) => setForm((prev) => ({ ...prev, type: e.target.value as 'todo' | 'issue' }))}>
-                    <option value="todo">Todo</option>
-                    <option value="issue">Issue</option>
+                    <option value="todo">{TYPE_LABELS.todo}</option>
+                    <option value="issue">{TYPE_LABELS.issue}</option>
                   </ThemedSelect>
                 </div>
               </div>
@@ -497,12 +517,24 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
 
       {historyOf && canUsePortal && createPortal(
         <div className="req-modal-backdrop" onClick={() => setHistoryOf(null)}>
-          <div className="req-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="req-modal-head">
-              <h3>变更历史 · {historyOf.title}</h3>
-              <button className="btn" type="button" onClick={() => setHistoryOf(null)}>关闭</button>
+          <div className="req-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head modal-section-header">
+              <div className="modal-section-title">
+                <h3>变更历史 · {historyOf.title}</h3>
+                <div className="modal-section-subtitle">查看工作项关键字段的历史修改记录与操作人。</div>
+              </div>
+              <div className="modal-section-actions">
+                <button className="btn" type="button" onClick={() => setHistoryOf(null)}>关闭</button>
+              </div>
             </div>
-            {historyLoading ? <p>Loading...</p> : (
+            <div className="modal-section-body">
+            {historyLoading ? (
+              <AsyncStatePanel
+                tone="loading"
+                title="正在加载变更历史"
+                description="正在同步工作项关键字段的历史修改记录。"
+              />
+            ) : (
               <table className="table table-wrap">
                 <thead>
                   <tr>
@@ -529,6 +561,7 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 </tbody>
               </table>
             )}
+            </div>
           </div>
         </div>,
         document.body

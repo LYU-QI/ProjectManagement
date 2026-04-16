@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import html2canvas from 'html2canvas';
 import type { FeishuFormState, FeishuDependency } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 
 type ScheduleRow = FeishuFormState & { recordId: string };
@@ -388,7 +389,13 @@ export default function ScheduleView({
             <button className={viewMode === 'kanban' ? 'btn btn-primary' : 'btn'} type="button" onClick={() => setViewMode('kanban')}>看板</button>
           </div>
         </div>
-        {scheduleLoading && <p>Loading...</p>}
+        {scheduleLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载进度视图"
+            description="正在同步飞书任务、里程碑和依赖关系，请稍候。"
+          />
+        )}
         {scheduleError && <p className="warn">{scheduleError}</p>}
       </div>
 

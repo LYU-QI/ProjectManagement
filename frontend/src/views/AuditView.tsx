@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { AuditLogItem, ChatbotAuditItem } from '../types';
 import { API_BASE, TOKEN_KEY } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   auditLogs: AuditLogItem[];
@@ -129,6 +130,18 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
             仅操作类
           </label>
         </div>
+        {filteredChatbotLogs.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无 Chatbot 操作审计"
+            description="当前筛选条件下没有匹配到会话审计记录。可以放宽关键词或切换筛选条件后再查看。"
+            action={(
+              <button className="btn btn-small" onClick={() => onRefresh?.()}>
+                重新刷新
+              </button>
+            )}
+          />
+        ) : (
         <table className="table table-wrap">
           <thead><tr><th>时间</th><th>用户</th><th>结果</th><th>状态</th><th>模式</th><th>问题</th><th>流程</th></tr></thead>
           <tbody>
@@ -148,11 +161,9 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
                 <td><button className="btn btn-small" onClick={() => setSelectedId(log.id)}>查看流程</button></td>
               </tr>
             ))}
-            {filteredChatbotLogs.length === 0 && (
-              <tr><td colSpan={7} className="audit-empty-cell">暂无 chatbot 操作审计记录</td></tr>
-            )}
           </tbody>
         </table>
+        )}
       </div>
 
       {selected && (
@@ -207,6 +218,18 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
 
       <div className="card">
         <h3>系统审计日志</h3>
+        {auditLogs.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无系统审计日志"
+            description="当前范围下还没有系统级审计记录，或你当前角色没有可见的审计数据。"
+            action={(
+              <button className="btn btn-small" onClick={() => onRefresh?.()}>
+                重新刷新
+              </button>
+            )}
+          />
+        ) : (
         <table className="table">
           <thead><tr><th>时间</th><th>用户</th><th>角色</th><th>来源</th><th>结果</th><th>状态码</th><th>资源</th><th>方法</th><th>路径</th><th>详情</th></tr></thead>
           <tbody>
@@ -226,6 +249,7 @@ export default function AuditView({ auditLogs, chatbotAuditLogs, onRefresh }: Pr
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       {selectedSystemAudit && (

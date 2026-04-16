@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import {
   createBug, deleteBug, listBugs, updateBug,
@@ -30,27 +31,27 @@ const STATUS_LABELS: Record<BugStatus, string> = {
 
 const SEVERITY_OPTIONS: { value: BugSeverity | ''; label: string }[] = [
   { value: '', label: '全部严重' },
-  { value: 'blocker', label: 'Blocker' },
-  { value: 'critical', label: 'Critical' },
-  { value: 'major', label: 'Major' },
-  { value: 'minor', label: 'Minor' },
-  { value: 'trivial', label: 'Trivial' },
+  { value: 'blocker', label: '阻断' },
+  { value: 'critical', label: '严重' },
+  { value: 'major', label: '主要' },
+  { value: 'minor', label: '次要' },
+  { value: 'trivial', label: '轻微' },
 ];
 
 const PRIORITY_OPTIONS: { value: BugPriority | ''; label: string }[] = [
   { value: '', label: '全部优先级' },
-  { value: 'urgent', label: 'Urgent' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: 'urgent', label: '紧急' },
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
 ];
 
 const SEVERITY_LABELS: Record<BugSeverity, string> = {
-  blocker: 'Blocker', critical: 'Critical', major: 'Major', minor: 'Minor', trivial: 'Trivial'
+  blocker: '阻断', critical: '严重', major: '主要', minor: '次要', trivial: '轻微'
 };
 
 const PRIORITY_LABELS: Record<BugPriority, string> = {
-  urgent: 'Urgent', high: 'High', medium: 'Medium', low: 'Low'
+  urgent: '紧急', high: '高', medium: '中', low: '低'
 };
 
 const STATUS_COLOR: Record<BugStatus, string> = {
@@ -160,7 +161,7 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           priority: form.priority,
           assigneeName: form.assigneeName || null
         });
-        setMessage('Bug 已更新');
+        setMessage('缺陷已更新');
       } else {
         await createBug({
           projectId: selectedProjectId,
@@ -171,7 +172,7 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           priority: form.priority,
           assigneeName: form.assigneeName || undefined
         });
-        setMessage('Bug 已创建');
+        setMessage('缺陷已创建');
       }
       setShowCreate(false);
       setEditingBug(null);
@@ -192,10 +193,10 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
   }
 
   async function handleDelete(bug: Bug) {
-    if (!window.confirm(`确定删除 Bug「${bug.title}」？`)) return;
+    if (!window.confirm(`确定删除缺陷「${bug.title}」？`)) return;
     try {
       await deleteBug(bug.id);
-      setMessage('Bug 已删除');
+      setMessage('缺陷已删除');
       void load(page);
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败');
@@ -223,14 +224,14 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           style={{ flex: 1, minWidth: 160 }}
         />
         {canWrite && selectedProjectId && (
-          <button className="btn primary" onClick={openCreate}>+ 新建 Bug</button>
+          <button className="btn primary" onClick={openCreate}>+ 新建缺陷</button>
         )}
       </div>
 
       {/* Create Form */}
       {showCreate && canWrite && (
         <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '0.75rem', borderColor: 'var(--color-primary)', border: '1px solid var(--color-border-strong)' }}>
-          <h3 style={{ marginBottom: '1rem' }}>新建 Bug</h3>
+          <h3 style={{ marginBottom: '1rem' }}>新建缺陷</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
@@ -281,7 +282,7 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
       {/* Edit Panel */}
       {editingBug && (
         <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '0.75rem', borderColor: 'var(--color-primary)' }}>
-          <h3 style={{ marginBottom: '1rem' }}>编辑 Bug #{editingBug.id}</h3>
+          <h3 style={{ marginBottom: '1rem' }}>编辑缺陷 #{editingBug.id}</h3>
           <form onSubmit={handleSubmit}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
               <div>
@@ -330,11 +331,15 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
 
       {/* Table */}
       {loading ? (
-        <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.6 }}>加载中...</div>
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载缺陷列表"
+          description="正在同步当前项目下的缺陷状态、严重级别与优先级。"
+        />
       ) : !selectedProjectId ? (
         <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无 Bug</div>
+        <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无缺陷</div>
       ) : (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="table" style={{ margin: 0 }}>

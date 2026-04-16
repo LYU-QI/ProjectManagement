@@ -3,6 +3,7 @@ import { createProjectMembership, listProjectMemberships, removeProjectMembershi
 import { createUser, deleteUser, resetUserPassword, updateUserRole } from '../api/users';
 import type { ProjectItem, ProjectMembershipItem, UserItem } from '../types';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   users: UserItem[];
@@ -28,6 +29,17 @@ const USER_ROLE_LABELS: Record<UserItem['role'], string> = {
 
 function getUserRoleLabel(role: UserItem['role']) {
   return USER_ROLE_LABELS[role] ?? role;
+}
+
+const MEMBERSHIP_ROLE_LABELS: Record<'director' | 'manager' | 'member' | 'viewer', string> = {
+  director: '项目总监',
+  manager: '项目经理',
+  member: '项目成员',
+  viewer: '只读访客'
+};
+
+function getMembershipRoleLabel(role: 'director' | 'manager' | 'member' | 'viewer') {
+  return MEMBERSHIP_ROLE_LABELS[role] ?? role;
 }
 
 export default function ProjectAccessView({
@@ -82,7 +94,7 @@ export default function ProjectAccessView({
     }
     const userLabel = userOptions.find((item) => item.value === form.userId)?.label ?? `用户 #${form.userId}`;
     const projectLabel = projectOptions.find((item) => item.value === form.projectId)?.label ?? `项目 #${form.projectId}`;
-    if (!window.confirm(`确认授予 ${userLabel} 在 ${projectLabel} 中的「${form.role}」权限吗？`)) return;
+    if (!window.confirm(`确认授予 ${userLabel} 在 ${projectLabel} 中的「${getMembershipRoleLabel(form.role)}」权限吗？`)) return;
     try {
       await createProjectMembership({
         userId: Number(form.userId),
@@ -305,10 +317,10 @@ export default function ProjectAccessView({
             {projectOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
           </ThemedSelect>
           <ThemedSelect value={form.role} onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as 'director' | 'manager' | 'member' | 'viewer' }))}>
-            <option value="director">director</option>
-            <option value="manager">manager</option>
-            <option value="member">member</option>
-            <option value="viewer">viewer</option>
+            <option value="director">{getMembershipRoleLabel('director')}</option>
+            <option value="manager">{getMembershipRoleLabel('manager')}</option>
+            <option value="member">{getMembershipRoleLabel('member')}</option>
+            <option value="viewer">{getMembershipRoleLabel('viewer')}</option>
           </ThemedSelect>
           <button className="btn" type="button" disabled={!canManageProjectMembership} onClick={() => void onSubmit()}>
             新增/更新授权
@@ -323,6 +335,26 @@ export default function ProjectAccessView({
             {loading ? '刷新中...' : '刷新'}
           </button>
         </div>
+        {loading && rows.length === 0 && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载项目授权"
+            description="正在同步用户、项目和授权关系。"
+          />
+        )}
+        {!loading && rows.length === 0 && (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无授权记录"
+            description="当前还没有项目成员授权。可以在上方选择用户和项目后创建首条授权。"
+            action={(
+              <button className="btn btn-small" type="button" onClick={() => void loadRows()}>
+                刷新
+              </button>
+            )}
+          />
+        )}
+        {!loading && rows.length > 0 && (
         <table className="table table-wrap">
           <thead>
             <tr>
@@ -340,22 +372,20 @@ export default function ProjectAccessView({
                 <td>{row.id}</td>
                 <td>{row.user.name} (#{row.user.id})</td>
                 <td>{row.project.name} (#{row.project.id})</td>
-                <td>{row.role}</td>
+                <td>{getMembershipRoleLabel(row.role)}</td>
                 <td>{new Date(row.updatedAt).toLocaleString()}</td>
                 <td>
-                  <button className="btn btn-small" disabled={!canManageProjectMembership} onClick={() => void onRemove(row.id)}>
-                    删除
-                  </button>
+                  <div className="table-row-actions">
+                    <button className="btn btn-small btn-ghost-danger" disabled={!canManageProjectMembership} onClick={() => void onRemove(row.id)}>
+                      删除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="project-access-empty-cell">暂无授权记录</td>
-              </tr>
-            )}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

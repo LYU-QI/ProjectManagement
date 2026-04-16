@@ -9,6 +9,7 @@ import ThemedSelect from '../components/ui/ThemedSelect';
 import AutocompleteOwner from '../components/ui/AutocompleteOwner';
 import ScopeContextBar from '../components/ScopeContextBar';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   canWrite: boolean;
@@ -432,7 +433,28 @@ export default function FeishuView({
           </div>
         )}
 
-        {feishuLoading && <p>Loading...</p>}
+        {feishuLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载飞书记录"
+            description="正在读取当前作用域下的多维表格记录与筛选结果。"
+          />
+        )}
+        {!feishuLoading && filteredFeishuRecords.length === 0 && (
+          <AsyncStatePanel
+            tone={feishuError ? 'error' : 'empty'}
+            title={feishuError ? '飞书记录加载异常' : '当前范围暂无飞书记录'}
+            description={feishuError
+              ? '请先检查飞书权限、项目绑定表配置或后端服务状态，然后重新刷新。'
+              : '可以放宽筛选条件、切换项目，或先提交一条记录再查看列表。'}
+            action={(
+              <button className="btn" type="button" onClick={onLoadFeishu}>
+                重新刷新
+              </button>
+            )}
+          />
+        )}
+        {filteredFeishuRecords.length > 0 && (
         <div className="table-wrap">
           <table className={`table feishu-records-table ${visibleFields.length <= 2 ? 'feishu-records-table--narrow' : ''} ${compactTable ? 'table-compact' : ''}`}>
             <thead>
@@ -539,12 +561,14 @@ export default function FeishuView({
                   {canWrite && (
                     <td className="feishu-row-actions">
                       {isEditing && isDirty ? (
-                        <>
+                        <div className="table-row-actions table-row-actions--stack">
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveInlineEdit(record)}>保存</button>
                           <button className="btn" type="button" onClick={onCancelInlineEdit}>取消</button>
-                        </>
+                        </div>
                       ) : (
-                        <button className="btn" type="button" onClick={() => onRemoveFeishu(record)}>删除</button>
+                        <div className="table-row-actions">
+                          <button className="btn btn-ghost-danger" type="button" onClick={() => onRemoveFeishu(record)}>删除</button>
+                        </div>
                       )}
                     </td>
                   )}
@@ -554,6 +578,7 @@ export default function FeishuView({
             </tbody>
           </table>
         </div>
+        )}
 
         <PaginationBar
           onPrev={onPrevPage}

@@ -4,6 +4,7 @@ import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import useEventStream from '../hooks/useEventStream';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 const COLOR_MAP: Record<string, string> = {
   red: 'var(--color-danger)',
@@ -448,7 +449,13 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
             {aiConfigSaving ? '保存中...' : '保存配置'}
           </button>
         </div>
-        {aiConfigLoading && <div className="pm-muted-sm">正在加载 AI 配置...</div>}
+        {aiConfigLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载 AI 提示词配置"
+            description="正在同步当前项目的提示词配置与默认模板。"
+          />
+        )}
         {aiConfigError && <div className="warn pm-warn-top">{aiConfigError}</div>}
         <details className="pm-details-box">
           <summary className="pm-details-summary-strong">
@@ -507,8 +514,26 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                 {bulkSaving ? '处理中...' : '全选停用'}
               </button>
             </div>
-            {configLoading && <div className="pm-muted-sm">正在加载任务开关...</div>}
+            {configLoading && (
+              <AsyncStatePanel
+                tone="loading"
+                title="正在加载任务开关"
+                description="正在同步 PM 助手各任务类型的启停状态。"
+              />
+            )}
             {configError && <div className="warn pm-warn-top">{configError}</div>}
+            {!configLoading && !configError && jobConfigs.length === 0 && (
+              <AsyncStatePanel
+                tone="empty"
+                title="暂无任务开关配置"
+                description="当前还没有可编辑的任务开关记录，通常会在首次加载后自动生成。"
+                action={(
+                  <button className="btn" type="button" onClick={() => window.location.reload()}>
+                    重新加载
+                  </button>
+                )}
+              />
+            )}
             {jobConfigs.length > 0 && (
               <div className="pm-job-grid">
                 {filteredJobs.map((job) => {
@@ -552,8 +577,21 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
             </button>
           </div>
         </div>
-        {schedulesLoading && <div className="pm-muted-sm">正在加载定时配置...</div>}
+        {schedulesLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载定时配置"
+            description="正在同步各批次 Cron 与项目级时区设置。"
+          />
+        )}
         {schedulesError && <div className="warn pm-warn-top">{schedulesError}</div>}
+        {!schedulesLoading && !schedulesError && schedules.length === 0 && (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无定时任务配置"
+            description="当前范围下还没有定时批次配置。后端初始化后可在此页直接维护。"
+          />
+        )}
         {schedules.length > 0 && (
           <div className="pm-table-wrap">
             <table className="table pm-table-sm">
@@ -611,8 +649,21 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                 </option>
               ))}
             </ThemedSelect>
-            {jobsLoading && <div className="pm-muted-sm pm-text-top">正在加载任务列表...</div>}
+            {jobsLoading && (
+              <AsyncStatePanel
+                tone="loading"
+                title="正在加载任务列表"
+                description="正在同步可执行的 PM 助手任务类型。"
+              />
+            )}
             {jobsError && <div className="warn pm-warn-top">{jobsError}</div>}
+            {!jobsLoading && !jobsError && jobs.length === 0 && (
+              <AsyncStatePanel
+                tone="empty"
+                title="暂无可执行任务"
+                description="当前没有可运行的 PM 助手任务，请先检查后端任务定义或初始化数据。"
+              />
+            )}
           </div>
           <div>
             <label className="pm-form-label">任务说明</label>
@@ -721,9 +772,27 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
             </div>
           </div>
         )}
+        {logsLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载执行记录"
+            description="正在拉取当前项目范围内的 PM 助手执行历史。"
+          />
+        )}
         {logsError && <div className="warn pm-warn-bottom">{logsError}</div>}
         {filteredLogs.length === 0 && !logsLoading && (
-          <div className="pm-muted-sm">暂无执行记录</div>
+          <AsyncStatePanel
+            tone={logsError ? 'error' : 'empty'}
+            title={logsError ? '执行记录加载异常' : '暂无执行记录'}
+            description={logsError
+              ? '请检查后端服务或筛选条件，然后重新刷新执行记录。'
+              : '当前筛选范围下还没有执行结果。可以手动运行一次任务后再查看。'}
+            action={(
+              <button className="btn" type="button" onClick={() => void loadLogs()} disabled={logsLoading}>
+                重新刷新
+              </button>
+            )}
+          />
         )}
         {filteredLogs.length > 0 && (
           <div className="table-wrap">

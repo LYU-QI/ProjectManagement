@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import {
   addTestCases, createTestCase, createTestPlan, deleteTestCase, deleteTestPlan,
@@ -30,18 +31,24 @@ const STATUS_COLOR: Record<TestPlanStatus, string> = {
 const CASE_STATUS_OPTIONS: { value: TestCaseStatus | ''; label: string }[] = [
   { value: '', label: '全部' },
   { value: 'draft', label: '草稿' },
-  { value: 'active', label: '活跃' },
+  { value: 'active', label: '启用中' },
   { value: 'deprecated', label: '废弃' },
 ];
+
+const CASE_STATUS_LABELS: Record<TestCaseStatus, string> = {
+  draft: '草稿',
+  active: '启用中',
+  deprecated: '废弃',
+};
 const CASE_PRIORITY_OPTIONS: { value: TestCasePriority | ''; label: string }[] = [
   { value: '', label: '全部' },
-  { value: 'critical', label: 'Critical' },
-  { value: 'high', label: 'High' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'low', label: 'Low' },
+  { value: 'critical', label: '紧急' },
+  { value: 'high', label: '高' },
+  { value: 'medium', label: '中' },
+  { value: 'low', label: '低' },
 ];
 const CASE_PRIORITY_LABELS: Record<TestCasePriority, string> = {
-  critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low'
+  critical: '紧急', high: '高', medium: '中', low: '低'
 };
 
 const RESULT_OPTIONS = [
@@ -160,7 +167,7 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
   async function handleAddCases() {
     if (!planDetail || !selectedProjectId) return;
     try {
-      // Get all active test cases for this project that aren't in the plan yet
+      // Get all enabled test cases for this project that aren't in the plan yet
       const available = cases.filter(c => c.status !== 'deprecated');
       const existingIds = new Set(planDetail.items?.map(i => i.testCaseId) ?? []);
       const toAdd = available.map(c => c.id).filter(id => !existingIds.has(id));
@@ -337,7 +344,7 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
           {addingCases && (
             <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-bg-muted)', borderRadius: '8px' }}>
               <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>
-                将添加 {cases.filter(c => c.status !== 'deprecated').length} 个活跃用例到本计划。
+                将添加 {cases.filter(c => c.status !== 'deprecated').length} 个启用中的用例到本计划。
               </p>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button className="btn primary" onClick={() => void handleAddCases()}>确认添加</button>
@@ -362,7 +369,7 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
                 <tr key={item.id}>
                   <td>{item.testCase.title}</td>
                   <td style={{ fontSize: '0.8rem' }}>{CASE_PRIORITY_LABELS[item.testCase.priority]}</td>
-                  <td style={{ fontSize: '0.8rem', opacity: 0.6 }}>{item.testCase.status}</td>
+                  <td style={{ fontSize: '0.8rem', opacity: 0.6 }}>{CASE_STATUS_LABELS[item.testCase.status]}</td>
                   <td>
                     {canWrite ? (
                       <ThemedSelect
@@ -398,7 +405,13 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
 
       {/* Plans List */}
       {activeTab === 'plans' && (
-        loading ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.6 }}>加载中...</div>
+        loading ? (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载测试计划"
+            description="正在同步当前项目下的测试计划与关联用例。"
+          />
+        )
         : !selectedProjectId ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
         : plans.length === 0 ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无测试计划</div>
         : <div className="glass-card" style={{ padding: 0 }}>
@@ -443,7 +456,13 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
 
       {/* Cases List */}
       {activeTab === 'cases' && (
-        loading ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.6 }}>加载中...</div>
+        loading ? (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载测试用例"
+            description="正在同步当前项目下的测试用例、优先级与状态信息。"
+          />
+        )
         : !selectedProjectId ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
         : cases.length === 0 ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无测试用例</div>
         : <div className="glass-card" style={{ padding: 0 }}>
@@ -458,7 +477,7 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
                     {tc.description && <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>{tc.description.slice(0, 60)}{tc.description.length > 60 ? '...' : ''}</div>}
                   </td>
                   <td style={{ fontSize: '0.8rem' }}>{CASE_PRIORITY_LABELS[tc.priority]}</td>
-                  <td style={{ fontSize: '0.8rem', opacity: 0.7 }}>{tc.status}</td>
+                  <td style={{ fontSize: '0.8rem', opacity: 0.7 }}>{CASE_STATUS_LABELS[tc.status]}</td>
                   <td style={{ fontSize: '0.75rem', opacity: 0.5 }}>{tc.tags || '-'}</td>
                   <td style={{ fontSize: '0.8rem', opacity: 0.6 }}>{new Date(tc.createdAt).toLocaleDateString('zh-CN')}</td>
                   {canWrite && (

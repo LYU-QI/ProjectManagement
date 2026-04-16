@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { deleteOrganization, getOrganization, listOrganizations, updateOrganization } from '../api/organizations';
 import { useOrgStore } from '../store/useOrgStore';
 import { USER_KEY } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 function getGlobalRole(): string {
   try {
@@ -107,8 +108,29 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: 'var(--color-text-secondary)' }}>加载中...</div>;
-  if (!org) return <div style={{ padding: '2rem', color: 'var(--color-text-secondary)' }}>未选择组织</div>;
+  if (loading) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: 720 }}>
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载组织设置"
+          description="正在同步组织信息、套餐和成员上限配置。"
+        />
+      </div>
+    );
+  }
+
+  if (!org) {
+    return (
+      <div style={{ padding: '2rem', maxWidth: 720 }}>
+        <AsyncStatePanel
+          tone="empty"
+          title="未选择组织"
+          description="请先选择一个组织后，再查看或编辑组织设置。"
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '2rem', maxWidth: 600 }}>

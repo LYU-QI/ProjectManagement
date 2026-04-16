@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getConfigItems, saveConfigItems, ConfigItem } from '../api/settings';
 import { apiGet } from '../api/client';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 /** 分组图标映射 */
 const GROUP_ICONS: Record<string, string> = {
@@ -213,15 +214,6 @@ export default function SettingsView({
         }
     }
 
-    if (loading && items.length === 0) {
-        return (
-            <div className="card settings-loading-card">
-                <div className="settings-loading-icon">⚙️</div>
-                正在加载系统配置...
-            </div>
-        );
-    }
-
     const groups = getGroups();
 
     return (
@@ -281,6 +273,25 @@ export default function SettingsView({
             </div>
 
             {/* 配置分组 */}
+            {loading && items.length === 0 && (
+                <AsyncStatePanel
+                    tone="loading"
+                    title="正在加载系统配置"
+                    description="正在同步环境变量分组、掩码值与权限范围。"
+                />
+            )}
+            {!loading && groups.length === 0 && (
+                <AsyncStatePanel
+                    tone="empty"
+                    title="暂无系统配置项"
+                    description="当前没有可展示的配置项，请检查后端配置元数据或权限设置。"
+                    action={(
+                        <button className="btn" type="button" onClick={() => { void loadConfig(); }}>
+                            重新刷新
+                        </button>
+                    )}
+                />
+            )}
             {groups.map(({ group, groupLabel, icon, items: groupItems }) => (
                 <div key={group} className="card settings-group-card">
                     <div className="settings-group-head">

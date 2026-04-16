@@ -8,6 +8,48 @@ import type { Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
+
+const REQUIREMENT_PRIORITY_LABELS: Record<'low' | 'medium' | 'high', string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+};
+
+const REQUIREMENT_STATUS_LABELS: Record<
+  'draft' | 'in_review' | 'approved' | 'planned' | 'done',
+  string
+> = {
+  draft: '草稿',
+  in_review: '评审中',
+  approved: '已通过',
+  planned: '已排期',
+  done: '已完成',
+};
+
+function getRequirementPriorityLabel(value: 'low' | 'medium' | 'high') {
+  return REQUIREMENT_PRIORITY_LABELS[value] ?? value;
+}
+
+function getRequirementStatusLabel(
+  value: 'draft' | 'in_review' | 'approved' | 'planned' | 'done',
+) {
+  return REQUIREMENT_STATUS_LABELS[value] ?? value;
+}
+
+function normalizeRequirementPriority(value?: string): 'low' | 'medium' | 'high' {
+  if (value === 'low' || value === 'high') return value;
+  return 'medium';
+}
+
+function normalizeRequirementStatus(
+  value?: string,
+): 'draft' | 'in_review' | 'approved' | 'planned' | 'done' {
+  if (value === 'in_review' || value === 'approved' || value === 'planned' || value === 'done') {
+    return value;
+  }
+  return 'draft';
+}
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -392,20 +434,20 @@ export default function RequirementsView({
             onChange={(e) => setListFilters((prev) => ({ ...prev, priority: e.target.value }))}
           >
             <option value="">全部优先级</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
+            <option value="low">{getRequirementPriorityLabel('low')}</option>
+            <option value="medium">{getRequirementPriorityLabel('medium')}</option>
+            <option value="high">{getRequirementPriorityLabel('high')}</option>
           </ThemedSelect>
           <ThemedSelect
             value={listFilters.status}
             onChange={(e) => setListFilters((prev) => ({ ...prev, status: e.target.value }))}
           >
             <option value="">全部状态</option>
-            <option value="draft">draft</option>
-            <option value="in_review">in_review</option>
-            <option value="approved">approved</option>
-            <option value="planned">planned</option>
-            <option value="done">done</option>
+            <option value="draft">{getRequirementStatusLabel('draft')}</option>
+            <option value="in_review">{getRequirementStatusLabel('in_review')}</option>
+            <option value="approved">{getRequirementStatusLabel('approved')}</option>
+            <option value="planned">{getRequirementStatusLabel('planned')}</option>
+            <option value="done">{getRequirementStatusLabel('done')}</option>
           </ThemedSelect>
           <ThemedSelect
             value={listFilters.reviewDecision}
@@ -416,6 +458,13 @@ export default function RequirementsView({
             <option value="rejected">已驳回</option>
           </ThemedSelect>
         </div>
+        {filteredRequirements.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="没有匹配的需求"
+            description="当前筛选条件下没有找到需求。可以放宽关键词、优先级、状态或评审结果后再查看。"
+          />
+        ) : (
         <div className="table-wrap requirement-table-wrap">
           <table className={`table requirement-table ${compactTable ? 'table-compact' : ''}`}>
             <thead>
@@ -494,11 +543,13 @@ export default function RequirementsView({
                         onBlur={() => requirementEdit.finalize(r)}
                       >
                         {['low', 'medium', 'high'].map((option) => (
-                          <option key={option} value={option}>{option}</option>
+                          <option key={option} value={option}>
+                            {getRequirementPriorityLabel(option as 'low' | 'medium' | 'high')}
+                          </option>
                         ))}
                       </select>
                     ) : (
-                      rowDraft.priority
+                      getRequirementPriorityLabel(normalizeRequirementPriority(rowDraft.priority))
                     )}
                   </td>
                   <td
@@ -514,11 +565,15 @@ export default function RequirementsView({
                         onBlur={() => requirementEdit.finalize(r)}
                       >
                         {['draft', 'in_review', 'approved', 'planned', 'done'].map((option) => (
-                          <option key={option} value={option}>{option}</option>
+                          <option key={option} value={option}>
+                            {getRequirementStatusLabel(
+                              option as 'draft' | 'in_review' | 'approved' | 'planned' | 'done',
+                            )}
+                          </option>
                         ))}
                       </select>
                     ) : (
-                      rowDraft.status
+                      getRequirementStatusLabel(normalizeRequirementStatus(rowDraft.status))
                     )}
                   </td>
                   <td>{r.lastReviewDecision === 'approved' ? '已通过' : r.lastReviewDecision === 'rejected' ? '已驳回' : '-'}</td>
@@ -526,7 +581,7 @@ export default function RequirementsView({
                   {canWrite && (
                     <td className="operation-cell">
                       {isEditing && isDirty ? (
-                        <div className="req-inline-actions">
+                        <div className="table-row-actions table-row-actions--stack req-inline-actions">
                           <button className="btn" type="button" disabled={!isDirty} onClick={() => onSaveRequirement(r)}>保存</button>
                           <button className="btn" type="button" onClick={requirementEdit.cancel}>取消</button>
                         </div>
@@ -577,30 +632,31 @@ export default function RequirementsView({
                 </tr>
               );
             })}
-            {filteredRequirements.length === 0 && (
-              <tr>
-                <td colSpan={canWrite ? 8 : 7} className="req-muted-cell">没有匹配的需求</td>
-              </tr>
-            )}
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {createModalOpen && canWrite && (
         <div className="req-modal-backdrop" onClick={() => setCreateModalOpen(false)}>
-          <div className="req-modal req-requirement-create-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="req-modal-head">
-              <h3>新建需求</h3>
-              <button className="btn" type="button" onClick={() => setCreateModalOpen(false)}>关闭</button>
+          <div className="req-modal req-requirement-create-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head modal-section-header">
+              <div className="modal-section-title">
+                <h3>新建需求</h3>
+                <div className="modal-section-subtitle">支持手动创建或通过 AI 智能导入需求文档。</div>
+              </div>
+              <div className="modal-section-actions">
+                <button className="btn" type="button" onClick={() => setCreateModalOpen(false)}>关闭</button>
+              </div>
             </div>
-            <div className="req-create-row">
+            <div className="req-create-row modal-section-body">
               <form className="form req-create-form" onSubmit={submitRequirementInModal}>
                 <input name="title" placeholder="需求标题" required />
                 <ThemedSelect name="priority" defaultValue="medium">
-                  <option value="low">low</option>
-                  <option value="medium">medium</option>
-                  <option value="high">high</option>
+                  <option value="low">{getRequirementPriorityLabel('low')}</option>
+                  <option value="medium">{getRequirementPriorityLabel('medium')}</option>
+                  <option value="high">{getRequirementPriorityLabel('high')}</option>
                 </ThemedSelect>
                 <input name="description" placeholder="需求描述" required />
                 <button className="btn btn-primary" type="submit">新增需求</button>
@@ -628,26 +684,28 @@ export default function RequirementsView({
             onCloseRequirementChanges();
           }}
         >
-          <div className="modal-content req-action-modal req-change-history-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header req-action-modal-header">
-              <div>
+          <div className="modal-content req-action-modal req-change-history-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header modal-section-header">
+              <div className="modal-section-title">
                 <h3 className="req-title">变更时间线</h3>
-                <div className="req-subtitle">
+                <div className="req-subtitle modal-section-subtitle">
                   {changeHistoryDrawer.req.title}
                 </div>
               </div>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => {
-                  setChangeHistoryDrawer({ open: false, req: null, loading: false });
-                  onCloseRequirementChanges();
-                }}
-              >
-                关闭
-              </button>
+              <div className="modal-section-actions">
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => {
+                    setChangeHistoryDrawer({ open: false, req: null, loading: false });
+                    onCloseRequirementChanges();
+                  }}
+                >
+                  关闭
+                </button>
+              </div>
             </div>
-            <div className="drawer-body req-action-modal-body">
+            <div className="drawer-body req-action-modal-body modal-section-body">
               <div className="panel-actions req-drawer-actions">
                 <span className="muted">最近 {visibleChangeRows.length} 条</span>
                 <button className="btn" type="button" onClick={() => setChangeFiltersOpen((prev) => !prev)}>
@@ -674,8 +732,19 @@ export default function RequirementsView({
                 </div>
               )}
               {changeHistoryDrawer.loading ? (
-                <div className="req-loading">加载中...</div>
+                <AsyncStatePanel
+                  tone="loading"
+                  title="正在加载变更时间线"
+                  description="正在读取当前需求的版本变更记录与字段差异。"
+                />
               ) : (
+                visibleChangeRows.length === 0 ? (
+                  <AsyncStatePanel
+                    tone="empty"
+                    title="暂无变更记录"
+                    description="当前需求还没有匹配到变更历史，或当前筛选条件已经把记录过滤掉了。"
+                  />
+                ) : (
                 <div className="table-wrap">
                   <table className={`table req-change-table ${compactTable ? 'table-compact' : ''}`}>
                     <colgroup>
@@ -710,12 +779,10 @@ export default function RequirementsView({
                           </td>
                         </tr>
                       ))}
-                      {visibleChangeRows.length === 0 && (
-                        <tr><td colSpan={5} className="req-muted-cell">暂无变更记录</td></tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
+                )
               )}
             </div>
           </div>
@@ -727,12 +794,17 @@ export default function RequirementsView({
           className="modal-overlay req-modal-overlay req-action-overlay"
           onClick={() => setChangeDrawer({ open: false, req: null })}
         >
-          <div className="modal-content req-action-modal req-change-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header req-action-modal-header">
-              <h3>需求变更</h3>
-              <button className="btn" type="button" onClick={() => setChangeDrawer({ open: false, req: null })}>关闭</button>
+          <div className="modal-content req-action-modal req-change-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header modal-section-header">
+              <div className="modal-section-title">
+                <h3>需求变更</h3>
+                <div className="modal-section-subtitle">记录本次需求调整的版本号、变更内容和原因。</div>
+              </div>
+              <div className="modal-section-actions">
+                <button className="btn" type="button" onClick={() => setChangeDrawer({ open: false, req: null })}>关闭</button>
+              </div>
             </div>
-            <div className="drawer-body req-action-modal-body">
+            <div className="drawer-body req-action-modal-body modal-section-body">
               <div className="form req-single-col-form">
                 <div>
                   <label>需求</label>
@@ -763,9 +835,10 @@ export default function RequirementsView({
                 </div>
               </div>
             </div>
-            <div className="drawer-footer req-action-modal-footer">
+            <div className="drawer-footer req-action-modal-footer modal-section-footer">
+              <button className="btn" type="button" onClick={() => setChangeDrawer({ open: false, req: null })}>取消</button>
               <button
-                className="btn"
+                className="btn btn-primary"
                 type="button"
                 disabled={!changeForm.description.trim()}
                 onClick={() => {
@@ -790,24 +863,27 @@ export default function RequirementsView({
           className="modal-overlay req-modal-overlay req-action-overlay"
           onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}
         >
-          <div className="modal-content req-action-modal req-ai-review-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="drawer-header req-action-modal-header">
-              <div>
+          <div className="modal-content req-action-modal req-ai-review-modal modal-shell" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-header req-action-modal-header modal-section-header">
+              <div className="modal-section-title">
                 <h3 className="req-title">🤖 AI 需求评审</h3>
                 {aiReviewDrawer.req && (
-                  <div className="req-subtitle">
+                  <div className="req-subtitle modal-section-subtitle">
                     {aiReviewDrawer.req.title}
                   </div>
                 )}
               </div>
-              <button className="btn" type="button" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}>关闭</button>
+              <div className="modal-section-actions">
+                <button className="btn" type="button" onClick={() => setAiReviewDrawer({ open: false, req: null, loading: false, result: '' })}>关闭</button>
+              </div>
             </div>
-            <div className="drawer-body req-action-modal-body">
+            <div className="drawer-body req-action-modal-body modal-section-body">
               {aiReviewDrawer.loading ? (
-                <div className="req-loading">
-                  <div className="req-loading-icon">🤖</div>
-                  <div>AI 正在评审需求质量，请稍候...</div>
-                </div>
+                <AsyncStatePanel
+                  tone="loading"
+                  title="AI 正在评审需求"
+                  description="正在分析需求完整性、可执行性与潜在风险，请稍候。"
+                />
               ) : (
                 <div className="markdown-body req-ai-review-markdown">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -824,11 +900,20 @@ export default function RequirementsView({
       {importModal.open && (
         <div className="modal-overlay req-modal-overlay req-action-overlay req-import-overlay">
           <div
-            className="modal-content req-import-modal"
+            className="modal-content req-import-modal modal-shell"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="req-import-title">📄 AI 智能导入需求</h3>
+            <div className="modal-section-header">
+              <div className="modal-section-title">
+                <h3 className="req-import-title">📄 AI 智能导入需求</h3>
+                <div className="modal-section-subtitle">上传文档后自动识别需求条目，并在导入前完成逐条校对。</div>
+              </div>
+              <div className="modal-section-actions">
+                <button className="btn" type="button" onClick={() => setImportModal({ open: false, file: null, loading: false, error: '', result: null })}>关闭</button>
+              </div>
+            </div>
 
+            <div className="modal-section-body">
             <div className="req-import-upload">
               <div className="req-import-hint">
                 支持上传 Excel、Word、PDF 或 TXT 格式的文件，AI 将自动分析文件内容并提取为标准需求列表。
@@ -917,9 +1002,9 @@ export default function RequirementsView({
                             }}
                             className="req-import-cell-input"
                           >
-                            <option value="low">low</option>
-                            <option value="medium">medium</option>
-                            <option value="high">high</option>
+                            <option value="low">{getRequirementPriorityLabel('low')}</option>
+                            <option value="medium">{getRequirementPriorityLabel('medium')}</option>
+                            <option value="high">{getRequirementPriorityLabel('high')}</option>
                           </ThemedSelect>
                         </td>
                         <td>
@@ -946,8 +1031,9 @@ export default function RequirementsView({
                 </table>
               </div>
             )}
+            </div>
 
-            <div className="req-import-footer">
+            <div className="req-import-footer modal-section-footer">
               <button
                 className="btn"
                 type="button"
@@ -975,7 +1061,11 @@ export default function RequirementsView({
           <h3>PRD 版本库</h3>
         </div>
         {!selectedProjectId && (
-          <p className="muted">请选择项目后再管理 PRD 版本。</p>
+          <AsyncStatePanel
+            tone="empty"
+            title="请先选择项目"
+            description="PRD 版本库按项目维护。先在顶部切换目标项目后，才能创建、上传和对比 PRD 版本。"
+          />
         )}
         {selectedProjectId && (
           <>
@@ -1085,24 +1175,29 @@ export default function RequirementsView({
 
             <div className="card req-mt-12">
               <h3>版本列表</h3>
-              <table className="table">
-                <thead><tr><th>版本</th><th>文件</th><th>上传时间</th><th>操作</th></tr></thead>
-                <tbody>
-                  {prdVersions.map((v) => (
-                    <tr key={v.id}>
-                      <td>{v.versionLabel || '-'}</td>
-                      <td>{v.fileName}</td>
-                      <td>{new Date(v.createdAt).toLocaleString()}</td>
-                      <td>
-                        <button className="btn prd-btn-danger" type="button" onClick={() => void handleDeletePrdVersion(v.id)}>删除</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {prdVersions.length === 0 && (
-                    <tr><td colSpan={4} className="muted">暂无 PRD 版本</td></tr>
-                  )}
-                </tbody>
-              </table>
+              {prdVersions.length === 0 ? (
+                <AsyncStatePanel
+                  tone="empty"
+                  title="暂无 PRD 版本"
+                  description="当前 PRD 库还没有上传版本文件。选择文件并上传后，这里会展示版本时间线。"
+                />
+              ) : (
+                <table className="table">
+                  <thead><tr><th>版本</th><th>文件</th><th>上传时间</th><th>操作</th></tr></thead>
+                  <tbody>
+                    {prdVersions.map((v) => (
+                      <tr key={v.id}>
+                        <td>{v.versionLabel || '-'}</td>
+                        <td>{v.fileName}</td>
+                        <td>{new Date(v.createdAt).toLocaleString()}</td>
+                        <td>
+                          <button className="btn prd-btn-danger" type="button" onClick={() => void handleDeletePrdVersion(v.id)}>删除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {compareResult && (
@@ -1127,6 +1222,13 @@ export default function RequirementsView({
                   ))}
                 </div>
               </div>
+            )}
+            {!compareResult && prdVersions.length > 0 && (
+              <AsyncStatePanel
+                tone="empty"
+                title="尚未生成版本对比"
+                description="请选择一个旧版本和一个新版本后开始对比，系统会在这里展示摘要和逐段差异。"
+              />
             )}
           </>
         )}

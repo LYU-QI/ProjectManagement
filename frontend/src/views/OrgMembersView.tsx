@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiGet } from '../api/client';
 import { inviteOrgMember, listOrgMembers, removeOrgMember, updateOrgMemberRole } from '../api/organizations';
 import { useOrgStore } from '../store/useOrgStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 interface OrgMember {
   userId: number;
@@ -114,8 +115,6 @@ export default function OrgMembersView({ onError, onMessage }: OrgMembersViewPro
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: 'var(--color-text-secondary)' }}>加载中...</div>;
-
   return (
     <div style={{ padding: '2rem' }}>
       <h2 style={{ marginBottom: '1.5rem' }}>成员管理</h2>
@@ -200,6 +199,13 @@ export default function OrgMembersView({ onError, onMessage }: OrgMembersViewPro
 
       {/* 成员列表 */}
       <div style={{ display: 'grid', gap: '0.75rem' }}>
+        {loading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载组织成员"
+            description="正在同步当前组织的成员列表和可邀请用户。"
+          />
+        )}
         {members.map((member) => (
           <div key={member.userId} className="glass-card" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', color: '#fff', flexShrink: 0 }}>
@@ -231,8 +237,12 @@ export default function OrgMembersView({ onError, onMessage }: OrgMembersViewPro
             )}
           </div>
         ))}
-        {members.length === 0 && (
-          <div style={{ padding: '3rem', textAlign: 'center', opacity: 0.5 }}>暂无成员</div>
+        {!loading && members.length === 0 && (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无组织成员"
+            description="当前组织还没有可展示的成员，或你尚未完成成员邀请。"
+          />
         )}
       </div>
     </div>

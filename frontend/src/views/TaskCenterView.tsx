@@ -4,6 +4,8 @@ import useEventStream from '../hooks/useEventStream';
 import ScopeContextBar from '../components/ScopeContextBar';
 import type { ViewKey } from '../components/AstraeaLayout';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
+import TableToolbar from '../components/TableToolbar';
 
 type Props = {
   orgName?: string | null;
@@ -425,49 +427,53 @@ export default function TaskCenterView({ orgName, projectId, projectName, onNavi
             </div>
           ))}
         </div>
-        <div className="toolbar task-center-toolbar">
-          <input
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="搜索标题、摘要、项目、操作人"
-          />
-          <select value={source} onChange={(e) => setSource(e.target.value as TaskCenterSource | 'all')}>
-            {SOURCE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value as TaskCenterStatus | 'all')}>
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <select value={severity} onChange={(e) => setSeverity(e.target.value as TaskCenterSeverity | 'all')}>
-            {SEVERITY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <input
-            value={errorCodeQuery}
-            onChange={(e) => setErrorCodeQuery(e.target.value)}
-            placeholder="错误码，如 TC-FEI-403"
-          />
-          <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
-            {[30, 60, 100].map((value) => (
-              <option key={value} value={value}>
-                最近 {value} 条
-              </option>
-            ))}
-          </select>
-          <div className="muted">
-            统计窗口 {statsDays} 天，列表原始 {items.length} 条，筛后 {filteredItems.length} 条
+        <TableToolbar className="task-center-toolbar">
+          <div className="table-toolbar-section table-toolbar-section--grow">
+            <input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="搜索标题、摘要、项目、操作人"
+            />
+            <select value={source} onChange={(e) => setSource(e.target.value as TaskCenterSource | 'all')}>
+              {SOURCE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select value={status} onChange={(e) => setStatus(e.target.value as TaskCenterStatus | 'all')}>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <select value={severity} onChange={(e) => setSeverity(e.target.value as TaskCenterSeverity | 'all')}>
+              {SEVERITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              value={errorCodeQuery}
+              onChange={(e) => setErrorCodeQuery(e.target.value)}
+              placeholder="错误码，如 TC-FEI-403"
+            />
+            <select value={limit} onChange={(e) => setLimit(Number(e.target.value))}>
+              {[30, 60, 100].map((value) => (
+                <option key={value} value={value}>
+                  最近 {value} 条
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+          <div className="table-toolbar-section table-toolbar-section--actions">
+            <div className="table-toolbar-meta">
+              统计窗口 {statsDays} 天，列表原始 {items.length} 条，筛后 {filteredItems.length} 条
+            </div>
+          </div>
+        </TableToolbar>
         {error && <div className="warn task-center-error">{error}</div>}
         {lastRetryMessage && <div className="task-center-retry-note">{lastRetryMessage}</div>}
       </div>
@@ -487,6 +493,28 @@ export default function TaskCenterView({ orgName, projectId, projectName, onNavi
             ))}
           </div>
         )}
+        {loading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在刷新任务中心"
+            description="正在聚合 PM 助手、自动化规则、飞书与 AI 对话执行记录。"
+          />
+        )}
+        {!loading && filteredItems.length === 0 && (
+          <AsyncStatePanel
+            tone={error ? 'error' : 'empty'}
+            title={error ? '任务中心加载异常' : '当前范围暂无任务记录'}
+            description={error
+              ? '请先检查后端服务、筛选条件或上方错误码提示，再重新刷新。'
+              : '可以切换项目、放宽筛选条件，或等待新的执行记录写入后再查看。'}
+            action={(
+              <button className="btn" type="button" onClick={() => void loadItems()} disabled={loading}>
+                重新刷新
+              </button>
+            )}
+          />
+        )}
+        {!loading && filteredItems.length > 0 && (
         <table className="table table-wrap">
           <thead>
             <tr>
@@ -501,11 +529,6 @@ export default function TaskCenterView({ orgName, projectId, projectName, onNavi
             </tr>
           </thead>
           <tbody>
-            {filteredItems.length === 0 && (
-              <tr>
-                <td colSpan={8} className="muted">暂无任务记录。</td>
-              </tr>
-            )}
             {filteredItems.map((item) => (
               <Fragment key={item.id}>
                 <tr key={item.id}>
@@ -587,6 +610,7 @@ export default function TaskCenterView({ orgName, projectId, projectName, onNavi
             ))}
           </tbody>
         </table>
+        )}
       </div>
     </div>
   );

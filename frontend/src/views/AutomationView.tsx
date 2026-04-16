@@ -2,6 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api/client';
 import useEventStream from '../hooks/useEventStream';
 import { useWorkspaceStore } from '../store/useWorkspaceStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
+import TableToolbar from '../components/TableToolbar';
 
 const TRIGGERS = [
   { value: 'requirement_created', label: '需求创建时' },
@@ -222,27 +224,31 @@ export default function AutomationView() {
         </div>
       </div>
 
-      <div className="toolbar" style={{ marginBottom: '1rem', gap: '0.75rem', flexWrap: 'wrap' }}>
-        <input
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="搜索规则名称/描述"
-        />
-        <select value={triggerFilter} onChange={(e) => setTriggerFilter(e.target.value as 'all' | TriggerValue)}>
-          <option value="all">全部触发器</option>
-          {TRIGGERS.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        <select value={logStatusFilter} onChange={(e) => setLogStatusFilter(e.target.value as 'all' | 'success' | 'failed')}>
-          <option value="all">全部日志</option>
-          <option value="failed">失败日志</option>
-          <option value="success">成功日志</option>
-        </select>
-        <span className="muted">当前显示 {filteredItems.length} 条规则</span>
-      </div>
+      <TableToolbar>
+        <div className="table-toolbar-section table-toolbar-section--grow">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索规则名称/描述"
+          />
+          <select value={triggerFilter} onChange={(e) => setTriggerFilter(e.target.value as 'all' | TriggerValue)}>
+            <option value="all">全部触发器</option>
+            {TRIGGERS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <select value={logStatusFilter} onChange={(e) => setLogStatusFilter(e.target.value as 'all' | 'success' | 'failed')}>
+            <option value="all">全部日志</option>
+            <option value="failed">失败日志</option>
+            <option value="success">成功日志</option>
+          </select>
+        </div>
+        <div className="table-toolbar-section table-toolbar-section--actions">
+          <span className="table-toolbar-meta">当前显示 {filteredItems.length} 条规则</span>
+        </div>
+      </TableToolbar>
 
       {error && <p className="warn">{error}</p>}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
@@ -275,10 +281,27 @@ export default function AutomationView() {
         </div>
       )}
 
-      {loading && <p>加载中...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载自动化规则"
+          description="正在同步规则列表和最近执行状态。"
+        />
+      )}
 
       {!loading && filteredItems.length === 0 && (
-        <p className="muted">暂无自动化规则。</p>
+        <AsyncStatePanel
+          tone={error ? 'error' : 'empty'}
+          title={error ? '自动化规则加载异常' : '暂无自动化规则'}
+          description={error
+            ? '请检查接口返回、筛选条件或网络状态后重试。'
+            : '可以直接新建第一条规则，或放宽当前筛选条件。'}
+          action={(
+            <button className="btn" type="button" onClick={loadItems}>
+              重新刷新
+            </button>
+          )}
+        />
       )}
 
       {!loading && filteredItems.length > 0 && (

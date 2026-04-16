@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiDelete, apiGet, apiPost } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 interface ApiKeyItem {
   id: string;
@@ -121,10 +122,20 @@ export default function ApiKeysView() {
         </div>
       )}
 
-      {loading && <p>加载中...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载 API Keys"
+          description="正在同步当前可用的访问密钥和使用情况。"
+        />
+      )}
 
       {!loading && keys.length === 0 && (
-        <p className="muted">暂无 API Keys，请生成一个。</p>
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无 API Keys"
+          description="当前还没有可用的 API Key。生成后可用于外部系统集成。"
+        />
       )}
 
       {!loading && keys.length > 0 && (

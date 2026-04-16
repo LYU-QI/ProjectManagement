@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Worklog, FeishuFormState, UserItem } from '../types';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 
 type Props = {
@@ -138,7 +139,13 @@ export default function ResourcesView({
           <input type="date" value={formatDateInput(rangeStart)} disabled={preset !== 'custom'} onChange={(e) => setCustomStart(e.target.value)} />
           <input type="date" value={formatDateInput(rangeEnd)} disabled={preset !== 'custom'} onChange={(e) => setCustomEnd(e.target.value)} />
         </div>
-        {scheduleLoading && <p>Loading...</p>}
+        {scheduleLoading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载资源负载"
+            description="正在根据任务排期和工时明细计算负责人负载情况。"
+          />
+        )}
         {scheduleError && <p className="warn">{scheduleError}</p>}
       </div>
 
