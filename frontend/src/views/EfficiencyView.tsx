@@ -91,15 +91,15 @@ export default function EfficiencyView({ projectId, projectName }: Props) {
     <div>
       <section className="metrics-grid">
         <StatCard label="需求总数" value={m.requirementCount} />
-        <StatCard label="Bug 总数" value={m.bugCount} />
+        <StatCard label="缺陷总数" value={m.bugCount} />
         <StatCard label="工作项总数" value={m.workItemCount} />
         <StatCard label="总成本" value={`¥${fmtMoney(m.totalCost)}`} sub="人力+外包+云" />
       </section>
 
       <section className="dashboard-panels dashboard-panels-gap">
-        {/* Bug Stats */}
+        {/* 缺陷统计 */}
         <article className="card compact-card">
-          <h3>Bug 统计</h3>
+          <h3>缺陷统计</h3>
           <div className="eff-bug-grid">
             <div className="eff-bug-item">
               <span className="eff-bug-num">{m.bugCount}</span>
@@ -118,7 +118,7 @@ export default function EfficiencyView({ projectId, projectName }: Props) {
               <span className="muted">平均解决天数</span>
             </div>
           </div>
-          <RateBar value={bugResolvedPct} label="Bug 解决率" color="good" />
+          <RateBar value={bugResolvedPct} label="缺陷解决率" color="good" />
           <div className="eff-bug-bar-segments">
             <div className="eff-seg-row">
               <span className="muted">未解决</span>

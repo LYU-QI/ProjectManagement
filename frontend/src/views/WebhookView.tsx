@@ -78,7 +78,7 @@ export default function WebhookView() {
       events: createEvents
     })
       .then((res) => {
-        setMessage(`Webhook 已创建${res.secret ? `，密钥：${res.secret}（请妥善保存，仅显示一次）` : ''}`);
+        setMessage(`回调地址已创建${res.secret ? `，密钥：${res.secret}（请妥善保存，仅显示一次）` : ''}`);
         setShowCreate(false);
         setCreateName('');
         setCreateUrl('');
@@ -96,10 +96,10 @@ export default function WebhookView() {
   }
 
   function deleteWebhook(webhook: WebhookItem) {
-    if (!window.confirm(`确定删除 Webhook「${webhook.name}」？`)) return;
+    if (!window.confirm(`确定删除回调地址「${webhook.name}」？`)) return;
     apiDelete(`/webhooks/${webhook.id}`)
       .then(() => {
-        setMessage('Webhook 已删除');
+        setMessage('回调地址已删除');
         loadWebhooks();
       })
       .catch((e: Error) => setError(e.message));
@@ -142,7 +142,7 @@ export default function WebhookView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <button className="btn" onClick={loadWebhooks}>刷新</button>
-          <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => setShowCreate(true)}>新建 Webhook</button>
+          <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => setShowCreate(true)}>新建回调地址</button>
         </div>
       </div>
 
@@ -151,14 +151,14 @@ export default function WebhookView() {
 
       {showCreate && (
         <div className="card" style={{ marginBottom: '1rem' }}>
-          <h3>新建 Webhook</h3>
+          <h3>新建回调地址</h3>
           <form onSubmit={submitCreate}>
             <div style={{ marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.2rem' }}>名称</label>
-              <input className="glass-input" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="例如：Zapier Integration" required />
+              <input className="glass-input" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="例如：自动化平台同步" required />
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.2rem' }}>Endpoint URL</label>
+              <label style={{ display: 'block', marginBottom: '0.2rem' }}>回调地址 URL</label>
               <input className="glass-input" value={createUrl} onChange={(e) => setCreateUrl(e.target.value)} placeholder="https://..." type="url" required />
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
@@ -187,7 +187,7 @@ export default function WebhookView() {
       {loading && (
         <AsyncStatePanel
           tone="loading"
-          title="正在加载 Webhook"
+          title="正在加载回调地址"
           description="正在同步回调地址、订阅事件和最近投递状态。"
         />
       )}
@@ -195,8 +195,8 @@ export default function WebhookView() {
       {!loading && webhooks.length === 0 && (
         <AsyncStatePanel
           tone="empty"
-          title="暂无 Webhook"
-          description="当前还没有创建任何 Webhook。创建后即可接收项目事件回调。"
+          title="暂无回调地址"
+          description="当前还没有创建任何回调地址。创建后即可接收项目事件通知。"
         />
       )}
 
@@ -254,7 +254,7 @@ export default function WebhookView() {
                           <AsyncStatePanel
                             tone="empty"
                             title="暂无投递记录"
-                            description="该 Webhook 还没有历史投递结果，可以先发送一次测试消息。"
+                            description="该回调地址还没有历史投递结果，可以先发送一次测试消息。"
                           />
                         )}
                         {deliveries.map((d) => (

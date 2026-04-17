@@ -79,7 +79,7 @@ export default function SettingsView({
     /** 切换敏感字段显示 */
     async function toggleReveal(key: string) {
         if (!canRevealSensitive) {
-            onError('仅 super_admin 可查看敏感配置原值。');
+            onError('仅超级管理员可查看敏感配置原值。');
             return;
         }
         if (!rawValuesLoaded) {
@@ -99,7 +99,7 @@ export default function SettingsView({
     /** 保存所有配置 */
     async function handleSave() {
         if (!canSaveConfig) {
-            onError('仅 super_admin 可保存系统配置。');
+            onError('仅超级管理员可保存系统配置。');
             return;
         }
         const changedItems = items.filter((item) => editValues[item.key] !== item.value);
@@ -229,7 +229,7 @@ export default function SettingsView({
                             管理 backend/.env 中的环境变量，修改后部分配置需要重启后端服务才能生效。
                         </p>
                         <p className="settings-subtitle">
-                            当前权限：所有可访问角色仅可查看掩码配置；仅 super_admin 可查看敏感原值并保存。
+                            当前权限：所有可访问角色仅可查看掩码配置；仅超级管理员可查看敏感原值并保存。
                         </p>
                     </div>
                     <div className="settings-actions">
@@ -238,13 +238,13 @@ export default function SettingsView({
                             onChange={(e) => onThemeChange(e.target.value as 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal')}
                             className="settings-theme-select"
                         >
-                            <option value="light">☀️ 极光白（Light）</option>
-                            <option value="dark">🌊 深海蓝（Dark）</option>
-                            <option value="nebula">🔮 星云紫（Nebula）</option>
-                            <option value="forest">🌿 翠林绿（Forest）</option>
-                            <option value="sunset">🌅 落日橙（Sunset）</option>
-                            <option value="sakura">🌸 樱花粉（Sakura）</option>
-                            <option value="metal">⚙️ 金属黑（Metal）</option>
+                            <option value="light">☀️ 极光白（浅色主题）</option>
+                            <option value="dark">🌊 深海蓝（深色主题）</option>
+                            <option value="nebula">🔮 星云紫（星云风格）</option>
+                            <option value="forest">🌿 翠林绿（森林风格）</option>
+                            <option value="sunset">🌅 落日橙（暖色风格）</option>
+                            <option value="sakura">🌸 樱花粉（柔和粉调）</option>
+                            <option value="metal">⚙️ 金属黑（金属质感）</option>
                         </ThemedSelect>
                         <button
                             className="btn settings-mini-btn"
@@ -264,7 +264,7 @@ export default function SettingsView({
                             className={`btn settings-mini-btn settings-save-btn ${hasChanges ? 'has-changes' : 'settings-btn-dim'}`}
                             onClick={handleSave}
                             disabled={saving || !hasChanges || !canSaveConfig}
-                            title={canSaveConfig ? '保存配置' : '仅 super_admin 可保存系统配置'}
+                            title={canSaveConfig ? '保存配置' : '仅超级管理员可保存系统配置'}
                         >
                             {saving ? '[ 保存中... ]' : '[ 保存配置 ]'}
                         </button>
@@ -358,7 +358,7 @@ export default function SettingsView({
                                             <button
                                                 className="btn settings-item-toggle"
                                                 onClick={() => { void toggleReveal(item.key); }}
-                                                title={canRevealSensitive ? (isRevealed ? '隐藏' : '显示') : '仅 super_admin 可查看'}
+                                                title={canRevealSensitive ? (isRevealed ? '隐藏' : '显示') : '仅超级管理员可查看'}
                                             >
                                                 {canRevealSensitive ? (isRevealed ? '🙈' : '👁️') : '🔒'}
                                             </button>

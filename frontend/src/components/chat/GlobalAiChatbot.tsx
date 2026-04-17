@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, X, Send, Search, Sparkles, Loader2, Trash2, Radar, Wand2 } from 'lucide-react';
 import type { ViewKey } from '../AstraeaLayout';
 import { chatWithAi, type ChatMessage } from '../../api/ai';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { useWorkspaceStore } from '../../store/useWorkspaceStore';
+
+const GfmMarkdown = lazy(() => import('../markdown/GfmMarkdown'));
 
 interface GlobalAiChatbotProps {
   onViewChange: (view: ViewKey) => void;
@@ -324,9 +324,11 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
                 <div key={i} className={`chat-bubble ${m.role === 'assistant' ? 'chat-ai' : 'chat-user'}`}>
                   {m.role === 'assistant' ? (
                     <div className="chat-markdown markdown-body">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {m.content || '-'}
-                      </ReactMarkdown>
+                      <Suspense fallback={<div className="chatbot-markdown-loading">正在渲染回复...</div>}>
+                        <GfmMarkdown>
+                          {m.content || '-'}
+                        </GfmMarkdown>
+                      </Suspense>
                     </div>
                   ) : m.content}
                 </div>

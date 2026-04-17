@@ -96,7 +96,7 @@ export default function SprintBoardView({
         startDate: createForm.startDate || undefined,
         endDate: createForm.endDate || undefined
       });
-      setMessage('Sprint 已创建。');
+      setMessage('迭代已创建。');
       setShowCreate(false);
       setCreateForm({ name: '', goal: '', startDate: '', endDate: '' });
       void load();
@@ -120,7 +120,7 @@ export default function SprintBoardView({
       if (form.startDate !== undefined) data.startDate = String(form.startDate) || undefined;
       if (form.endDate !== undefined) data.endDate = String(form.endDate) || undefined;
       await updateSprint(id, data as Parameters<typeof updateSprint>[1]);
-      setMessage('Sprint 已更新。');
+      setMessage('迭代已更新。');
       setEditingId(null);
       setExpandedId(null);
       void load();
@@ -132,11 +132,11 @@ export default function SprintBoardView({
   }
 
   async function handleDelete(sprint: Sprint) {
-    if (!window.confirm(`确定删除 Sprint「${sprint.name}」？`)) return;
+    if (!window.confirm(`确定删除迭代「${sprint.name}」？`)) return;
     setError('');
     try {
       await deleteSprint(sprint.id);
-      setMessage('Sprint 已删除。');
+      setMessage('迭代已删除。');
       setExpandedId((prev) => (prev === sprint.id ? null : prev));
       void load();
     } catch (e) {
@@ -170,7 +170,7 @@ export default function SprintBoardView({
 
       <div className="sprint-toolbar">
         <span className="sprint-count">
-          共 {sprints.length} 个 Sprint
+          共 {sprints.length} 个迭代
         </span>
         {canWrite && (
           <button
@@ -179,7 +179,7 @@ export default function SprintBoardView({
             onClick={() => setShowCreate(true)}
             disabled={!selectedProjectId}
           >
-            + 新建 Sprint
+            + 新建迭代
           </button>
         )}
       </div>
@@ -187,15 +187,15 @@ export default function SprintBoardView({
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h3>新建 Sprint</h3>
+            <h3>新建迭代</h3>
             <form onSubmit={(e) => void handleCreate(e)}>
               <div className="form-group">
-                <label>Sprint 名称 *</label>
+                <label>迭代名称 *</label>
                 <input
                   className="glass-input"
                   value={createForm.name}
                   onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="例如：Sprint 1"
+                  placeholder="例如：第 1 次迭代"
                   required
                   autoFocus
                 />
@@ -206,7 +206,7 @@ export default function SprintBoardView({
                   className="glass-input"
                   value={createForm.goal}
                   onChange={(e) => setCreateForm((f) => ({ ...f, goal: e.target.value }))}
-                  placeholder="Sprint 目标描述..."
+                  placeholder="迭代目标描述..."
                   rows={3}
                 />
               </div>

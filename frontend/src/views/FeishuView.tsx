@@ -346,7 +346,7 @@ export default function FeishuView({
             </details>
           </div>
         )}
-        {!canWrite && <p className="warn">当前角色为只读（viewer），新增与修改操作已禁用。</p>}
+        {!canWrite && <p className="warn">当前角色为只读（访客），新增与修改操作已禁用。</p>}
         {feishuMessage && <p>{feishuMessage}</p>}
         {feishuError && <p className="warn">{feishuError}</p>}
       </div>

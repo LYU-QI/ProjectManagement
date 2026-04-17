@@ -202,11 +202,11 @@ export default function CapabilitiesView({
               <input value={description} onChange={(e) => setDescription(e.target.value)} disabled={!canWrite} />
             </div>
             <div className="capabilities-field">
-              <label>System Prompt</label>
+              <label>系统提示词</label>
               <textarea rows={8} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} disabled={!canWrite} />
             </div>
             <div className="capabilities-field">
-              <label>User Prompt Template</label>
+              <label>用户提示词模板</label>
               <textarea rows={12} value={userPromptTemplate} onChange={(e) => setUserPromptTemplate(e.target.value)} disabled={!canWrite} />
             </div>
             <div className="muted">
@@ -253,7 +253,7 @@ export default function CapabilitiesView({
               <input value={pmDescription} onChange={(e) => setPmDescription(e.target.value)} disabled={!canWrite} />
             </div>
             <div className="capabilities-field">
-              <label>System Prompt</label>
+              <label>系统提示词</label>
               <textarea
                 rows={10}
                 value={pmSystemPrompt}
@@ -262,7 +262,7 @@ export default function CapabilitiesView({
                 placeholder="留空则回退到旧项目配置、环境变量或内置默认模板"
               />
             </div>
-            <div className="muted">当前任务类型：{selectedPmJob.name}。这里只管理 System Prompt，运行时仍会自动拼接项目上下文和原始要点。</div>
+            <div className="muted">当前任务类型：{selectedPmJob.name}。这里只管理系统提示词，运行时仍会自动拼接项目上下文和原始要点。</div>
           </div>
         )}
       </div>

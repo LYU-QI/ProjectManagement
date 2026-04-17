@@ -56,7 +56,7 @@ export default function ApiKeysView() {
     })
       .then((res) => {
         setNewKey(res.key || null);
-        setMessage('API Key 已生成，请妥善保存，仅显示一次！');
+        setMessage('访问密钥已生成，请妥善保存，仅显示一次！');
         setShowCreate(false);
         setCreateName('');
         setCreatePermissions(['read']);
@@ -66,10 +66,10 @@ export default function ApiKeysView() {
   }
 
   function revokeKey(key: ApiKeyItem) {
-    if (!window.confirm(`确定撤销 API Key「${key.name}」？此操作不可恢复。`)) return;
+    if (!window.confirm(`确定撤销访问密钥「${key.name}」？此操作不可恢复。`)) return;
     apiDelete(`/api-keys/${key.id}`)
       .then(() => {
-        setMessage('API Key 已撤销');
+        setMessage('访问密钥已撤销');
         loadKeys();
       })
       .catch((e: Error) => setError(e.message));
@@ -80,7 +80,7 @@ export default function ApiKeysView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <button className="btn" onClick={loadKeys}>刷新</button>
-          <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => { setShowCreate(true); setNewKey(null); setMessage(''); }}>生成新 Key</button>
+          <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => { setShowCreate(true); setNewKey(null); setMessage(''); }}>生成新密钥</button>
         </div>
       </div>
 
@@ -89,7 +89,7 @@ export default function ApiKeysView() {
 
       {newKey && (
         <div className="card" style={{ marginBottom: '1rem', background: 'var(--color-warning-bg, #fff3cd)', border: '1px solid var(--color-warning, #856404)' }}>
-          <h3 style={{ color: 'var(--color-warning, #856404)' }}>新 API Key（仅显示一次，请立即复制）</h3>
+          <h3 style={{ color: 'var(--color-warning, #856404)' }}>新访问密钥（仅显示一次，请立即复制）</h3>
           <pre style={{ background: '#fff', padding: '0.5rem', borderRadius: '0.3rem', overflow: 'auto', fontSize: '0.85rem', wordBreak: 'break-all' }}>{newKey}</pre>
           <button className="btn" style={{ marginTop: '0.5rem' }} onClick={() => setNewKey(null)}>关闭</button>
         </div>
@@ -97,11 +97,11 @@ export default function ApiKeysView() {
 
       {showCreate && (
         <div className="card" style={{ marginBottom: '1rem' }}>
-          <h3>生成 API Key</h3>
+          <h3>生成访问密钥</h3>
           <form onSubmit={submitCreate}>
             <div style={{ marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.2rem' }}>名称</label>
-              <input className="glass-input" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="例如：Zapier Integration" required />
+              <input className="glass-input" value={createName} onChange={(e) => setCreateName(e.target.value)} placeholder="例如：自动化平台接入" required />
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.2rem' }}>权限</label>
@@ -125,7 +125,7 @@ export default function ApiKeysView() {
       {loading && (
         <AsyncStatePanel
           tone="loading"
-          title="正在加载 API Keys"
+          title="正在加载访问密钥"
           description="正在同步当前可用的访问密钥和使用情况。"
         />
       )}
@@ -133,8 +133,8 @@ export default function ApiKeysView() {
       {!loading && keys.length === 0 && (
         <AsyncStatePanel
           tone="empty"
-          title="暂无 API Keys"
-          description="当前还没有可用的 API Key。生成后可用于外部系统集成。"
+          title="暂无访问密钥"
+          description="当前还没有可用的访问密钥。生成后可用于外部系统集成。"
         />
       )}
 
@@ -143,7 +143,7 @@ export default function ApiKeysView() {
           <thead>
             <tr>
               <th>名称</th>
-              <th>Key 前缀</th>
+              <th>密钥前缀</th>
               <th>权限</th>
               <th>最近使用</th>
               <th>创建时间</th>
@@ -168,10 +168,10 @@ export default function ApiKeysView() {
       )}
 
       <div className="card" style={{ marginTop: '1rem' }}>
-        <h3>API Key 使用说明</h3>
+        <h3>访问密钥使用说明</h3>
         <p style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-          在请求头中添加 <code>X-Api-Key: pk_your_key_here</code> 即可使用 API Key 认证。
-          API Key 可以代替 JWT Token 用于外部系统集成。
+          在请求头中添加 <code>X-Api-Key: pk_your_key_here</code> 即可使用访问密钥认证。
+          访问密钥可以代替 JWT 令牌，用于外部系统集成。
         </p>
       </div>
     </div>

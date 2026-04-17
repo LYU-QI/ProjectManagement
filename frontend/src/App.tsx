@@ -1,10 +1,9 @@
-﻿import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { FormEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
 import { listOrganizations } from './api/organizations';
 import { useOrgStore } from './store/useOrgStore';
 import { useWorkspaceStore } from './store/useWorkspaceStore';
-import WorkItemsView from './views/WorkItemsView';
 import {
   createFeishuRecord,
   deleteFeishuRecord,
@@ -33,49 +32,62 @@ import type {
   Worklog
 } from './types';
 import type { FeishuUserItem } from './views/FeishuUsersView';
-import DashboardView from './views/DashboardView';
-import EfficiencyView from './views/EfficiencyView';
-import RequirementsView from './views/RequirementsView';
-import CostsView from './views/CostsView';
-import ScheduleView from './views/ScheduleView';
-import ResourcesView from './views/ResourcesView';
-import RiskAlertsView from './views/RiskAlertsView';
-import RiskCenterView from './views/RiskCenterView';
-import FeishuView from './views/FeishuView';
-import NotificationsView from './views/NotificationsView';
-import AuditView from './views/AuditView';
-import AiView from './views/AiView';
-import SettingsView from './views/SettingsView';
-import OrgSettingsView from './views/OrgSettingsView';
-import OrgMembersView from './views/OrgMembersView';
-import FeishuUsersView from './views/FeishuUsersView';
-import PmAssistantView from './views/PmAssistantView';
-import ProjectAccessView from './views/ProjectAccessView';
-import MilestoneBoardView from './views/MilestoneBoardView';
-import WikiView from './views/WikiView';
-import SprintBoardView from './views/SprintBoardView';
-import BugView from './views/BugView';
-import TestPlanView from './views/TestPlanView';
-import WebhookView from './views/WebhookView';
-import ApiKeysView from './views/ApiKeysView';
-import AutomationView from './views/AutomationView';
-import CostReportView from './views/CostReportView';
-import DepartmentsView from './views/DepartmentsView';
-import PlanSettingsView from './views/PlanSettingsView';
-import SmartFillView from './views/SmartFillView';
-import CapabilitiesView from './views/CapabilitiesView';
-import TaskCenterView from './views/TaskCenterView';
 import AstraeaLayout, { PlatformMode, ViewKey } from './components/AstraeaLayout';
+import AsyncStatePanel from './components/AsyncStatePanel';
 import ThemedSelect from './components/ui/ThemedSelect';
 import HeaderOrgSelect from './components/ui/HeaderOrgSelect';
 import HeaderProjectSelect from './components/ui/HeaderProjectSelect';
 import useEventStream, { AppStreamEvent } from './hooks/useEventStream';
+
+const DashboardView = lazy(() => import('./views/DashboardView'));
+const EfficiencyView = lazy(() => import('./views/EfficiencyView'));
+const RequirementsView = lazy(() => import('./views/RequirementsView'));
+const WorkItemsView = lazy(() => import('./views/WorkItemsView'));
+const CostsView = lazy(() => import('./views/CostsView'));
+const ScheduleView = lazy(() => import('./views/ScheduleView'));
+const ResourcesView = lazy(() => import('./views/ResourcesView'));
+const RiskAlertsView = lazy(() => import('./views/RiskAlertsView'));
+const RiskCenterView = lazy(() => import('./views/RiskCenterView'));
+const FeishuView = lazy(() => import('./views/FeishuView'));
+const NotificationsView = lazy(() => import('./views/NotificationsView'));
+const AuditView = lazy(() => import('./views/AuditView'));
+const AiView = lazy(() => import('./views/AiView'));
+const SettingsView = lazy(() => import('./views/SettingsView'));
+const OrgSettingsView = lazy(() => import('./views/OrgSettingsView'));
+const OrgMembersView = lazy(() => import('./views/OrgMembersView'));
+const FeishuUsersView = lazy(() => import('./views/FeishuUsersView'));
+const PmAssistantView = lazy(() => import('./views/PmAssistantView'));
+const ProjectAccessView = lazy(() => import('./views/ProjectAccessView'));
+const MilestoneBoardView = lazy(() => import('./views/MilestoneBoardView'));
+const WikiView = lazy(() => import('./views/WikiView'));
+const SprintBoardView = lazy(() => import('./views/SprintBoardView'));
+const BugView = lazy(() => import('./views/BugView'));
+const TestPlanView = lazy(() => import('./views/TestPlanView'));
+const WebhookView = lazy(() => import('./views/WebhookView'));
+const ApiKeysView = lazy(() => import('./views/ApiKeysView'));
+const AutomationView = lazy(() => import('./views/AutomationView'));
+const CostReportView = lazy(() => import('./views/CostReportView'));
+const DepartmentsView = lazy(() => import('./views/DepartmentsView'));
+const PlanSettingsView = lazy(() => import('./views/PlanSettingsView'));
+const SmartFillView = lazy(() => import('./views/SmartFillView'));
+const CapabilitiesView = lazy(() => import('./views/CapabilitiesView'));
+const TaskCenterView = lazy(() => import('./views/TaskCenterView'));
 
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
 const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
+
+function PageFallback() {
+  return (
+    <AsyncStatePanel
+      tone="loading"
+      title="正在加载页面"
+      description="正在按需加载当前模块资源，请稍候。"
+    />
+  );
+}
 
 function focusInlineEditor(selector: string) {
   setTimeout(() => {
@@ -2156,23 +2168,23 @@ function App() {
       <div className="login-screen">
         <div className="login-card">
           <h2>Astraea <span>Flow</span></h2>
-          <div className="app-login-subtitle">UNIFIED COMMAND CENTER</div>
+          <div className="app-login-subtitle">统一指挥中心</div>
           {registerMode ? (
             <form className="form app-login-form" onSubmit={submitRegister}>
               <div>
-                <label className="app-login-label">USERNAME</label>
+                <label className="app-login-label">用户名</label>
                 <input name="username" placeholder="选择一个用户名" required minLength={3} />
               </div>
               <div>
-                <label className="app-login-label">PASSWORD</label>
+                <label className="app-login-label">密码</label>
                 <input name="password" type="password" placeholder="至少6位" required minLength={6} />
               </div>
               <div>
-                <label className="app-login-label">DISPLAY NAME</label>
+                <label className="app-login-label">显示名称</label>
                 <input name="name" placeholder="你的姓名" required />
               </div>
               <button className="btn btn-primary app-login-submit" type="submit">
-                CREATE ACCOUNT
+                创建账号
               </button>
               <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(false)}>
                 已有账号？登录
@@ -2181,22 +2193,22 @@ function App() {
           ) : (
             <form className="form app-login-form" onSubmit={submitLogin}>
               <div>
-                <label className="app-login-label">NODE ACCESS KEY</label>
+                <label className="app-login-label">账号</label>
                 <input name="username" placeholder="admin / user / 你的账号" required />
               </div>
               <div>
-                <label className="app-login-label">SECURITY TOKEN</label>
+                <label className="app-login-label">密码</label>
                 <input name="password" type="password" placeholder="***" required />
               </div>
               <button className="btn btn-primary app-login-submit" type="submit">
-                INITIALIZE CONNECTION
+                登录系统
               </button>
               <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(true)}>
                 创建新账号
               </button>
             </form>
           )}
-          {error && <p className="warn app-login-error">[ERROR]: {error}</p>}
+          {error && <p className="warn app-login-error">[错误]：{error}</p>}
         </div>
       </div>
     );
@@ -2229,7 +2241,7 @@ function App() {
           <h2 className="app-view-title">
             {view === 'dashboard' ? '指挥中心' :
               view === 'requirements' ? '需求流' :
-                view === 'work-items' ? 'Todo / 问题池' :
+                view === 'work-items' ? '待办 / 问题池' :
                 view === 'costs' ? '成本池' :
                   view === 'schedule' ? '进度轴' :
                     view === 'resources' ? '资源阵列' :
@@ -2243,12 +2255,12 @@ function App() {
                                     view === 'project-access' ? '管理后台 · 项目授权' :
                                       view === 'milestone-board' ? '里程碑看板' :
                                         view === 'wiki' ? '知识库' :
-                                          view === 'sprints' ? 'Sprint 管理' :
-                                      view === 'bugs' ? 'Bug 管理' :
+                                          view === 'sprints' ? '迭代管理' :
+                                      view === 'bugs' ? '缺陷管理' :
                                       view === 'test-plans' ? '测试管理' :
                                       view === 'efficiency' ? '效能' :
-                                      view === 'webhooks' ? 'Webhook 管理' :
-                                      view === 'api-keys' ? 'API Keys' :
+                                      view === 'webhooks' ? '回调管理' :
+                                      view === 'api-keys' ? '访问密钥' :
                                       view === 'smart-fill' ? 'AI 智能填报' :
                                       view === 'automation' ? '自动化规则' :
                                       view === 'task-center' ? '任务中心' :
@@ -2407,7 +2419,13 @@ function App() {
           </div>
         )}
 
-        {loading && <p>Loading...</p>}
+        {loading && (
+          <AsyncStatePanel
+            tone="loading"
+            title="正在加载系统数据"
+            description="正在同步项目、组织、通知和当前页面依赖的数据。"
+          />
+        )}
         {message && <p>{message}</p>}
         {error && <p className="warn">{error}</p>}
         {lastRetry && (
@@ -2420,13 +2438,14 @@ function App() {
             </div>
           </div>
         )}
-        {!canWrite && <div className="card warn app-readonly-tip">当前角色为只读（viewer），新增与修改操作已禁用。</div>}
+        {!canWrite && <div className="card warn app-readonly-tip">当前角色为只读（访客），新增与修改操作已禁用。</div>}
         {canWrite && (
           <div className="app-inline-edit-tip">
             提示：双击单元格进入编辑，Enter 保存，ESC 取消。
           </div>
         )}
 
+        <Suspense fallback={<PageFallback />}>
         {view === 'dashboard' && (
           <DashboardView
             canWrite={canWrite}
@@ -2791,6 +2810,7 @@ function App() {
         {view === 'plan-settings' && (
           <PlanSettingsView />
         )}
+        </Suspense>
       </div>
     </AstraeaLayout>
   );

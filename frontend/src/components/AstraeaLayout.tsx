@@ -1,4 +1,4 @@
-import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -27,7 +27,7 @@ import {
   Sparkles,
   Search
 } from 'lucide-react';
-import GlobalAiChatbot from './chat/GlobalAiChatbot';
+const GlobalAiChatbot = lazy(() => import('./chat/GlobalAiChatbot'));
 
 export type ViewKey =
   | 'dashboard'
@@ -67,13 +67,13 @@ export type PlatformMode = 'workspace' | 'admin';
 export type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 
 const THEME_OPTIONS: Array<{ value: ThemeMode; emoji: string; label: string; desc: string }> = [
-  { value: 'light',  emoji: '☀️', label: '极光白', desc: 'Light'  },
-  { value: 'dark',   emoji: '🌊', label: '深海蓝', desc: 'Dark'   },
-  { value: 'nebula', emoji: '🔮', label: '星云紫', desc: 'Nebula' },
-  { value: 'forest', emoji: '🌿', label: '翠林绿', desc: 'Forest' },
-  { value: 'sunset', emoji: '🌅', label: '落日橙', desc: 'Sunset' },
-  { value: 'sakura', emoji: '🌸', label: '樱花粉', desc: 'Sakura' },
-  { value: 'metal',  emoji: '⚙️', label: '金属黑', desc: 'Metal'  },
+  { value: 'light',  emoji: '☀️', label: '极光白', desc: '浅色主题'  },
+  { value: 'dark',   emoji: '🌊', label: '深海蓝', desc: '深色主题'   },
+  { value: 'nebula', emoji: '🔮', label: '星云紫', desc: '星云风格' },
+  { value: 'forest', emoji: '🌿', label: '翠林绿', desc: '森林风格' },
+  { value: 'sunset', emoji: '🌅', label: '落日橙', desc: '暖色风格' },
+  { value: 'sakura', emoji: '🌸', label: '樱花粉', desc: '柔和粉调' },
+  { value: 'metal',  emoji: '⚙️', label: '金属黑', desc: '金属质感'  },
 ];
 
 interface AstraeaLayoutProps {
@@ -106,12 +106,12 @@ const navGroups: NavGroup[] = [
   ] },
   { id: 'project', label: '项目管理', icon: <ListTodo size={14} />, items: [
     { id: 'requirements', label: '项目与需求', icon: <ListTodo size={16} /> },
-    { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={16} /> },
+    { id: 'work-items', label: '待办 / 问题池', icon: <ListTodo size={16} /> },
     { id: 'schedule', label: '进度计划', icon: <CalendarDays size={16} /> },
     { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={16} /> },
     { id: 'resources', label: '资源视图', icon: <Users size={16} /> },
-    { id: 'sprints', label: 'Sprint', icon: <Layers size={16} /> },
-    { id: 'bugs', label: 'Bug 管理', icon: <Bug size={16} /> },
+    { id: 'sprints', label: '迭代管理', icon: <Layers size={16} /> },
+    { id: 'bugs', label: '缺陷管理', icon: <Bug size={16} /> },
     { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={16} /> },
   ]},
   { id: 'cost-risk', label: '成本与风险', icon: <CircleDollarSign size={14} />, items: [
@@ -127,8 +127,8 @@ const navGroups: NavGroup[] = [
     { id: 'automation', label: '自动化规则', icon: <Sparkles size={16} /> },
     { id: 'task-center', label: '任务中心', icon: <Activity size={16} /> },
     { id: 'capabilities', label: '能力模板', icon: <Sparkles size={16} /> },
-    { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={16} /> },
-    { id: 'api-keys', label: 'API Keys', icon: <Key size={16} /> },
+    { id: 'webhooks', label: '回调管理', icon: <Webhook size={16} /> },
+    { id: 'api-keys', label: '访问密钥', icon: <Key size={16} /> },
   ]},
   { id: 'collaboration', label: '协作', icon: <MessageSquare size={14} />, items: [
     { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={16} /> },
@@ -160,22 +160,22 @@ const navItems: Array<{
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
   { id: 'global', label: '全局检索', icon: <Search size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
-  { id: 'work-items', label: 'Todo / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
+  { id: 'work-items', label: '待办 / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'schedule', label: '进度计划', icon: <CalendarDays size={18} />, platform: 'workspace' },
   { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
   { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={18} />, platform: 'workspace' },
   { id: 'wiki', label: '知识库', icon: <BookOpen size={18} />, platform: 'workspace' },
-  { id: 'sprints', label: 'Sprint', icon: <Layers size={18} />, platform: 'workspace' },
-  { id: 'bugs', label: 'Bug 管理', icon: <Bug size={18} />, platform: 'workspace' },
+  { id: 'sprints', label: '迭代管理', icon: <Layers size={18} />, platform: 'workspace' },
+  { id: 'bugs', label: '缺陷管理', icon: <Bug size={18} />, platform: 'workspace' },
   { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={18} />, platform: 'workspace' },
   { id: 'efficiency', label: '效能', icon: <Activity size={18} />, platform: 'workspace' },
   { id: 'ai', label: 'AI 分析', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'pm-assistant', label: 'PM 助手', icon: <Bot size={18} />, platform: 'workspace' },
   { id: 'smart-fill', label: 'AI 智能填报', icon: <Sparkles size={18} />, platform: 'workspace' },
-  { id: 'webhooks', label: 'Webhook 管理', icon: <Webhook size={18} />, platform: 'workspace' },
-  { id: 'api-keys', label: 'API Keys', icon: <Key size={18} />, platform: 'workspace' },
+  { id: 'webhooks', label: '回调管理', icon: <Webhook size={18} />, platform: 'workspace' },
+  { id: 'api-keys', label: '访问密钥', icon: <Key size={18} />, platform: 'workspace' },
   { id: 'automation', label: '自动化规则', icon: <Sparkles size={18} />, platform: 'workspace' },
   { id: 'task-center', label: '任务中心', icon: <Activity size={18} />, platform: 'workspace' },
   { id: 'capabilities', label: '能力模板', icon: <Sparkles size={18} />, platform: 'workspace' },
@@ -286,13 +286,15 @@ export default function AstraeaLayout({
 
   return (
     <div className="astraea-root">
-      <GlobalAiChatbot onViewChange={onViewChange} />
+      <Suspense fallback={null}>
+        <GlobalAiChatbot onViewChange={onViewChange} />
+      </Suspense>
       <div className="astraea-aurora-bg" />
 
       <nav className="astraea-sidebar">
         <div className="astraea-brand">
           <h1>ProjectLVQI</h1>
-          <div className="astraea-version">PM Console</div>
+          <div className="astraea-version">项目管理控制台</div>
         </div>
         <div className="astraea-platform-switch">
           <button

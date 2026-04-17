@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent } from 'react';
-import html2canvas from 'html2canvas';
 import type { FeishuFormState, FeishuDependency } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import AsyncStatePanel from '../components/AsyncStatePanel';
@@ -309,9 +308,11 @@ export default function ScheduleView({
     });
   }, [calendarMonth]);
 
-  function exportGanttSvg() {
+  async function exportGanttSvg() {
     const wrapper = ganttWrapperRef.current;
     if (!wrapper) return;
+
+    const { default: html2canvas } = await import('html2canvas');
 
     html2canvas(wrapper, {
       scale: 2,

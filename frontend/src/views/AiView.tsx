@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { apiPost } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import ScopeContextBar from '../components/ScopeContextBar';
+
+const RichMarkdown = lazy(() => import('../components/markdown/RichMarkdown'));
 
 type ProjectItem = {
   id: number;
@@ -397,9 +397,19 @@ export default function AiView({
           ) : (
             <div className="markdown-body ai-markdown-view">
               {weeklyDraft ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                  {weeklyDraft}
-                </ReactMarkdown>
+                <Suspense
+                  fallback={
+                    <AsyncStatePanel
+                      tone="loading"
+                      title="正在加载预览"
+                      description="正在准备周报 Markdown 渲染器。"
+                    />
+                  }
+                >
+                  <RichMarkdown>
+                    {weeklyDraft}
+                  </RichMarkdown>
+                </Suspense>
               ) : (
                 <div className="ai-empty-placeholder">暂无报告内容，点击生成即可预览。</div>
               )}
@@ -443,9 +453,19 @@ export default function AiView({
           ) : (
             <div className="markdown-body ai-markdown-view">
               {progressDraft ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                  {progressDraft}
-                </ReactMarkdown>
+                <Suspense
+                  fallback={
+                    <AsyncStatePanel
+                      tone="loading"
+                      title="正在加载预览"
+                      description="正在准备项目进展报告的 Markdown 渲染器。"
+                    />
+                  }
+                >
+                  <RichMarkdown>
+                    {progressDraft}
+                  </RichMarkdown>
+                </Suspense>
               ) : (
                 <div className="ai-empty-placeholder">暂无报告内容，选择项目并点击 AI 生成以预览分析。</div>
               )}
@@ -638,7 +658,7 @@ export default function AiView({
       {activeTab === 'meeting' && (
         <div className="card ai-tab-panel ai-tab-meeting">
           <div className="ai-section-hint">
-            粘贴会议记录全文、纪要流水或群聊对话，AI 将自动提取 Action Items 并允许批量同步至系统。
+            粘贴会议记录全文、纪要流水或群聊对话，AI 将自动提取行动项并允许批量同步至系统。
           </div>
 
           <div className="ai-input-row">
@@ -669,7 +689,7 @@ export default function AiView({
             <div className="ai-result-wrap ai-result-wrap-lg">
               <div className="ai-result-head">
                 <div className="ai-warning-tip">
-                  ✅ 识别到 {meetingTasks.length} 个 Action Item
+                  ✅ 识别到 {meetingTasks.length} 个行动项
                 </div>
                 <div className="ai-result-count">
                   已选中 {selectedTaskIndices.length} 项

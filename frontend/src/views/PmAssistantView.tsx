@@ -469,19 +469,19 @@ export default function PmAssistantView({ projectId }: PmAssistantViewProps) {
                   rows={3}
                   value={jobPromptDrafts[job.id] ?? ''}
                   onChange={(e) => setJobPromptDrafts((prev) => ({ ...prev, [job.id]: e.target.value }))}
-                  placeholder="留空则使用内置默认 prompt"
+                  placeholder="留空则使用内置默认提示词"
                   className="pm-prompt-textarea"
                 />
               </div>
             ))}
             <div className="pm-muted-sm">
-              留空将自动使用内置默认 System Prompt。
+              留空将自动使用内置默认系统提示词。
             </div>
           </div>
         </details>
         <details open={defaultPromptsOpen} onToggle={(e) => setDefaultPromptsOpen((e.target as HTMLDetailsElement).open)} className="pm-details-gap">
           <summary className="pm-details-summary">
-            查看各类型默认 System Prompt
+            查看各类型默认系统提示词
           </summary>
           <div className="pm-grid-top">
             {defaultPrompts.length === 0 && (

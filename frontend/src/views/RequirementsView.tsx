@@ -1,7 +1,5 @@
 import type { FormEvent, KeyboardEvent } from 'react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { apiPost, API_BASE, TOKEN_KEY } from '../api/client';
 import { comparePrdVersions, createPrdDocument, deletePrdVersion, listPrdDocuments, getPrdVersions, uploadPrdVersion, deletePrdDocument } from '../api/prd';
 import type { Requirement, RequirementChange } from '../types';
@@ -9,6 +7,8 @@ import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import AsyncStatePanel from '../components/AsyncStatePanel';
+
+const GfmMarkdown = lazy(() => import('../components/markdown/GfmMarkdown'));
 
 const REQUIREMENT_PRIORITY_LABELS: Record<'low' | 'medium' | 'high', string> = {
   low: '低',
@@ -885,11 +885,19 @@ export default function RequirementsView({
                   description="正在分析需求完整性、可执行性与潜在风险，请稍候。"
                 />
               ) : (
-                <div className="markdown-body req-ai-review-markdown">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <Suspense
+                  fallback={
+                    <AsyncStatePanel
+                      tone="loading"
+                      title="正在加载评审渲染器"
+                      description="正在准备 AI 评审结果的 Markdown 预览。"
+                    />
+                  }
+                >
+                  <GfmMarkdown className="markdown-body req-ai-review-markdown">
                     {aiReviewDrawer.result || '暂无评审结果'}
-                  </ReactMarkdown>
-                </div>
+                  </GfmMarkdown>
+                </Suspense>
               )}
             </div>
           </div>
