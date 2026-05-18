@@ -353,75 +353,84 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
         />
       )}
       {message && <p>{message}</p>}
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="工作项操作异常"
+          description={error}
+        />
+      )}
 
-      <div className="workitems-table-wrap">
-        <table className="table table-wrap">
-          <thead>
-            <tr>
-              <th>状态</th>
-              <th>标题</th>
-              <th>类型</th>
-              <th>优先级</th>
-              <th>负责人</th>
-              <th>截止日期</th>
-              <th>归属</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 && (
+      {!loading && items.length === 0 ? (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无工作项记录"
+          description="当前筛选条件下没有匹配的待办事项或问题项，可调整筛选条件或新增记录。"
+        />
+      ) : (
+        <div className="workitems-table-wrap">
+          <table className="table table-wrap">
+            <thead>
               <tr>
-                <td colSpan={8}>暂无记录</td>
+                <th>状态</th>
+                <th>标题</th>
+                <th>类型</th>
+                <th>优先级</th>
+                <th>负责人</th>
+                <th>截止日期</th>
+                <th>归属</th>
+                <th>操作</th>
               </tr>
-            )}
-            {items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <select
-                    className={`status-badge status-${item.status}`}
-                    value={item.status}
-                    onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
-                    disabled={!canWrite}
-                    style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
-                  >
-                    {STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <strong>{item.title}</strong>
-                  {item.description ? <div className="text-secondary">{item.description}</div> : null}
-                </td>
-                <td>{TYPE_LABELS[item.type]}</td>
-                <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
-                <td>{item.assignee?.name || item.assigneeName || '-'}</td>
-                <td>{item.dueDate || '-'}</td>
-                <td>{item.project?.name || '个人'}</td>
-                <td className="operation-cell">
-                  <div className="req-action-menu table-row-actions">
-                    <button
-                      className="btn req-action-trigger"
-                      type="button"
-                      onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <select
+                      className={`status-badge status-${item.status}`}
+                      value={item.status}
+                      onChange={(e) => void setItemStatus(item, e.target.value as WorkItemStatus)}
+                      disabled={!canWrite}
+                      style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none', background: 'transparent', fontSize: 'inherit' }}
                     >
-                      操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
-                    </button>
-                    {actionMenuRowId === item.id && (
-                      <div className="req-action-dropdown">
-                        <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
-                        {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
-                        {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
-                      </div>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <strong>{item.title}</strong>
+                    {item.description ? <div className="text-secondary">{item.description}</div> : null}
+                  </td>
+                  <td>{TYPE_LABELS[item.type]}</td>
+                  <td>{item.priority === 'high' ? '高' : item.priority === 'medium' ? '中' : '低'}</td>
+                  <td>{item.assignee?.name || item.assigneeName || '-'}</td>
+                  <td>{item.dueDate || '-'}</td>
+                  <td>{item.project?.name || '个人'}</td>
+                  <td className="operation-cell">
+                    <div className="req-action-menu table-row-actions">
+                      <button
+                        className="btn req-action-trigger"
+                        type="button"
+                        onClick={() => setActionMenuRowId((prev) => (prev === item.id ? null : item.id))}
+                      >
+                        操作 <span className="req-action-caret">{actionMenuRowId === item.id ? '▴' : '▾'}</span>
+                      </button>
+                      {actionMenuRowId === item.id && (
+                        <div className="req-action-dropdown">
+                          <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); void openHistory(item); }}>历史</button>
+                          {canWrite && <button className="btn req-action-item" type="button" onClick={() => { setActionMenuRowId(null); openEdit(item); }}>编辑</button>}
+                          {canWrite && <button className="btn req-action-item danger" type="button" onClick={() => { setActionMenuRowId(null); void remove(item); }}>删除</button>}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <PaginationBar
         className="workitems-pagination"
@@ -547,7 +556,15 @@ export default function WorkItemsView({ canWrite, projects, users, feishuUserNam
                 </thead>
                 <tbody>
                   {histories.length === 0 && (
-                    <tr><td colSpan={5}>暂无历史</td></tr>
+                    <tr>
+                      <td colSpan={5} style={{ padding: '1rem' }}>
+                        <AsyncStatePanel
+                          tone="empty"
+                          title="暂无变更历史"
+                          description="当前工作项还没有关键字段变更记录。"
+                        />
+                      </td>
+                    </tr>
                   )}
                   {histories.map((entry) => (
                     <tr key={entry.id}>

@@ -7,6 +7,7 @@ import {
   type WikiPage
 } from '../api/wiki';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   selectedProjectId: number | null;
@@ -261,14 +262,26 @@ export default function WikiView({ selectedProjectId, canWrite }: Props) {
           )}
         </div>
         <div className="wiki-tree">
-          {loading && <div className="wiki-empty">加载中...</div>}
+          {loading && (
+            <AsyncStatePanel
+              tone="loading"
+              title="正在加载知识库页面"
+              description="正在同步当前项目下的页面树和目录结构。"
+            />
+          )}
           {!loading && pages.length === 0 && (
-            <div className="wiki-empty">
-              {selectedProjectId ? '暂无页面，点击上方按钮创建' : '请先选择项目'}
-            </div>
+            <AsyncStatePanel
+              tone="empty"
+              title={selectedProjectId ? '暂无页面' : '请先选择项目'}
+              description={selectedProjectId ? '当前项目还没有知识库页面，可先新建页面或文件夹。' : '知识库依赖当前项目上下文，请先在顶部选择目标项目。'}
+            />
           )}
           {!loading && pages.length > 0 && tree.length === 0 && (
-            <div className="wiki-empty">暂无页面</div>
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无页面"
+              description="当前页面树为空，可尝试新建页面或刷新。"
+            />
           )}
           {!loading && renderTreeNodes(tree)}
         </div>
@@ -316,10 +329,30 @@ export default function WikiView({ selectedProjectId, canWrite }: Props) {
           </>
         ) : (
           <div className="wiki-editor-empty">
-            {loading ? '加载中...' : '请从左侧选择一个页面或新建页面'}
+            {loading ? (
+              <AsyncStatePanel
+                tone="loading"
+                title="正在准备编辑器"
+                description="正在载入当前知识库上下文。"
+              />
+            ) : (
+              <AsyncStatePanel
+                tone="empty"
+                title="请选择页面"
+                description="请从左侧选择一个页面，或新建页面后开始编辑。"
+              />
+            )}
           </div>
         )}
-        {error && <div className="warn wiki-error">{error}</div>}
+        {error && (
+          <div className="wiki-error">
+            <AsyncStatePanel
+              tone="error"
+              title="知识库操作异常"
+              description={error}
+            />
+          </div>
+        )}
       </div>
 
       {/* Create modal */}

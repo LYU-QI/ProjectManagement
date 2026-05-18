@@ -90,6 +90,8 @@ interface AstraeaLayoutProps {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   headerCenter?: ReactNode;
+  workspaceVisibleViews?: ViewKey[] | '*';
+  adminVisibleViews?: ViewKey[] | '*';
 }
 
 interface NavGroup {
@@ -195,6 +197,11 @@ const navItems: Array<{
 
 const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
 
+function isViewAllowedByScope(id: ViewKey, scope?: ViewKey[] | '*') {
+  if (!scope || scope === '*') return true;
+  return scope.includes(id);
+}
+
 export default function AstraeaLayout({
   currentView,
   onViewChange,
@@ -208,7 +215,9 @@ export default function AstraeaLayout({
   unreadCount = 0,
   theme,
   onThemeChange,
-  headerCenter
+  headerCenter,
+  workspaceVisibleViews,
+  adminVisibleViews
 }: AstraeaLayoutProps) {
   const role = String(user?.role || '');
   const displayName = String(user?.username || user?.name || '未知用户');
@@ -249,6 +258,8 @@ export default function AstraeaLayout({
     () => {
       return navItems.filter((item) => {
         if (item.platform !== platform) return false;
+        const scopedViews = platform === 'workspace' ? workspaceVisibleViews : adminVisibleViews;
+        if (!isViewAllowedByScope(item.id, scopedViews)) return false;
         if (item.allowedUserRoles) return item.allowedUserRoles.includes(role);
         // super_admin bypasses all org-level role checks
         if (isSuperAdmin) return true;
@@ -259,9 +270,11 @@ export default function AstraeaLayout({
         return true;
       });
     },
-    [platform, myOrgRole, isSuperAdmin, isProjectManager, role]
+    [platform, myOrgRole, isSuperAdmin, isProjectManager, role, workspaceVisibleViews, adminVisibleViews]
   );
   const visibleNavItems = configurableNavItems.filter((item) => !hiddenNavItems.includes(item.id));
+  const configurableNavIdSet = useMemo(() => new Set(configurableNavItems.map((item) => item.id)), [configurableNavItems]);
+  const visibleNavIdSet = useMemo(() => new Set(visibleNavItems.map((item) => item.id)), [visibleNavItems]);
 
   useEffect(() => {
     if (visibleNavItems.some((item) => item.id === currentView)) return;
@@ -319,8 +332,7 @@ export default function AstraeaLayout({
           <div className="astraea-nav-list">
             {navGroups.map((group) => {
               const groupItems = group.items.filter((item) =>
-                !hiddenNavItems.includes(item.id) &&
-                navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
+                visibleNavIdSet.has(item.id)
               );
               if (groupItems.length === 0) return null;
 
@@ -430,8 +442,7 @@ export default function AstraeaLayout({
           const activeGroup = navGroups.find((g) => g.id === activeGroupId);
           if (!activeGroup) return null;
           const groupItems = activeGroup.items.filter((item) =>
-            !hiddenNavItems.includes(item.id) &&
-            navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
+            visibleNavIdSet.has(item.id)
           );
           if (groupItems.length === 0) return null;
           return (
@@ -498,7 +509,7 @@ export default function AstraeaLayout({
                 {platform === 'workspace' ? (
                   navGroups.map((group) => {
                     const groupItems = group.items.filter((item) =>
-                      navItems.some((ni) => ni.id === item.id && ni.platform === 'workspace')
+                      configurableNavIdSet.has(item.id)
                     );
                     if (groupItems.length === 0) return null;
                     return (

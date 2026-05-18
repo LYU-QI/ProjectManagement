@@ -1,6 +1,6 @@
 import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { DashboardOverview, ProjectItem } from '../types';
+import type { ClusterRiskBoardItem, ClusterRiskBoardResponse, ClusterRiskLight, DashboardOverview, ProjectItem } from '../types';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -16,6 +16,8 @@ type InlineEditState<T, Id> = {
 type Props = {
   canWrite: boolean;
   overview: DashboardOverview | null;
+  clusterRiskBoard: ClusterRiskBoardResponse | null;
+  onRefreshClusterRiskBoard: () => Promise<void>;
   projects: ProjectItem[];
   selectedProjectId: number | null;
   selectedProjectIds: number[];
@@ -38,9 +40,42 @@ function healthTone(score: number): 'good' | 'mid' | 'bad' {
   return 'bad';
 }
 
+function riskToneClass(light: ClusterRiskLight): string {
+  if (light === '红灯') return 'red';
+  if (light === '黄灯') return 'yellow';
+  if (light === '绿灯') return 'green';
+  return 'empty';
+}
+
+function keyDemoLabel(value: boolean | null): string {
+  if (value === true) return '近期演示';
+  if (value === false) return '非演示';
+  return '待确认';
+}
+
+function excerpt(value: string, max = 96): string {
+  const text = value?.trim() || '-';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
+  return {
+    totalProjects: items.length,
+    redCount: items.filter((item) => item.riskLight === '红灯').length,
+    yellowCount: items.filter((item) => item.riskLight === '黄灯').length,
+    greenCount: items.filter((item) => item.riskLight === '绿灯').length,
+    emptyRiskCount: items.filter((item) => item.riskLight === '未填').length,
+    keyDemoCount: items.filter((item) => item.hasKeyDemo === true).length,
+    dailyRiskHelpCount: items.filter((item) => Boolean(item.dailyRiskHelp.trim())).length,
+    highQualityRiskCount: items.filter((item) => item.qualityLevel.includes('高') || item.qualityGap.includes('高风险')).length
+  };
+}
+
 export default function DashboardView({
   canWrite,
   overview,
+  clusterRiskBoard,
+  onRefreshClusterRiskBoard,
   projects,
   selectedProjectId,
   selectedProjectIds,
@@ -54,6 +89,12 @@ export default function DashboardView({
 }: Props) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [projectKeyword, setProjectKeyword] = useState('');
+  const [clusterRiskFilter, setClusterRiskFilter] = useState<'all' | ClusterRiskLight>('all');
+  const [clusterDemoFilter, setClusterDemoFilter] = useState<'all' | 'yes' | 'no' | 'unknown'>('all');
+  const [clusterKeyword, setClusterKeyword] = useState('');
+  const [clusterFullscreen, setClusterFullscreen] = useState(false);
+  const [selectedClusterProject, setSelectedClusterProject] = useState<ClusterRiskBoardItem | null>(null);
+  const [clusterRefreshing, setClusterRefreshing] = useState(false);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
@@ -104,8 +145,202 @@ export default function DashboardView({
     });
   }, [projectKeyword, projects]);
 
+  const clusterItems = clusterRiskBoard?.items || [];
+  const filteredClusterItems = useMemo(() => {
+    const keyword = clusterKeyword.trim().toLowerCase();
+    return clusterItems.filter((item) => {
+      if (clusterRiskFilter !== 'all' && item.riskLight !== clusterRiskFilter) return false;
+      if (clusterDemoFilter === 'yes' && item.hasKeyDemo !== true) return false;
+      if (clusterDemoFilter === 'no' && item.hasKeyDemo !== false) return false;
+      if (clusterDemoFilter === 'unknown' && item.hasKeyDemo !== null) return false;
+      if (!keyword) return true;
+      const text = [
+        item.projectName,
+        item.projectId,
+        item.ownerPm,
+        item.deliveryScope,
+        item.weeklyProgress,
+        item.dailyRiskHelp,
+        item.riskResolution,
+        item.qualityGap,
+        item.qualityLevel
+      ].join(' ').toLowerCase();
+      return text.includes(keyword);
+    });
+  }, [clusterDemoFilter, clusterItems, clusterKeyword, clusterRiskFilter]);
+
+  const clusterSummary = useMemo(() => countFilteredClusterSummary(filteredClusterItems), [filteredClusterItems]);
+  const clusterFocus = useMemo(() => ({
+    red: filteredClusterItems.filter((item) => item.riskLight === '红灯'),
+    daily: filteredClusterItems.filter((item) => item.dailyRiskHelp.trim()),
+    demo: filteredClusterItems.filter((item) => item.hasKeyDemo === true),
+    quality: filteredClusterItems.filter((item) => item.qualityLevel.includes('高') || item.qualityGap.includes('高风险'))
+  }), [filteredClusterItems]);
+
+  async function refreshClusterBoard() {
+    setClusterRefreshing(true);
+    try {
+      await onRefreshClusterRiskBoard();
+    } finally {
+      setClusterRefreshing(false);
+    }
+  }
+
+  const clusterBoard = (
+    <section className={`cluster-board ${clusterFullscreen ? 'cluster-board-fullscreen' : ''}`}>
+      <div className="cluster-board-head">
+        <div>
+          <p className="cluster-board-eyebrow">Executive cockpit</p>
+          <h2>集群风险状态大看板</h2>
+          <p className="muted">只读展示飞书周报数据，聚焦项目风险灯、重点演示、Daily 风险求助和质量 GAP。</p>
+        </div>
+        <div className="cluster-board-actions">
+          <span className={`cluster-source-pill ${clusterRiskBoard?.source === 'feishu' ? 'ok' : 'warn'}`}>
+            {clusterRiskBoard?.source === 'feishu' ? '飞书在线' : '数据源未就绪'}
+          </span>
+          <button className="btn" type="button" onClick={() => void refreshClusterBoard()} disabled={clusterRefreshing}>
+            {clusterRefreshing ? '刷新中...' : '刷新'}
+          </button>
+          <button className="btn" type="button" onClick={() => setClusterFullscreen((prev) => !prev)}>
+            {clusterFullscreen ? '退出全屏' : '全屏'}
+          </button>
+        </div>
+      </div>
+
+      {clusterRiskBoard?.error && (
+        <div className="cluster-board-alert">
+          {clusterRiskBoard.error}
+        </div>
+      )}
+
+      <div className="cluster-board-kpis">
+        <article className="cluster-kpi">
+          <span>项目总数</span>
+          <strong>{clusterSummary.totalProjects}</strong>
+        </article>
+        <article className="cluster-kpi danger">
+          <span>红灯</span>
+          <strong>{clusterSummary.redCount}</strong>
+        </article>
+        <article className="cluster-kpi warning">
+          <span>黄灯</span>
+          <strong>{clusterSummary.yellowCount}</strong>
+        </article>
+        <article className="cluster-kpi good">
+          <span>绿灯</span>
+          <strong>{clusterSummary.greenCount}</strong>
+        </article>
+        <article className="cluster-kpi">
+          <span>近期演示</span>
+          <strong>{clusterSummary.keyDemoCount}</strong>
+        </article>
+        <article className="cluster-kpi danger">
+          <span>Daily 求助</span>
+          <strong>{clusterSummary.dailyRiskHelpCount}</strong>
+        </article>
+        <article className="cluster-kpi warning">
+          <span>质量高风险</span>
+          <strong>{clusterSummary.highQualityRiskCount}</strong>
+        </article>
+      </div>
+
+      <div className="cluster-board-filters">
+        <input placeholder="搜索项目 / 负责人 / 风险文本" value={clusterKeyword} onChange={(e) => setClusterKeyword(e.target.value)} />
+        <select value={clusterRiskFilter} onChange={(e) => setClusterRiskFilter(e.target.value as 'all' | ClusterRiskLight)}>
+          <option value="all">全部风险灯</option>
+          <option value="红灯">红灯</option>
+          <option value="黄灯">黄灯</option>
+          <option value="绿灯">绿灯</option>
+          <option value="未填">未填</option>
+        </select>
+        <select value={clusterDemoFilter} onChange={(e) => setClusterDemoFilter(e.target.value as 'all' | 'yes' | 'no' | 'unknown')}>
+          <option value="all">全部演示状态</option>
+          <option value="yes">近期重点演示</option>
+          <option value="no">非近期演示</option>
+          <option value="unknown">待确认</option>
+        </select>
+      </div>
+
+      <div className="cluster-main-grid">
+        <article className="cluster-health-map">
+          <div className="section-title-row">
+            <h3>项目健康地图</h3>
+            <span className="muted">红灯优先排序</span>
+          </div>
+          <div className="cluster-project-grid">
+            {filteredClusterItems.map((item) => (
+              <button
+                key={`${item.index}-${item.projectName}-${item.projectId}`}
+                className={`cluster-project-card ${riskToneClass(item.riskLight)}`}
+                type="button"
+                onClick={() => setSelectedClusterProject(item)}
+              >
+                <div className="cluster-project-title-row">
+                  <strong>{item.projectName || '未命名项目'}</strong>
+                  <span className={`cluster-risk-badge ${riskToneClass(item.riskLight)}`}>{item.riskLight}</span>
+                </div>
+                <span className="muted">{item.projectId || '未立项'} · {item.ownerPm || '未填 PM'}</span>
+                <p>{excerpt(item.weeklyProgress || item.deliveryScope, 78)}</p>
+                <div className="cluster-card-tags">
+                  <span>{keyDemoLabel(item.hasKeyDemo)}</span>
+                  {item.dailyRiskHelp && <span className="danger">Daily 求助</span>}
+                  {item.qualityLevel && <span>质量 {item.qualityLevel}</span>}
+                </div>
+              </button>
+            ))}
+            {filteredClusterItems.length === 0 && (
+              <div className="cluster-empty">暂无匹配项目。请检查筛选条件或大看板数据源配置。</div>
+            )}
+          </div>
+        </article>
+
+        <aside className="cluster-focus-panel">
+          <h3>管理层关注</h3>
+          {[
+            ['红灯项目', clusterFocus.red],
+            ['Daily 风险求助', clusterFocus.daily],
+            ['近期重点演示', clusterFocus.demo],
+            ['质量高风险', clusterFocus.quality]
+          ].map(([title, list]) => (
+            <div className="cluster-focus-group" key={String(title)}>
+              <div className="cluster-focus-title">
+                <strong>{String(title)}</strong>
+                <span>{(list as ClusterRiskBoardItem[]).length}</span>
+              </div>
+              {(list as ClusterRiskBoardItem[]).slice(0, 5).map((item) => (
+                <button key={`${title}-${item.index}-${item.projectName}`} type="button" onClick={() => setSelectedClusterProject(item)}>
+                  {item.projectName || '未命名项目'}
+                </button>
+              ))}
+              {(list as ClusterRiskBoardItem[]).length === 0 && <p className="muted">暂无</p>}
+            </div>
+          ))}
+        </aside>
+      </div>
+
+      <div className="cluster-lanes">
+        {(['红灯', '黄灯', '绿灯', '未填'] as ClusterRiskLight[]).map((light) => (
+          <article className={`cluster-lane ${riskToneClass(light)}`} key={light}>
+            <h4>{light}</h4>
+            {filteredClusterItems.filter((item) => item.riskLight === light).slice(0, 6).map((item) => (
+              <button key={`${light}-${item.index}-${item.projectName}`} type="button" onClick={() => setSelectedClusterProject(item)}>
+                <strong>{item.projectName || '未命名项目'}</strong>
+                <span>{excerpt(item.dailyRiskHelp || item.riskResolution || item.qualityGap, 64)}</span>
+              </button>
+            ))}
+          </article>
+        ))}
+      </div>
+
+    </section>
+  );
+
   return (
     <div>
+      {clusterBoard}
+
+      {false && (
+      <>
       <section className="metrics-grid">
         <article className="metric-card">
           <p className="metric-label">项目总数</p>
@@ -459,6 +694,40 @@ export default function DashboardView({
               <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
             </form>
           </div>
+        </div>,
+        document.body
+      )}
+      </>
+      )}
+
+      {selectedClusterProject && canUsePortal && createPortal(
+        <div className="cluster-detail-backdrop" onClick={() => setSelectedClusterProject(null)}>
+          <aside className="cluster-detail-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="cluster-detail-head">
+              <div>
+                <span className={`cluster-risk-badge ${riskToneClass(selectedClusterProject.riskLight)}`}>
+                  {selectedClusterProject.riskLight}
+                </span>
+                <h3>{selectedClusterProject.projectName || '未命名项目'}</h3>
+                <p className="muted">{selectedClusterProject.projectId || '未立项'} · {selectedClusterProject.ownerPm || '未填 PM'}</p>
+              </div>
+              <button className="btn" type="button" onClick={() => setSelectedClusterProject(null)}>关闭</button>
+            </div>
+            {[
+              ['交付范围', selectedClusterProject.deliveryScope],
+              ['近期重点演示', keyDemoLabel(selectedClusterProject.hasKeyDemo)],
+              ['周进展（PM）', selectedClusterProject.weeklyProgress],
+              ['Daily 风险求助（PM）', selectedClusterProject.dailyRiskHelp],
+              ['风险解决情况', selectedClusterProject.riskResolution],
+              ['质量状态与 GAP', selectedClusterProject.qualityGap],
+              ['质量等级', selectedClusterProject.qualityLevel]
+            ].map(([label, value]) => (
+              <section className="cluster-detail-field" key={label}>
+                <h4>{label}</h4>
+                <p>{value || '-'}</p>
+              </section>
+            ))}
+          </aside>
         </div>,
         document.body
       )}

@@ -21,6 +21,43 @@ export interface ConfigItemMeta {
     description: string;
 }
 
+export type UiVisibilityRule = {
+    workspaceViews: string[];
+    adminViews: string[];
+    canAccessAdmin: boolean;
+};
+
+export type UiVisibilityRules = Record<string, UiVisibilityRule>;
+
+const UI_VISIBILITY_KEY = 'UI_VISIBILITY_RULES';
+const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
+    super_admin: {
+        workspaceViews: ['*'],
+        adminViews: ['*'],
+        canAccessAdmin: true
+    },
+    project_manager: {
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'capabilities', 'webhooks', 'api-keys', 'feishu', 'wiki', 'notifications', 'departments'],
+        adminViews: [],
+        canAccessAdmin: false
+    },
+    pm: {
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
+        adminViews: [],
+        canAccessAdmin: false
+    },
+    member: {
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
+        adminViews: ['project-access', 'org-members', 'org-settings'],
+        canAccessAdmin: true
+    },
+    viewer: {
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
+        adminViews: [],
+        canAccessAdmin: false
+    }
+};
+
 /** 分组与敏感字段的定义 */
 const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive: boolean; description: string }> = {
     DATABASE_URL: { group: 'database', groupLabel: '数据库配置', sensitive: true, description: 'PostgreSQL 数据库连接地址' },
@@ -55,6 +92,10 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     FEISHU_PM_ASSISTANT_PROMPT_WEEKLY_AGENDA: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 周会要点 Prompt' },
     FEISHU_PM_ASSISTANT_PROMPT_DAILY_REPORT: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 晚间日报 Prompt' },
     FEISHU_PM_ASSISTANT_PROMPT_WEEKLY_REPORT: { group: 'feishu', groupLabel: '飞书集成', sensitive: false, description: 'PM Assistant 周报 Prompt' },
+    CLUSTER_RISK_BOARD_APP_TOKEN: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '集群风险状态大看板飞书 App Token' },
+    CLUSTER_RISK_BOARD_TABLE_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '集群风险状态大看板飞书 Table ID' },
+    CLUSTER_RISK_BOARD_VIEW_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '集群风险状态大看板飞书 View ID（可选）' },
+    CLUSTER_RISK_BOARD_FIELD_MAP: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '集群风险状态大看板字段映射 JSON（可选）' },
     AI_API_URL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型 API 端点（兼容 OpenAI 格式，如 https://api.deepseek.com/v1）' },
     AI_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'AI 模型 API 密钥' },
     AI_MODEL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型名称（如 deepseek-chat、gpt-4o、qwen-plus）' },
@@ -112,6 +153,71 @@ export class ConfigService {
      */
     clearCache(): void {
         this.cache.clear();
+    }
+
+    getDefaultUiVisibilityRules(): UiVisibilityRules {
+        return JSON.parse(JSON.stringify(DEFAULT_UI_VISIBILITY_RULES)) as UiVisibilityRules;
+    }
+
+    async getUiVisibilityRules(organizationId?: string | null): Promise<UiVisibilityRules> {
+        const defaults = this.getDefaultUiVisibilityRules();
+        const row = await this.prisma.config.findFirst({
+            where: { organizationId: organizationId ?? null, key: UI_VISIBILITY_KEY }
+        });
+        if (!row?.value) return defaults;
+
+        try {
+            const parsed = JSON.parse(row.value) as unknown;
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return defaults;
+            const merged: UiVisibilityRules = { ...defaults };
+            for (const [role, value] of Object.entries(parsed as Record<string, unknown>)) {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+                const rule = value as Partial<UiVisibilityRule>;
+                merged[role] = {
+                    workspaceViews: Array.isArray(rule.workspaceViews) ? rule.workspaceViews.map(String) : defaults[role]?.workspaceViews ?? [],
+                    adminViews: Array.isArray(rule.adminViews) ? rule.adminViews.map(String) : defaults[role]?.adminViews ?? [],
+                    canAccessAdmin: typeof rule.canAccessAdmin === 'boolean' ? rule.canAccessAdmin : defaults[role]?.canAccessAdmin ?? false
+                };
+            }
+            merged.super_admin = defaults.super_admin;
+            return merged;
+        } catch {
+            return defaults;
+        }
+    }
+
+    async updateUiVisibilityRules(organizationId: string | null | undefined, rules: UiVisibilityRules): Promise<UiVisibilityRules> {
+        const defaults = this.getDefaultUiVisibilityRules();
+        const normalized: UiVisibilityRules = {};
+        for (const [role, defaultRule] of Object.entries(defaults)) {
+            const input = rules?.[role];
+            normalized[role] = {
+                workspaceViews: Array.isArray(input?.workspaceViews) ? input.workspaceViews.map(String) : defaultRule.workspaceViews,
+                adminViews: Array.isArray(input?.adminViews) ? input.adminViews.map(String) : defaultRule.adminViews,
+                canAccessAdmin: typeof input?.canAccessAdmin === 'boolean' ? input.canAccessAdmin : defaultRule.canAccessAdmin
+            };
+        }
+        normalized.super_admin = defaults.super_admin;
+
+        const orgId = organizationId ?? null;
+        const existing = await this.prisma.config.findFirst({
+            where: { organizationId: orgId, key: UI_VISIBILITY_KEY }
+        });
+        if (existing) {
+            await this.prisma.config.update({
+                where: { id: existing.id },
+                data: { value: JSON.stringify(normalized) }
+            });
+        } else {
+            await this.prisma.config.create({
+                data: {
+                    organizationId: orgId,
+                    key: UI_VISIBILITY_KEY,
+                    value: JSON.stringify(normalized)
+                }
+            });
+        }
+        return normalized;
     }
 
     /** .env 文件路径 */
@@ -231,11 +337,12 @@ export class ConfigService {
 
         // 重建 .env 文件内容
         const lines: string[] = [];
-        const groups = ['database', 'security', 'feishu', 'ai'];
+        const groups = ['database', 'security', 'feishu', 'dashboard', 'ai'];
         const groupLabels: Record<string, string> = {
             database: '数据库配置',
             security: '安全配置',
             feishu: '飞书多维表格配置',
+            dashboard: '大看板配置',
             ai: 'AI 模型配置',
         };
 
@@ -254,6 +361,7 @@ export class ConfigService {
 
         try {
             writeFileSync(this.envPath, lines.join('\n'), 'utf-8');
+            this.clearCache();
             return { success: true, message: '配置已保存，部分配置项需要重启后端服务才能生效。' };
         } catch (err) {
             const detail = err instanceof Error ? err.message : String(err);

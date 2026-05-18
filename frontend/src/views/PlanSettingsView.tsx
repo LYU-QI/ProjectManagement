@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPatch } from '../api/client';
 import { useOrgStore } from '../store/useOrgStore';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 interface PlanInfo {
   id: string;
@@ -52,11 +53,31 @@ export default function PlanSettingsView() {
     <div>
       <h2 style={{ marginBottom: '1.5rem' }}>套餐管理</h2>
 
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="套餐信息加载异常"
+          description={error}
+        />
+      )}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
-      {loading && <p>加载中...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载套餐信息"
+          description="正在读取当前组织的套餐、成员上限与功能范围。"
+        />
+      )}
 
-      {plan && (
+      {!loading && !error && !plan && (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无套餐信息"
+          description="当前组织还没有可展示的套餐配置，请稍后刷新或检查权限。"
+        />
+      )}
+
+      {!loading && !error && plan && (
         <>
           <div className="card" style={{ marginBottom: '1.5rem' }}>
             <div className="muted" style={{ fontSize: '0.8rem' }}>当前套餐</div>

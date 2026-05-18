@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getEfficiency } from '../api/efficiency';
 import type { EfficiencyData } from '../types';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   projectId: number | null;
@@ -53,33 +54,41 @@ export default function EfficiencyView({ projectId, projectName }: Props) {
 
   if (!projectId) {
     return (
-      <div className="card">
-        <p className="muted">请先选择项目以查看效能数据。</p>
-      </div>
+      <AsyncStatePanel
+        tone="empty"
+        title="请先选择项目"
+        description="效能分析依赖当前项目上下文，请先在顶部切换到目标项目。"
+      />
     );
   }
 
   if (loading) {
     return (
-      <div className="card">
-        <p className="muted">加载中...</p>
-      </div>
+      <AsyncStatePanel
+        tone="loading"
+        title="正在加载效能数据"
+        description={`正在汇总 ${projectName} 的需求、缺陷、工作项与成本表现。`}
+      />
     );
   }
 
   if (error) {
     return (
-      <div className="card">
-        <p className="warn">{error}</p>
-      </div>
+      <AsyncStatePanel
+        tone="error"
+        title="效能数据加载异常"
+        description={error}
+      />
     );
   }
 
   if (!data) {
     return (
-      <div className="card">
-        <p className="muted">暂无效能数据。</p>
-      </div>
+      <AsyncStatePanel
+        tone="empty"
+        title="暂无效能数据"
+        description="当前项目还没有足够的数据生成效能分析结果。"
+      />
     );
   }
 

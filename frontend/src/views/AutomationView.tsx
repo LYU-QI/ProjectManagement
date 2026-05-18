@@ -250,7 +250,13 @@ export default function AutomationView() {
         </div>
       </TableToolbar>
 
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="自动化规则加载异常"
+          description={error}
+        />
+      )}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
 
       {showCreate && (
@@ -341,7 +347,11 @@ export default function AutomationView() {
                   <tr key={`${item.id}:logs`}>
                     <td colSpan={5}>
                       {getVisibleLogs(item.id).length === 0 ? (
-                        <div className="muted" style={{ fontSize: '0.8rem' }}>暂无执行日志。</div>
+                        <AsyncStatePanel
+                          tone="empty"
+                          title="暂无执行日志"
+                          description="当前筛选条件下还没有可展示的执行记录。"
+                        />
                       ) : (
                         <div style={{ display: 'grid', gap: '0.35rem' }}>
                           {getVisibleLogs(item.id).map((log) => (

@@ -429,7 +429,7 @@ ${detailBlocks}`
     model: string,
     systemPrompt: string,
     userPrompt: string,
-    opts?: { timeoutMs?: number }
+    opts?: { timeoutMs?: number; maxTokens?: number; temperature?: number }
   ): Promise<string> {
     return this.callAiModelWithMessages(
       apiUrl,
@@ -472,7 +472,7 @@ ${detailBlocks}`
     apiKey: string,
     model: string,
     messages: ChatCompletionMessage[],
-    opts?: { timeoutMs?: number }
+    opts?: { timeoutMs?: number; maxTokens?: number; temperature?: number }
   ): Promise<string> {
     const endpoint = this.buildChatCompletionEndpoint(apiUrl);
     const timeoutMs = opts?.timeoutMs ?? 60000;
@@ -482,8 +482,8 @@ ${detailBlocks}`
     const body = {
       model,
       messages,
-      temperature: 0.7,
-      max_tokens: 2000,
+      temperature: opts?.temperature ?? 0.7,
+      max_tokens: opts?.maxTokens ?? 2000,
     };
 
     let response: Response;
@@ -718,6 +718,133 @@ ${detailBlocks}`
       return parseObject(objectChunk);
     }
     return null;
+  }
+
+  private stripReasoningAndCodeFence(raw: string): string {
+    return raw
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+  }
+
+  private extractJsonArrayText(raw: string): string | null {
+    const cleaned = this.stripReasoningAndCodeFence(raw);
+    if (!cleaned) return null;
+    if (cleaned.startsWith('[') && cleaned.endsWith(']')) {
+      return cleaned;
+    }
+
+    const start = cleaned.indexOf('[');
+    if (start < 0) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '[') {
+        depth++;
+        continue;
+      }
+      if (ch === ']') {
+        depth--;
+        if (depth === 0) {
+          return cleaned.slice(start, i + 1).trim();
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private extractCompleteJsonObjectsFromPartialArray(raw: string): Record<string, unknown>[] {
+    const cleaned = this.stripReasoningAndCodeFence(raw);
+    const arrayStart = cleaned.indexOf('[');
+    if (arrayStart < 0) return [];
+
+    const items: Record<string, unknown>[] = [];
+    let objectStart = -1;
+    let objectDepth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = arrayStart + 1; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+        } else if (ch === '\\') {
+          escaped = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '{') {
+        if (objectDepth === 0) objectStart = i;
+        objectDepth++;
+        continue;
+      }
+      if (ch === '}') {
+        objectDepth--;
+        if (objectDepth === 0 && objectStart >= 0) {
+          const chunk = cleaned.slice(objectStart, i + 1);
+          try {
+            const parsed = JSON.parse(chunk) as unknown;
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              items.push(parsed as Record<string, unknown>);
+            }
+          } catch {
+            // Ignore malformed object fragments and keep scanning for later complete objects.
+          }
+          objectStart = -1;
+        }
+      }
+    }
+
+    return items;
+  }
+
+  private parseMeetingTasksFromAiText(raw: string): Record<string, unknown>[] {
+    const jsonStr = this.extractJsonArrayText(raw);
+    if (jsonStr) {
+      const parsed = JSON.parse(jsonStr) as unknown;
+      if (!Array.isArray(parsed)) {
+        throw new Error('AI 返回的数据不是数组');
+      }
+      return parsed.filter((item): item is Record<string, unknown> => (
+        !!item && typeof item === 'object' && !Array.isArray(item)
+      ));
+    }
+
+    const partialItems = this.extractCompleteJsonObjectsFromPartialArray(raw);
+    if (partialItems.length > 0) {
+      return partialItems;
+    }
+
+    throw new Error('未提取到合法 JSON 数组');
   }
 
   private normalizeTaskStatus(value: unknown): TaskStatus | null {
@@ -2059,7 +2186,12 @@ ${dataContext}`;
    - "status": 恒定为 "todo"。
    - "notes": 原文发言相关的补充上下文摘要（以备不时之需）。
 
-返回格式：必须返回一个标准 JSON 数组结构（不要 markdown 代码块包裹），例如：
+输出要求：
+1. 只返回 JSON 数组，不要解释、不要推理过程、不要 markdown 代码块。
+2. 最多返回 12 条任务。
+3. notes 控制在 80 个汉字以内。
+4. 日期无法判断时用空字符串。
+返回格式示例：
 [
   { "taskName": "xxx", "assignee": "xxx", "startDate": "xxx", "endDate": "xxx", "priority": "medium", "status": "todo", "notes": "xxx" },
   { "taskName": "yyy", ... }
@@ -2067,17 +2199,14 @@ ${dataContext}`;
 如果没有提取到任何行动项，返回 []。`;
 
       const userPrompt = `请从以下会议纪要中提取具体的 Action Items:\n====================\n${input.text}\n====================`;
-      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt, { timeoutMs: 60000 });
+      const raw = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt, {
+        timeoutMs: 60000,
+        maxTokens: 6000,
+        temperature: 0.1
+      });
 
       try {
-        const jsonStr = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        const parsedTasks = JSON.parse(jsonStr) as Array<{
-          taskName: string; assignee: string; startDate: string; endDate: string;
-          priority: string; status: string; notes: string;
-        }>;
-        if (!Array.isArray(parsedTasks)) {
-          throw new Error('AI 返回的数据不是数组');
-        }
+        const parsedTasks = this.parseMeetingTasksFromAiText(raw);
         // 为每个任务添加临时 id 用于前端管理
         const tasksWithIds = parsedTasks.map(task => ({
           ...task,

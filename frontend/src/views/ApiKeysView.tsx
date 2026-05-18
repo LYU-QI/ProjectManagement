@@ -24,6 +24,11 @@ export default function ApiKeysView() {
   const [newKey, setNewKey] = useState<string | null>(null);
 
   const ALL_PERMISSIONS = ['read', 'write', 'admin'];
+  const PERMISSION_LABELS: Record<string, string> = {
+    read: '读取',
+    write: '写入',
+    admin: '管理'
+  };
 
   function loadKeys() {
     setLoading(true);
@@ -84,7 +89,13 @@ export default function ApiKeysView() {
         </div>
       </div>
 
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="访问密钥加载异常"
+          description={error}
+        />
+      )}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
 
       {newKey && (
@@ -109,7 +120,7 @@ export default function ApiKeysView() {
                 {ALL_PERMISSIONS.map((perm) => (
                   <label key={perm} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', cursor: 'pointer' }}>
                     <input type="checkbox" checked={createPermissions.includes(perm)} onChange={() => togglePermission(perm)} />
-                    {perm}
+                    {PERMISSION_LABELS[perm] || perm}
                   </label>
                 ))}
               </div>
@@ -155,7 +166,7 @@ export default function ApiKeysView() {
               <tr key={key.id}>
                 <td>{key.name}</td>
                 <td><code>{key.keyPrefix}***</code></td>
-                <td>{key.permissions.join(', ')}</td>
+                <td>{key.permissions.map((permission) => PERMISSION_LABELS[permission] || permission).join('、')}</td>
                 <td style={{ fontSize: '0.85rem' }}>{key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : '从未'}</td>
                 <td style={{ fontSize: '0.85rem' }}>{new Date(key.createdAt).toLocaleString()}</td>
                 <td>

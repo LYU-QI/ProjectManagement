@@ -32,6 +32,14 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: '访客'
 };
 
+const GLOBAL_ROLE_LABELS: Record<string, string> = {
+  super_admin: '超级管理员',
+  project_manager: '项目主管',
+  pm: '项目经理',
+  member: '成员',
+  viewer: '访客'
+};
+
 export default function OrgMembersView({ onError, onMessage }: OrgMembersViewProps) {
   const { activeOrgId } = useOrgStore();
   const [members, setMembers] = useState<OrgMember[]>([]);
@@ -213,7 +221,9 @@ export default function OrgMembersView({ onError, onMessage }: OrgMembersViewPro
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 500 }}>{member.name}</div>
-              <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>@{member.username} · 全局角色: {member.globalRole}</div>
+              <div style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                @{member.username} · 全局角色: {GLOBAL_ROLE_LABELS[member.globalRole] || member.globalRole}
+              </div>
             </div>
             <select
               className="glass-input"

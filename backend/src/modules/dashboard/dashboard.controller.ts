@@ -10,6 +10,14 @@ export class DashboardController {
     return this.dashboardService.overview(req.user);
   }
 
+  @Get('cluster-risk-board')
+  async clusterRiskBoard(
+    @Query('force') force: string,
+    @Req() req: { user?: { sub?: number; role?: string; organizationId?: string } }
+  ) {
+    return this.dashboardService.clusterRiskBoard(req.user, force === 'true');
+  }
+
   @Get('efficiency')
   async efficiency(
     @Query('projectId') projectId: string,

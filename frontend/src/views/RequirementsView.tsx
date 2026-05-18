@@ -2,7 +2,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { apiPost, API_BASE, TOKEN_KEY } from '../api/client';
 import { comparePrdVersions, createPrdDocument, deletePrdVersion, listPrdDocuments, getPrdVersions, uploadPrdVersion, deletePrdDocument } from '../api/prd';
-import type { Requirement, RequirementChange } from '../types';
+import type { ProjectItem, Requirement, RequirementChange } from '../types';
 import type { PrdCompareResult, PrdDocument, PrdVersion } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
@@ -64,6 +64,14 @@ type InlineEditState<T, Id> = {
 
 type Props = {
   canWrite: boolean;
+  projects: ProjectItem[];
+  selectedProjectIds: number[];
+  onToggleProjectSelection: (id: number, checked: boolean) => void;
+  onDeleteSelectedProjects: () => void;
+  onSubmitProject: (e: FormEvent<HTMLFormElement>) => void;
+  onDeleteProject: (project: ProjectItem) => void;
+  projectEdit: InlineEditState<ProjectItem, number>;
+  onSaveProject: (project: ProjectItem) => void;
   requirements: Requirement[];
   selectedRequirementIds: number[];
   onSubmitRequirement: (e: FormEvent<HTMLFormElement>) => void;
@@ -88,6 +96,14 @@ type Props = {
 
 export default function RequirementsView({
   canWrite,
+  projects,
+  selectedProjectIds,
+  onToggleProjectSelection,
+  onDeleteSelectedProjects,
+  onSubmitProject,
+  onDeleteProject,
+  projectEdit,
+  onSaveProject,
   requirements,
   selectedRequirementIds,
   onSubmitRequirement,
@@ -126,6 +142,8 @@ export default function RequirementsView({
     loading: false
   });
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [projectCreateModalOpen, setProjectCreateModalOpen] = useState(false);
+  const [projectKeyword, setProjectKeyword] = useState('');
   const [actionMenuRowId, setActionMenuRowId] = useState<number | null>(null);
 
   // AI 评审状态
@@ -148,6 +166,11 @@ export default function RequirementsView({
   async function submitRequirementInModal(e: FormEvent<HTMLFormElement>) {
     await Promise.resolve(onSubmitRequirement(e));
     setCreateModalOpen(false);
+  }
+
+  async function submitProjectInModal(e: FormEvent<HTMLFormElement>) {
+    await Promise.resolve(onSubmitProject(e));
+    setProjectCreateModalOpen(false);
   }
 
   const filteredChanges = requirementChanges.filter((change) => {
@@ -188,6 +211,12 @@ export default function RequirementsView({
       return true;
     });
   }, [listFilters, requirements]);
+
+  const filteredProjects = useMemo(() => {
+    const keyword = projectKeyword.trim().toLowerCase();
+    if (!keyword) return projects;
+    return projects.filter((project) => `${project.name || ''} ${project.alias || ''}`.toLowerCase().includes(keyword));
+  }, [projectKeyword, projects]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -384,6 +413,152 @@ export default function RequirementsView({
 
   return (
     <div>
+      <div className="card req-list-card req-mb-12">
+        <div className="section-title-row">
+          <h3>项目管理</h3>
+          {canWrite && (
+            <div className="dashboard-project-actions">
+              <button className="btn btn-primary" type="button" onClick={() => setProjectCreateModalOpen(true)}>
+                新建项目
+              </button>
+              <button className="btn" type="button" disabled={selectedProjectIds.length === 0} onClick={onDeleteSelectedProjects}>
+                批量删除 ({selectedProjectIds.length})
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="filters-grid req-filters-grid">
+          <input
+            placeholder="筛选项目名称/别名"
+            value={projectKeyword}
+            onChange={(e) => setProjectKeyword(e.target.value)}
+          />
+        </div>
+
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                {canWrite && (
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={filteredProjects.length > 0 && filteredProjects.every((project) => selectedProjectIds.includes(project.id))}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        filteredProjects.forEach((project) => onToggleProjectSelection(project.id, checked));
+                      }}
+                    />
+                  </th>
+                )}
+                <th>名称</th>
+                <th>别名</th>
+                <th>开始</th>
+                <th>结束</th>
+                <th>群聊 ChatID</th>
+                <th>飞书 App Token</th>
+                <th>飞书 Table ID</th>
+                {canWrite && <th>操作</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {filteredProjects.map((project) => {
+                const isEditing = projectEdit.editingId === project.id;
+                const rowDraft = isEditing ? (projectEdit.draft ?? project) : project;
+                const isDirty = isEditing && projectEdit.hasDirty(project);
+
+                return (
+                  <tr key={project.id} className={isEditing ? 'editing-row' : ''}>
+                    {canWrite && (
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selectedProjectIds.includes(project.id)}
+                          onChange={(e) => onToggleProjectSelection(project.id, e.target.checked)}
+                        />
+                      </td>
+                    )}
+                    <td
+                      className={isEditing && projectEdit.editingField === 'name' ? 'editing' : ''}
+                      onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'name')}
+                    >
+                      {isEditing && projectEdit.editingField === 'name' ? (
+                        <input
+                          data-project-edit={`${project.id}-name`}
+                          value={rowDraft.name ?? ''}
+                          onChange={(e) => projectEdit.updateDraft('name', e.target.value)}
+                          onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                          onBlur={() => projectEdit.finalize(project)}
+                        />
+                      ) : (
+                        rowDraft.name
+                      )}
+                    </td>
+                    <td
+                      className={isEditing && projectEdit.editingField === 'alias' ? 'editing' : ''}
+                      onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'alias')}
+                    >
+                      {isEditing && projectEdit.editingField === 'alias' ? (
+                        <input
+                          data-project-edit={`${project.id}-alias`}
+                          value={rowDraft.alias ?? ''}
+                          onChange={(e) => projectEdit.updateDraft('alias', e.target.value.toUpperCase())}
+                          onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                          onBlur={() => projectEdit.finalize(project)}
+                        />
+                      ) : (
+                        rowDraft.alias || '-'
+                      )}
+                    </td>
+                    {(['startDate', 'endDate', 'feishuChatIds', 'feishuAppToken', 'feishuTableId'] as Array<keyof ProjectItem>).map((field) => (
+                      <td
+                        key={`${project.id}-${String(field)}`}
+                        className={isEditing && projectEdit.editingField === field ? 'editing' : ''}
+                        onDoubleClick={() => canWrite && projectEdit.startEdit(project, field)}
+                      >
+                        {isEditing && projectEdit.editingField === field ? (
+                          <input
+                            data-project-edit={`${project.id}-${String(field)}`}
+                            type={field === 'startDate' || field === 'endDate' ? 'date' : 'text'}
+                            value={String(rowDraft[field] ?? '')}
+                            onChange={(e) => projectEdit.updateDraft(field, e.target.value)}
+                            onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                            onBlur={() => projectEdit.finalize(project)}
+                          />
+                        ) : field === 'feishuAppToken' || field === 'feishuTableId' ? (
+                          rowDraft[field] ? <span title={String(rowDraft[field] ?? '')}>已配置</span> : <span className="muted">-</span>
+                        ) : (
+                          String(rowDraft[field] || '-')
+                        )}
+                      </td>
+                    ))}
+                    {canWrite && (
+                      <td className="req-inline-actions">
+                        {isEditing && isDirty ? (
+                          <>
+                            <button className="btn" type="button" onClick={() => onSaveProject(project)}>保存</button>
+                            <button className="btn" type="button" onClick={projectEdit.cancel}>取消</button>
+                          </>
+                        ) : (
+                          <button className="btn dashboard-project-delete-btn" type="button" onClick={() => onDeleteProject(project)}>
+                            删除
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {filteredProjects.length === 0 && (
+                <tr>
+                  <td colSpan={canWrite ? 9 : 8} className="req-muted-cell">没有匹配的项目</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <section className="metrics-grid">
         <article className="metric-card">
           <p className="metric-label">需求总数</p>
@@ -637,6 +812,29 @@ export default function RequirementsView({
         </div>
         )}
       </div>
+
+      {projectCreateModalOpen && canWrite && (
+        <div className="req-modal-backdrop" onClick={() => setProjectCreateModalOpen(false)}>
+          <div className="req-modal dashboard-project-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <h3>新建项目</h3>
+              <div className="dashboard-project-modal-head-actions">
+                <button className="btn btn-primary" form="requirements-project-create-form" type="submit">创建项目</button>
+                <button className="btn" type="button" onClick={() => setProjectCreateModalOpen(false)}>关闭</button>
+              </div>
+            </div>
+            <form id="requirements-project-create-form" className="dashboard-project-modal-form" onSubmit={submitProjectInModal}>
+              <input name="name" placeholder="项目名称" required />
+              <input name="alias" placeholder="项目别名（大写英文）" required />
+              <input name="startDate" type="date" />
+              <input name="endDate" type="date" />
+              <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
+              <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
+              <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
+            </form>
+          </div>
+        </div>
+      )}
 
       {createModalOpen && canWrite && (
         <div className="req-modal-backdrop" onClick={() => setCreateModalOpen(false)}>

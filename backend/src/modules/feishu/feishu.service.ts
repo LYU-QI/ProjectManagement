@@ -236,11 +236,12 @@ export class FeishuService {
         const name = typeof v === 'object' ? (v as any).name : String(v);
         const mapped = userNameMap[name];
         if (!mapped) {
-          throw new BadRequestException(`识别到未知的负责人：${name}。请前往人员名册补齐或清空负责人重新创建。`);
+          this.logger.warn(`Skip unknown feishu assignee: ${name}`);
+          return null;
         }
         return { id: mapped };
-      });
-      return ids;
+      }).filter((item): item is { id: string } => !!item);
+      return ids.length > 0 ? ids : null;
     }
 
     if (typeof value === 'string') {
@@ -248,11 +249,12 @@ export class FeishuService {
       const ids = names.map((name) => {
         const mapped = userNameMap[name];
         if (!mapped) {
-          throw new BadRequestException(`识别到未知的负责人：${name}。请前往人员名册补配或清空负责人重新创建。`);
+          this.logger.warn(`Skip unknown feishu assignee: ${name}`);
+          return null;
         }
         return { id: mapped };
-      });
-      return ids;
+      }).filter((item): item is { id: string } => !!item);
+      return ids.length > 0 ? ids : null;
     }
 
     return value;
@@ -307,9 +309,14 @@ export class FeishuService {
     const hasField = (key: string) => Object.prototype.hasOwnProperty.call(withMultiSelect, key);
 
     if (!partial || hasField(assigneeKey)) {
-      normalized[assigneeKey] = normalizeAssignee
+      const normalizedAssignee = normalizeAssignee
         ? await this.normalizeAssignee(withMultiSelect[assigneeKey])
         : withMultiSelect[assigneeKey];
+      if (normalizedAssignee === null || (Array.isArray(normalizedAssignee) && normalizedAssignee.length === 0)) {
+        delete normalized[assigneeKey];
+      } else {
+        normalized[assigneeKey] = normalizedAssignee;
+      }
     }
     if (!partial || hasField(startKey)) {
       normalized[startKey] = this.normalizeDate(withMultiSelect[startKey]);

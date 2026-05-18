@@ -146,7 +146,13 @@ export default function WebhookView() {
         </div>
       </div>
 
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="回调地址加载异常"
+          description={error}
+        />
+      )}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
 
       {showCreate && (

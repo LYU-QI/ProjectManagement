@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiGet } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 interface ProjectItem {
   id: number;
@@ -47,6 +48,8 @@ export default function CostReportView({ projects, selectedProjectId }: CostRepo
     window.open(`/api/v1/cost-report/export?projectId=${projectFilter}&startDate=${startDate}&endDate=${endDate}`, '_blank');
   }
 
+  const hasLoadedData = Boolean(summary) || trend.length > 0;
+
   return (
     <div>
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
@@ -63,10 +66,31 @@ export default function CostReportView({ projects, selectedProjectId }: CostRepo
         <button className="btn" onClick={exportCsv}>导出 CSV</button>
       </div>
 
-      {error && <p className="warn">{error}</p>}
-      {loading && <p>加载中...</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="成本报表加载异常"
+          description={error}
+        />
+      )}
 
-      {summary && (
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载成本报表"
+          description="正在汇总当前筛选范围内的成本摘要和趋势数据。"
+        />
+      )}
+
+      {!loading && !error && !hasLoadedData && (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无成本报表数据"
+          description="当前时间范围内还没有可展示的成本汇总或趋势数据。"
+        />
+      )}
+
+      {!loading && !error && summary && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
           <div className="card">
             <div className="muted" style={{ fontSize: '0.8rem' }}>人力成本</div>
@@ -87,7 +111,7 @@ export default function CostReportView({ projects, selectedProjectId }: CostRepo
         </div>
       )}
 
-      {trend.length > 0 && (
+      {!loading && !error && trend.length > 0 && (
         <div className="card">
           <h3 style={{ marginBottom: '1rem' }}>月度趋势</h3>
           <table className="table">
@@ -115,7 +139,7 @@ export default function CostReportView({ projects, selectedProjectId }: CostRepo
         </div>
       )}
 
-      {summary && summary.byProject?.length > 0 && (
+      {!loading && !error && summary && summary.byProject?.length > 0 && (
         <div className="card" style={{ marginTop: '1rem' }}>
           <h3 style={{ marginBottom: '1rem' }}>按项目分布</h3>
           <table className="table">

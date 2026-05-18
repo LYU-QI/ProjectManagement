@@ -393,7 +393,15 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
                 </tr>
               ))}
               {(!planDetail.items || planDetail.items.length === 0) && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', opacity: 0.5, padding: '1rem' }}>暂无用例</td></tr>
+                <tr>
+                  <td colSpan={6} style={{ padding: '1rem' }}>
+                    <AsyncStatePanel
+                      tone="empty"
+                      title="当前计划暂无用例"
+                      description="可以先创建测试用例，再加入到当前测试计划中执行。"
+                    />
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -412,8 +420,19 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
             description="正在同步当前项目下的测试计划与关联用例。"
           />
         )
-        : !selectedProjectId ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
-        : plans.length === 0 ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无测试计划</div>
+        : !selectedProjectId ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="请先选择项目"
+            description="测试计划依赖当前项目上下文，请先在顶部选择目标项目。"
+          />
+        ) : plans.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无测试计划"
+            description="当前项目还没有测试计划，可先创建计划并关联测试用例。"
+          />
+        )
         : <div className="glass-card" style={{ padding: 0 }}>
           <table className="table" style={{ margin: 0 }}>
             <thead><tr><th>ID</th><th>标题</th><th>状态</th><th>用例数</th><th>开始</th><th>截止</th>{canWrite && <th>操作</th>}</tr></thead>
@@ -463,8 +482,19 @@ export default function TestPlanView({ selectedProjectId, canWrite, feishuUserNa
             description="正在同步当前项目下的测试用例、优先级与状态信息。"
           />
         )
-        : !selectedProjectId ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
-        : cases.length === 0 ? <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无测试用例</div>
+        : !selectedProjectId ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="请先选择项目"
+            description="测试用例依赖当前项目上下文，请先在顶部选择目标项目。"
+          />
+        ) : cases.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无测试用例"
+            description="当前项目还没有测试用例，可先创建用例后再纳入测试计划。"
+          />
+        )
         : <div className="glass-card" style={{ padding: 0 }}>
           <table className="table" style={{ margin: 0 }}>
             <thead><tr><th>ID</th><th>标题</th><th>优先级</th><th>状态</th><th>标签</th><th>创建时间</th>{canWrite && <th>操作</th>}</tr></thead>

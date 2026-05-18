@@ -146,26 +146,37 @@ export default function ResourcesView({
             description="正在根据任务排期和工时明细计算负责人负载情况。"
           />
         )}
-        {scheduleError && <p className="warn">{scheduleError}</p>}
+        {scheduleError && (
+          <AsyncStatePanel
+            tone="error"
+            title="资源负载加载异常"
+            description={scheduleError}
+          />
+        )}
       </div>
 
       <div className="card">
-        <table className="table">
-          <thead><tr><th>负责人</th><th>任务数</th><th>本期人天</th><th>活跃任务</th></tr></thead>
-          <tbody>
-            {loadRows.map((row) => (
-              <tr key={row.assignee}>
-                <td>{row.assignee}</td>
-                <td>{row.taskCount}</td>
-                <td>{row.days.toFixed(1)}</td>
-                <td>{row.activeTasks.length > 0 ? row.activeTasks.join(' / ') : '-'}</td>
-              </tr>
-            ))}
-            {loadRows.length === 0 && (
-              <tr><td colSpan={4} className="resources-empty-cell">暂无匹配数据</td></tr>
-            )}
-          </tbody>
-        </table>
+        {loadRows.length === 0 ? (
+          <AsyncStatePanel
+            tone="empty"
+            title="暂无匹配资源数据"
+            description="当前时间范围内没有匹配到负责人负载信息，可调整时间范围后重试。"
+          />
+        ) : (
+          <table className="table">
+            <thead><tr><th>负责人</th><th>任务数</th><th>本期人天</th><th>活跃任务</th></tr></thead>
+            <tbody>
+              {loadRows.map((row) => (
+                <tr key={row.assignee}>
+                  <td>{row.assignee}</td>
+                  <td>{row.taskCount}</td>
+                  <td>{row.days.toFixed(1)}</td>
+                  <td>{row.activeTasks.length > 0 ? row.activeTasks.join(' / ') : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

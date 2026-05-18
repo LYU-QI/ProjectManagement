@@ -133,7 +133,10 @@ export default function AiView({
     setCreatingFeishu(true);
     setNlpError('');
     try {
-      await apiPost('/feishu/records', { fields });
+      const feishuPath = selectedProjectId
+        ? `/feishu/records?projectId=${selectedProjectId}`
+        : '/feishu/records';
+      await apiPost(feishuPath, { fields });
       setNlpResult(null);
       setNlpText('');
       alert('✅ 已成功在飞书同步列表中创建任务！');
@@ -238,7 +241,7 @@ export default function AiView({
           里程碑: '否'
         };
         if (syncToFeishu) {
-          await apiPost('/feishu/records', { fields });
+          await apiPost(`/feishu/records?projectId=${selectedProjectId}`, { fields });
         }
         successCount++;
       }

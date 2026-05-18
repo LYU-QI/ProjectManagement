@@ -1,6 +1,7 @@
 ﻿import { FormEvent, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost, TOKEN_KEY, USER_KEY } from './api/client';
+import { getUiVisibilityRules, type UiVisibilityRules } from './api/settings';
 import { listOrganizations } from './api/organizations';
 import { useOrgStore } from './store/useOrgStore';
 import { useWorkspaceStore } from './store/useWorkspaceStore';
@@ -18,6 +19,7 @@ import type {
   AuthUser,
   AuditLogItem,
   ChatbotAuditItem,
+  ClusterRiskBoardResponse,
   CostEntryItem,
   CostSummary,
   DashboardOverview,
@@ -78,6 +80,32 @@ type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
 const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
+const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
+  super_admin: { workspaceViews: ['*'], adminViews: ['*'], canAccessAdmin: true },
+  project_manager: { workspaceViews: WORKSPACE_VIEWS, adminViews: [], canAccessAdmin: false },
+  pm: {
+    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
+    adminViews: [],
+    canAccessAdmin: false
+  },
+  member: {
+    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
+    adminViews: ['project-access', 'org-members', 'org-settings'],
+    canAccessAdmin: true
+  },
+  viewer: {
+    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
+    adminViews: [],
+    canAccessAdmin: false
+  }
+};
+
+function normalizeViewScope(values: string[] | undefined, fallback: ViewKey[]): ViewKey[] | '*' {
+  if (!values || values.includes('*')) return '*';
+  const valid = new Set([...WORKSPACE_VIEWS, ...ADMIN_VIEWS]);
+  const scoped = values.filter((item): item is ViewKey => valid.has(item as ViewKey));
+  return scoped.length > 0 ? scoped : fallback;
+}
 
 function PageFallback() {
   return (
@@ -187,6 +215,7 @@ function App() {
   // Track whether activeOrgId has genuinely changed (vs initial load)
   const prevActiveOrgIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
+  const [clusterRiskBoard, setClusterRiskBoard] = useState<ClusterRiskBoardResponse | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
@@ -202,20 +231,34 @@ function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [chatbotAuditLogs, setChatbotAuditLogs] = useState<ChatbotAuditItem[]>([]);
+  const [uiVisibilityRules, setUiVisibilityRules] = useState<UiVisibilityRules>(DEFAULT_UI_VISIBILITY_RULES);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [lastRetry, setLastRetry] = useState<{ label: string; action: () => Promise<void> } | null>(null);
   const [retrying, setRetrying] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const skipSelectedProjectRefreshRef = useRef<number | null>(null);
+
+  function clearProjectScopedData() {
+    setRequirements([]);
+    setRequirementChanges([]);
+    setSelectedRequirementForChanges(null);
+    setCostSummary(null);
+    setCostEntries([]);
+    setWorklogs([]);
+  }
 
   function handleProjectSelect(projectId: number | null) {
     if (!projectId) return;
+    clearProjectScopedData();
     if (projectId === selectedProjectId) {
       void refreshAll(projectId);
       return;
     }
+    skipSelectedProjectRefreshRef.current = projectId;
     setSelectedProjectId(projectId);
+    void refreshAll(projectId);
   }
 
   async function refreshAll(projectIdOverride?: number | null) {
@@ -228,8 +271,24 @@ function App() {
     setError('');
     try {
       await runWithRetry('刷新数据', async () => {
-        const [dashboardRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
+        const [dashboardRes, clusterRiskBoardRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
           apiGet<DashboardOverview>('/dashboard/overview'),
+          apiGet<ClusterRiskBoardResponse>('/dashboard/cluster-risk-board').catch((err) => ({
+            generatedAt: new Date().toISOString(),
+            source: 'error' as const,
+            error: err instanceof Error ? err.message : '集群风险状态大看板加载失败',
+            summary: {
+              totalProjects: 0,
+              redCount: 0,
+              yellowCount: 0,
+              greenCount: 0,
+              emptyRiskCount: 0,
+              keyDemoCount: 0,
+              dailyRiskHelpCount: 0,
+              highQualityRiskCount: 0
+            },
+            items: []
+          })),
           apiGet<ProjectItem[]>('/projects'),
           apiGet<UserItem[]>('/users'),
           apiGet<NotificationItem[]>('/notifications?unread=true'),
@@ -238,6 +297,7 @@ function App() {
         if (signal.aborted) return;
 
         setOverview(dashboardRes);
+        setClusterRiskBoard(clusterRiskBoardRes);
         setProjects(projectList);
         setUsers(userList);
         setFeishuUsers(feishuUserList);
@@ -250,17 +310,13 @@ function App() {
           ?? projectList[0]?.id
           ?? null;
         if (effectiveProjectId !== selectedProjectId) {
+          skipSelectedProjectRefreshRef.current = effectiveProjectId;
           setSelectedProjectId(effectiveProjectId);
         }
 
         if (!effectiveProjectId) {
           if (signal.aborted) return;
-          setRequirements([]);
-          setRequirementChanges([]);
-          setSelectedRequirementForChanges(null);
-          setCostSummary(null);
-          setCostEntries([]);
-          setWorklogs([]);
+          clearProjectScopedData();
           return;
         }
 
@@ -280,6 +336,7 @@ function App() {
       });
     } catch (err) {
       if (signal.aborted) return;
+      clearProjectScopedData();
       console.error('[refreshAll] error:', err);
       if (err instanceof Error && (err.message === 'UNAUTHORIZED' || (err as Error & { status?: number }).status === 401)) {
         logout();
@@ -306,6 +363,7 @@ function App() {
     setToken(null);
     setUser(null);
     setOverview(null);
+    setClusterRiskBoard(null);
     setProjects([]);
     setUsers([]);
     setSelectedProjectIds([]);
@@ -317,6 +375,13 @@ function App() {
     setNotifications([]);
     setAuditLogs([]);
     setChatbotAuditLogs([]);
+    setUiVisibilityRules(DEFAULT_UI_VISIBILITY_RULES);
+  }
+
+  async function refreshClusterRiskBoard() {
+    if (!token) return;
+    const data = await apiGet<ClusterRiskBoardResponse>('/dashboard/cluster-risk-board?force=true');
+    setClusterRiskBoard(data);
   }
 
   async function submitLogin(e: FormEvent<HTMLFormElement>) {
@@ -373,6 +438,9 @@ function App() {
   useEffect(() => {
     if (token) {
       void refreshAll();
+      void getUiVisibilityRules().then(setUiVisibilityRules).catch(() => {
+        setUiVisibilityRules(DEFAULT_UI_VISIBILITY_RULES);
+      });
       void listOrganizations().then(orgs => {
         const { setOrgList, setActiveOrg } = useOrgStore.getState();
         if (orgs?.length) {
@@ -391,12 +459,19 @@ function App() {
   const activeOrgName = orgList.find((o) => o.id === activeOrgId)?.name ?? '未选择';
   const isSuperAdmin = userRole === 'super_admin';
   const isProjectManager = userRole === 'project_manager';
+  const currentVisibilityRule = uiVisibilityRules[userRole] ?? DEFAULT_UI_VISIBILITY_RULES[userRole] ?? {
+    workspaceViews: WORKSPACE_VIEWS,
+    adminViews: [],
+    canAccessAdmin: false
+  };
+  const workspaceVisibleViews = isSuperAdmin ? '*' : normalizeViewScope(currentVisibilityRule.workspaceViews, WORKSPACE_VIEWS);
+  const adminVisibleViews = isSuperAdmin ? '*' : normalizeViewScope(currentVisibilityRule.adminViews, []);
   const canAccessAuditLogs = isSuperAdmin || isProjectManager || userRole === 'pm';
   const canAccessSystemConfig = isSuperAdmin || isProjectManager || userRole === 'pm';
   const canManageUserAccounts = isSuperAdmin || isProjectManager;
   const canWrite = isSuperAdmin || isProjectManager || ['owner', 'admin', 'member'].includes(myOrgRole ?? '');
   const canManageAdmin = isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');
-  const canAccessAdminPlatform = canManageAdmin;
+  const canAccessAdminPlatform = isSuperAdmin || (canManageAdmin && currentVisibilityRule.canAccessAdmin && (adminVisibleViews === '*' || adminVisibleViews.length > 0));
 
   useEffect(() => {
     if (!token || !activeOrgId) return;
@@ -410,11 +485,11 @@ function App() {
   // Reload project-specific data when selected project changes
   useEffect(() => {
     if (token && selectedProjectId) {
-      setRequirementChanges([]);
-      setSelectedRequirementForChanges(null);
-      setCostSummary(null);
-      setCostEntries([]);
-      setWorklogs([]);
+      if (skipSelectedProjectRefreshRef.current === selectedProjectId) {
+        skipSelectedProjectRefreshRef.current = null;
+        return;
+      }
+      clearProjectScopedData();
       void refreshAll(selectedProjectId);
     }
   }, [selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -454,10 +529,11 @@ function App() {
     const form = new FormData(formEl);
     const name = String(form.get('name'));
     const alias = String(form.get('alias') || '').trim().toUpperCase();
-    const budget = Number(form.get('budget'));
+    const rawBudget = String(form.get('budget') || '').trim();
+    const budget = rawBudget ? Number(rawBudget) : 0;
 
-    if (!Number.isFinite(budget) || budget <= 0) {
-      setError('预算必须是大于 0 的数字。');
+    if (!Number.isFinite(budget) || budget < 0) {
+      setError('预算必须是大于等于 0 的数字。');
       return;
     }
     if (!/^[A-Z]+$/.test(alias)) {
@@ -631,8 +707,8 @@ function App() {
     setError('');
     const budget = Number(draft.budget);
     const alias = String(draft.alias || '').trim().toUpperCase();
-    if (!Number.isFinite(budget) || budget <= 0) {
-      setError('预算必须是大于 0 的数字。');
+    if (!Number.isFinite(budget) || budget < 0) {
+      setError('预算必须是大于等于 0 的数字。');
       return;
     }
     if (!/^[A-Z]+$/.test(alias)) {
@@ -2194,7 +2270,7 @@ function App() {
             <form className="form app-login-form" onSubmit={submitLogin}>
               <div>
                 <label className="app-login-label">账号</label>
-                <input name="username" placeholder="admin / user / 你的账号" required />
+                <input name="username" placeholder="请输入账号" required />
               </div>
               <div>
                 <label className="app-login-label">密码</label>
@@ -2235,6 +2311,8 @@ function App() {
       theme={theme}
       onThemeChange={setTheme}
       headerCenter={<><HeaderOrgSelect isSuperAdmin={isSuperAdmin} /><HeaderProjectSelect projects={projects} selectedProjectId={selectedProjectId} onSelect={handleProjectSelect} /></>}
+      workspaceVisibleViews={workspaceVisibleViews}
+      adminVisibleViews={adminVisibleViews}
     >
       <div className="page-content">
         <div className="app-view-head">
@@ -2450,6 +2528,8 @@ function App() {
           <DashboardView
             canWrite={canWrite}
             overview={overview}
+            clusterRiskBoard={clusterRiskBoard}
+            onRefreshClusterRiskBoard={() => refreshClusterRiskBoard()}
             projects={projects}
             selectedProjectId={selectedProjectId}
             selectedProjectIds={selectedProjectIds}
@@ -2466,6 +2546,14 @@ function App() {
         {view === 'requirements' && (
           <RequirementsView
             canWrite={canWrite}
+            projects={projects}
+            selectedProjectIds={selectedProjectIds}
+            onToggleProjectSelection={toggleProjectSelection}
+            onDeleteSelectedProjects={() => void deleteSelectedProjects()}
+            onSubmitProject={submitProject}
+            onDeleteProject={(project) => void deleteProject(project)}
+            projectEdit={projectEdit}
+            onSaveProject={(project) => void saveInlineProjectEdit(project)}
             requirements={requirements}
             selectedRequirementIds={selectedRequirementIds}
             onSubmitRequirement={submitRequirement}
@@ -2721,6 +2809,12 @@ function App() {
           <ProjectAccessView
             users={users}
             projects={projects}
+            uiVisibilityRules={uiVisibilityRules}
+            canManageUiVisibility={isSuperAdmin}
+            onSaveUiVisibilityRules={async (rules) => {
+              const saved = await apiPost<UiVisibilityRules>('/config/ui-visibility', rules as Record<string, unknown>);
+              setUiVisibilityRules(saved);
+            }}
             canManageUserAccounts={canManageUserAccounts}
             canDeleteUserAccounts={isSuperAdmin}
             canManageProjectMembership={canManageAdmin}

@@ -22,6 +22,14 @@ export interface SaveConfigResult {
     message: string;
 }
 
+export interface UiVisibilityRule {
+    workspaceViews: string[];
+    adminViews: string[];
+    canAccessAdmin: boolean;
+}
+
+export type UiVisibilityRules = Record<string, UiVisibilityRule>;
+
 /**
  * 获取所有配置项
  * @param reveal 是否显示敏感字段真实值
@@ -36,4 +44,12 @@ export function getConfigItems(reveal = false): Promise<ConfigItem[]> {
  */
 export function saveConfigItems(updates: Record<string, string>): Promise<SaveConfigResult> {
     return apiPost<SaveConfigResult>('/config', updates);
+}
+
+export function getUiVisibilityRules(): Promise<UiVisibilityRules> {
+    return apiGet<UiVisibilityRules>('/config/ui-visibility');
+}
+
+export function saveUiVisibilityRules(rules: UiVisibilityRules): Promise<UiVisibilityRules> {
+    return apiPost<UiVisibilityRules>('/config/ui-visibility', rules);
 }

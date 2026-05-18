@@ -9,11 +9,12 @@ const GROUP_ICONS: Record<string, string> = {
     database: '🗄️',
     security: '🔐',
     feishu: '🐦',
+    dashboard: '📊',
     ai: '🤖',
 };
 
 /** 分组排序 */
-const GROUP_ORDER = ['database', 'security', 'feishu', 'ai'];
+const GROUP_ORDER = ['database', 'security', 'feishu', 'dashboard', 'ai'];
 
 interface SettingsViewProps {
     onError: (msg: string) => void;

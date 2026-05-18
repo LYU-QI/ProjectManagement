@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { ProjectItem } from '../types';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import {
   createSprint,
   deleteSprint,
@@ -166,7 +167,13 @@ export default function SprintBoardView({
   return (
     <div>
       {message && <p className="success-msg">{message}</p>}
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="迭代看板加载异常"
+          description={error}
+        />
+      )}
 
       <div className="sprint-toolbar">
         <span className="sprint-count">
@@ -243,12 +250,20 @@ export default function SprintBoardView({
         </div>
       )}
 
-      {loading && <p className="muted">加载中...</p>}
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载迭代看板"
+          description="正在同步当前项目下的迭代状态、目标和时间范围。"
+        />
+      )}
 
       {!selectedProjectId && (
-        <div className="card glass-card muted" style={{ textAlign: 'center', padding: '2rem' }}>
-          请先在顶部选择项目
-        </div>
+        <AsyncStatePanel
+          tone="empty"
+          title="请先选择项目"
+          description="Sprint 看板依赖当前项目上下文，请先在顶部选择目标项目。"
+        />
       )}
 
       {selectedProjectId && !loading && (
@@ -384,7 +399,11 @@ export default function SprintBoardView({
                   </div>
                 ))}
                 {byStatus(col.key).length === 0 && (
-                  <div className="sprint-col-empty">--</div>
+                  <AsyncStatePanel
+                    tone="empty"
+                    title={`暂无${col.label}迭代`}
+                    description="当前状态分组下还没有迭代记录。"
+                  />
                 )}
               </div>
             </div>

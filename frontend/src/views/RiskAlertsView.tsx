@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { FeishuFormState } from '../types';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,24 +46,29 @@ export default function RiskAlertsView({
   return (
     <div className="card risk-alerts-card">
       <h3>延期预警（截止 ≤ {thresholdDays} 天且进度 &lt; {progressThreshold}%）</h3>
-      <table className="table">
-        <thead><tr><th>任务</th><th>负责人</th><th>截止日期</th><th>剩余天数</th><th>进度</th><th>风险等级</th></tr></thead>
-        <tbody>
-          {alerts.map(({ row, daysLeft, progress }) => (
-            <tr key={row.recordId}>
-              <td>{row.任务名称 || row.任务ID}</td>
-              <td>{row.负责人 || '-'}</td>
-              <td>{row.截止时间 || '-'}</td>
-              <td>{daysLeft ?? '-'}</td>
-              <td>{progress.toFixed(0)}%</td>
-              <td>{row.风险等级 || '-'}</td>
-            </tr>
-          ))}
-          {alerts.length === 0 && (
-            <tr><td colSpan={6} className="risk-alerts-empty-cell">暂无延期风险任务</td></tr>
-          )}
-        </tbody>
-      </table>
+      {alerts.length === 0 ? (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无延期风险任务"
+          description="当前阈值下没有识别到即将延期且进度偏低的任务。"
+        />
+      ) : (
+        <table className="table">
+          <thead><tr><th>任务</th><th>负责人</th><th>截止日期</th><th>剩余天数</th><th>进度</th><th>风险等级</th></tr></thead>
+          <tbody>
+            {alerts.map(({ row, daysLeft, progress }) => (
+              <tr key={row.recordId}>
+                <td>{row.任务名称 || row.任务ID}</td>
+                <td>{row.负责人 || '-'}</td>
+                <td>{row.截止时间 || '-'}</td>
+                <td>{daysLeft ?? '-'}</td>
+                <td>{progress.toFixed(0)}%</td>
+                <td>{row.风险等级 || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

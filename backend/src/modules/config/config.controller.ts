@@ -42,4 +42,19 @@ export class ConfigController {
     updateAll(@Body() body: Record<string, string>) {
         return this.configService.updateAll(body);
     }
+
+    @Roles('viewer', 'member', 'pm', 'project_manager', 'super_admin')
+    @Get('ui-visibility')
+    getUiVisibility(@Req() req?: { user?: { organizationId?: string | null } }) {
+        return this.configService.getUiVisibilityRules(req?.user?.organizationId);
+    }
+
+    @Roles('super_admin')
+    @Post('ui-visibility')
+    updateUiVisibility(
+        @Body() body: Record<string, { workspaceViews?: string[]; adminViews?: string[]; canAccessAdmin?: boolean }>,
+        @Req() req?: { user?: { organizationId?: string | null } }
+    ) {
+        return this.configService.updateUiVisibilityRules(req?.user?.organizationId, body as any);
+    }
 }

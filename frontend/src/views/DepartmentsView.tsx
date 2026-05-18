@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiDelete, apiGet, apiPatch, apiPost } from '../api/client';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 interface DepartmentItem {
   id: string;
@@ -106,6 +107,10 @@ export default function DepartmentsView() {
     ]);
   }
 
+  useEffect(() => {
+    load();
+  }, []);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
@@ -116,7 +121,13 @@ export default function DepartmentsView() {
         <button className="btn" onClick={syncFromFeishu}>从飞书同步</button>
       </div>
 
-      {error && <p className="warn">{error}</p>}
+      {error && (
+        <AsyncStatePanel
+          tone="error"
+          title="部门数据加载异常"
+          description={error}
+        />
+      )}
       {message && <p style={{ color: 'var(--color-success, green)' }}>{message}</p>}
 
       {showCreate && (
@@ -142,13 +153,23 @@ export default function DepartmentsView() {
         </div>
       )}
 
-      {loading && <p>加载中...</p>}
-
-      {!loading && departments.length === 0 && (
-        <p className="muted">暂无部门。</p>
+      {loading && (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载部门数据"
+          description="正在同步当前组织下的部门树和成员统计。"
+        />
       )}
 
-      {!loading && departments.length > 0 && (
+      {!loading && !error && departments.length === 0 && (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无部门"
+          description="当前组织还没有部门数据，可手动创建或从飞书同步。"
+        />
+      )}
+
+      {!loading && !error && departments.length > 0 && (
         <table className="table">
           <thead>
             <tr>

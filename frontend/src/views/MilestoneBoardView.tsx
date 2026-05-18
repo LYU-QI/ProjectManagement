@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MilestoneBoardItem as BoardItem, ProjectItem } from '../types';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 import AutocompleteOwner from '../components/ui/AutocompleteOwner';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import {
@@ -557,7 +558,11 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
           </div>
 
           {ownerOptions.length === 0 && (
-            <p className="muted milestone-owner-empty">暂无可选负责人，请先在“飞书成员”维护人员名册。</p>
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无可选负责人"
+              description="请先在“飞书成员”维护人员名册后，再为里程碑分配负责人。"
+            />
           )}
           {!canWrite && (
             <p className="muted milestone-owner-empty">当前角色为只读，仅可查看看板和交付物状态。</p>
@@ -622,7 +627,13 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
               </div>
             </div>
           </div>
-          {timelineNodes.length === 0 && <p className="muted">暂无时间线节点</p>}
+          {timelineNodes.length === 0 && (
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无时间线节点"
+              description="当前项目还没有可展示的里程碑时间线数据。"
+            />
+          )}
         </div>
 
         <div className="card">
@@ -684,15 +695,37 @@ export default function MilestoneBoardView({ projects, feishuUserNames, selected
                       </div>
                     </article>
                   ))}
-                  {laneMap[lane].length === 0 && <span className="muted">暂无里程碑</span>}
+                  {laneMap[lane].length === 0 && (
+                    <AsyncStatePanel
+                      tone="empty"
+                      title={`暂无${statuses[lane]}`}
+                      description="当前状态分组下还没有里程碑。"
+                    />
+                  )}
                 </div>
               </section>
             ))}
           </div>
         </div>
 
-        {loading && <div className="card"><p className="muted">里程碑看板加载中...</p></div>}
-        {error && <div className="card"><p className="danger">{error}</p></div>}
+        {loading && (
+          <div className="card">
+            <AsyncStatePanel
+              tone="loading"
+              title="正在加载里程碑看板"
+              description="正在同步里程碑、交付物与时间线数据。"
+            />
+          </div>
+        )}
+        {error && (
+          <div className="card">
+            <AsyncStatePanel
+              tone="error"
+              title="里程碑看板加载异常"
+              description={error}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

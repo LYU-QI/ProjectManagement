@@ -28,6 +28,40 @@ export interface DashboardOverview {
   }>;
 }
 
+export type ClusterRiskLight = '红灯' | '黄灯' | '绿灯' | '未填';
+
+export interface ClusterRiskBoardItem {
+  index: string;
+  projectName: string;
+  projectId: string;
+  ownerPm: string;
+  riskLight: ClusterRiskLight;
+  deliveryScope: string;
+  hasKeyDemo: boolean | null;
+  weeklyProgress: string;
+  dailyRiskHelp: string;
+  riskResolution: string;
+  qualityGap: string;
+  qualityLevel: string;
+}
+
+export interface ClusterRiskBoardResponse {
+  generatedAt: string;
+  source: 'feishu' | 'config_missing' | 'error';
+  error?: string;
+  summary: {
+    totalProjects: number;
+    redCount: number;
+    yellowCount: number;
+    greenCount: number;
+    emptyRiskCount: number;
+    keyDemoCount: number;
+    dailyRiskHelpCount: number;
+    highQualityRiskCount: number;
+  };
+  items: ClusterRiskBoardItem[];
+}
+
 export interface Requirement {
   id: number;
   projectId: number;

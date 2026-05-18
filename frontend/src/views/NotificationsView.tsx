@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { NotificationItem } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
 
 type Props = {
   notifications: NotificationItem[];
@@ -103,25 +104,30 @@ export default function NotificationsView({ notifications, onMarkRead, settings,
           </div>
         )}
         <div className="table-wrap">
-          <table className={`table ${compactTable ? 'table-compact' : ''}`}>
-            <thead><tr><th>级别</th><th>标题</th><th>内容</th><th>时间</th><th>状态</th></tr></thead>
-            <tbody>
-              {filtered.map((n) => (
-                <tr key={n.id}>
-                  <td>{n.level}</td>
-                  <td>{n.title}</td>
-                  <td>{n.message}</td>
-                  <td>{new Date(n.createdAt).toLocaleString()}</td>
-                  <td>
-                    {n.readAt ? '已读' : <button className="btn" type="button" onClick={() => onMarkRead(n.id)}>标记已读</button>}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={5} className="notifications-empty-cell">暂无通知</td></tr>
-              )}
-            </tbody>
-          </table>
+          {filtered.length === 0 ? (
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无通知"
+              description="当前筛选条件下没有匹配的通知记录。"
+            />
+          ) : (
+            <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+              <thead><tr><th>级别</th><th>标题</th><th>内容</th><th>时间</th><th>状态</th></tr></thead>
+              <tbody>
+                {filtered.map((n) => (
+                  <tr key={n.id}>
+                    <td>{n.level}</td>
+                    <td>{n.title}</td>
+                    <td>{n.message}</td>
+                    <td>{new Date(n.createdAt).toLocaleString()}</td>
+                    <td>
+                      {n.readAt ? '已读' : <button className="btn" type="button" onClick={() => onMarkRead(n.id)}>标记已读</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

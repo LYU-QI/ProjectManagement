@@ -397,7 +397,13 @@ export default function ScheduleView({
             description="正在同步飞书任务、里程碑和依赖关系，请稍候。"
           />
         )}
-        {scheduleError && <p className="warn">{scheduleError}</p>}
+        {scheduleError && (
+          <AsyncStatePanel
+            tone="error"
+            title="进度数据加载异常"
+            description={scheduleError}
+          />
+        )}
       </div>
 
       {viewMode === 'list' && (
@@ -409,25 +415,33 @@ export default function ScheduleView({
               <h3>任务列表</h3>
               <span className="muted">来自飞书记录同步</span>
             </div>
-            <div className="table-wrap">
-              <table className={`table ${compactTable ? 'table-compact' : ''}`}>
-                <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
-                <tbody>
-                  {tasks.map((t) => {
-                    return (
-                      <tr key={t.recordId}>
-                        <td>{t.任务名称}</td>
-                        <td>{formatAssignee(t.负责人)}</td>
-                        <td>{t.状态}</td>
-                        <td>{t.开始时间}</td>
-                        <td>{t.截止时间}</td>
-                        <td>{formatProgress(t.进度)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {tasks.length === 0 ? (
+              <AsyncStatePanel
+                tone="empty"
+                title="暂无任务数据"
+                description="当前作用域下还没有同步到任务记录。"
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+                  <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
+                  <tbody>
+                    {tasks.map((t) => {
+                      return (
+                        <tr key={t.recordId}>
+                          <td>{t.任务名称}</td>
+                          <td>{formatAssignee(t.负责人)}</td>
+                          <td>{t.状态}</td>
+                          <td>{t.开始时间}</td>
+                          <td>{t.截止时间}</td>
+                          <td>{formatProgress(t.进度)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="card req-mt-12">
@@ -435,25 +449,33 @@ export default function ScheduleView({
               <h3>里程碑</h3>
               <span className="muted">按计划与实际日期追踪</span>
             </div>
-            <div className="table-wrap">
-              <table className={`table ${compactTable ? 'table-compact' : ''}`}>
-                <thead><tr><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
-                <tbody>
-                  {milestones.map((m) => {
-                    return (
-                      <tr key={m.recordId}>
-                        <td>{m.任务名称}</td>
-                        <td>{formatAssignee(m.负责人)}</td>
-                        <td>{m.开始时间}</td>
-                        <td>{m.截止时间 || '-'}</td>
-                        <td>{m.状态}</td>
-                        <td>{formatProgress(m.进度)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {milestones.length === 0 ? (
+              <AsyncStatePanel
+                tone="empty"
+                title="暂无里程碑"
+                description="当前作用域下还没有同步到里程碑记录。"
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className={`table ${compactTable ? 'table-compact' : ''}`}>
+                  <thead><tr><th>名称</th><th>负责人</th><th>计划日期</th><th>实际日期</th><th>状态</th><th>进度</th></tr></thead>
+                  <tbody>
+                    {milestones.map((m) => {
+                      return (
+                        <tr key={m.recordId}>
+                          <td>{m.任务名称}</td>
+                          <td>{formatAssignee(m.负责人)}</td>
+                          <td>{m.开始时间}</td>
+                          <td>{m.截止时间 || '-'}</td>
+                          <td>{m.状态}</td>
+                          <td>{formatProgress(m.进度)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="card req-mt-12">
@@ -461,7 +483,13 @@ export default function ScheduleView({
               <h3>任务依赖（WBS）</h3>
               <span className="muted">支持 FS / SS / FF 关系</span>
             </div>
-            {scheduleDependenciesError && <p className="warn">{scheduleDependenciesError}</p>}
+            {scheduleDependenciesError && (
+              <AsyncStatePanel
+                tone="error"
+                title="任务依赖加载异常"
+                description={scheduleDependenciesError}
+              />
+            )}
             <div className="form schedule-dependency-form">
               <div>
                 <label>任务</label>
@@ -540,7 +568,15 @@ export default function ScheduleView({
                   );
                 })}
                 {scheduleDependencies.length === 0 && (
-                  <tr><td colSpan={4} className="req-muted-cell">暂无任务依赖</td></tr>
+                  <tr>
+                    <td colSpan={4} style={{ padding: '1rem' }}>
+                      <AsyncStatePanel
+                        tone="empty"
+                        title="暂无任务依赖"
+                        description="当前还没有配置任务依赖关系，可按需新增 FS / SS / FF 依赖。"
+                      />
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -558,7 +594,11 @@ export default function ScheduleView({
             </button>
           </div>
           {ganttData.days.length === 0 ? (
-            <p className="warn">暂无可用日期数据，无法生成甘特图。</p>
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无可用日期数据"
+              description="当前任务缺少有效的开始或截止日期，暂时无法生成甘特图。"
+            />
           ) : (
             <div className="gantt-wrapper" ref={ganttWrapperRef}>
               <svg className="gantt-deps" width={svgSize.width} height={svgSize.height}>
@@ -680,7 +720,11 @@ export default function ScheduleView({
             <span className="muted">按状态分组展示所有任务</span>
           </div>
           {tasks.length === 0 ? (
-            <p className="muted">暂无任务数据</p>
+            <AsyncStatePanel
+              tone="empty"
+              title="暂无任务数据"
+              description="当前作用域下还没有任务记录，暂时无法生成看板视图。"
+            />
           ) : (
             <div style={{ display: 'flex', gap: '1rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
               {(['待办', '进行中', '已完成'] as const).map((status) => {
@@ -718,9 +762,11 @@ export default function ScheduleView({
                         </div>
                       ))}
                       {column.length === 0 && (
-                        <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--color-text-muted)', fontSize: '0.8rem', border: '1px dashed var(--glass-border)', borderRadius: 10 }}>
-                          暂无
-                        </div>
+                        <AsyncStatePanel
+                          tone="empty"
+                          title={`暂无${status}任务`}
+                          description="当前状态分组下还没有任务。"
+                        />
                       )}
                     </div>
                   </div>

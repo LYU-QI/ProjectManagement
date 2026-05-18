@@ -1814,6 +1814,400 @@ select option {
   font-size: 11px;
 }
 
+.cluster-board {
+  position: relative;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border));
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 18%, transparent) 0, transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-bg-surface) 92%, #07111f), color-mix(in srgb, var(--color-bg-muted) 82%, #071827));
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.cluster-board-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  margin: 0;
+  border-radius: 0;
+  padding: clamp(18px, 2vw, 34px);
+  overflow-y: auto;
+}
+
+.cluster-board-head,
+.cluster-board-actions,
+.cluster-board-filters,
+.cluster-project-title-row,
+.cluster-card-tags,
+.cluster-focus-title,
+.cluster-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cluster-board-head {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.cluster-board-head h2 {
+  margin: 4px 0 6px;
+  font-size: clamp(24px, 2.2vw, 38px);
+}
+
+.cluster-board-eyebrow {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.cluster-board-actions,
+.cluster-board-filters,
+.cluster-card-tags {
+  flex-wrap: wrap;
+}
+
+.cluster-source-pill,
+.cluster-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cluster-source-pill.ok {
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.cluster-source-pill.warn,
+.cluster-board-alert {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.cluster-board-alert {
+  margin-bottom: 14px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
+.cluster-board-kpis {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.cluster-kpi {
+  min-height: 88px;
+  border: 1px solid var(--color-border);
+  border-radius: 18px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--color-bg-surface) 82%, transparent);
+}
+
+.cluster-kpi span {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cluster-kpi strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--color-text-primary);
+  font-size: clamp(26px, 2.4vw, 44px);
+  line-height: 1;
+}
+
+.cluster-kpi.danger strong {
+  color: var(--color-danger);
+}
+
+.cluster-kpi.warning strong {
+  color: var(--color-warning);
+}
+
+.cluster-kpi.good strong {
+  color: var(--color-success);
+}
+
+.cluster-board-filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 180px 200px;
+  margin-bottom: 14px;
+}
+
+.cluster-main-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 14px;
+}
+
+.cluster-health-map,
+.cluster-focus-panel,
+.cluster-lane {
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--color-bg-surface) 76%, transparent);
+}
+
+.cluster-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.cluster-project-card {
+  min-height: 178px;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-left-width: 5px;
+  border-radius: 18px;
+  padding: 14px;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-surface) 84%, transparent);
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cluster-project-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.cluster-project-title-row {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.cluster-project-title-row strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.cluster-project-title-row .cluster-risk-badge {
+  flex: 0 0 auto;
+}
+
+.cluster-project-card p {
+  min-height: 44px;
+  margin: 10px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.cluster-project-card.red {
+  border-left-color: #dc2626;
+}
+
+.cluster-project-card.yellow {
+  border-left-color: #f2b705;
+}
+
+.cluster-project-card.green {
+  border-left-color: #059669;
+}
+
+.cluster-project-card.empty {
+  border-left-color: var(--color-text-muted);
+}
+
+.cluster-lane.red {
+  border-left-color: #dc2626;
+}
+
+.cluster-lane.yellow {
+  border-left-color: #f2b705;
+}
+
+.cluster-lane.green {
+  border-left-color: #059669;
+}
+
+.cluster-lane.empty {
+  border-left-color: var(--color-text-muted);
+}
+
+.cluster-risk-badge.red {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.cluster-risk-badge.yellow {
+  color: #8a5a00;
+  background: #fff4bf;
+}
+
+.cluster-risk-badge.green {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.cluster-risk-badge.empty {
+  color: var(--color-text-muted);
+  background: var(--color-bg-muted);
+}
+
+.cluster-card-tags span {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cluster-card-tags .danger {
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.cluster-focus-panel h3 {
+  margin-top: 0;
+}
+
+.cluster-focus-group {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.cluster-focus-title {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cluster-focus-title span {
+  color: var(--color-primary);
+  font-weight: 900;
+}
+
+.cluster-focus-group button,
+.cluster-lane button {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 9px 10px;
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--color-bg-muted) 80%, transparent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.cluster-lanes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.cluster-lane {
+  border-left-width: 5px;
+}
+
+.cluster-lane h4 {
+  margin: 0 0 10px;
+}
+
+.cluster-lane button strong,
+.cluster-lane button span {
+  display: block;
+}
+
+.cluster-lane button span {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.cluster-table-wrap {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.cluster-table tbody tr {
+  cursor: pointer;
+}
+
+.cluster-empty {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--color-border);
+  border-radius: 16px;
+  padding: 28px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.cluster-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(2, 8, 23, 0.48);
+}
+
+.cluster-detail-drawer {
+  width: min(620px, 92vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: 24px;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.cluster-detail-head {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.cluster-detail-head h3 {
+  margin: 10px 0 4px;
+  font-size: 24px;
+}
+
+.cluster-detail-field {
+  margin-top: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--color-bg-muted);
+}
+
+.cluster-detail-field h4 {
+  margin: 0 0 8px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.cluster-detail-field p {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+
 @media (max-width: 1280px) {
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1821,6 +2215,18 @@ select option {
 
   .dashboard-panels {
     grid-template-columns: 1fr;
+  }
+
+  .cluster-board-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .cluster-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cluster-lanes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

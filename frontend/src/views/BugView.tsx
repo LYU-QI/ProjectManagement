@@ -337,9 +337,17 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           description="正在同步当前项目下的缺陷状态、严重级别与优先级。"
         />
       ) : !selectedProjectId ? (
-        <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>请先选择一个项目</div>
+        <AsyncStatePanel
+          tone="empty"
+          title="请先选择项目"
+          description="缺陷管理依赖当前项目上下文，请先在顶部选择目标项目。"
+        />
       ) : items.length === 0 ? (
-        <div style={{ padding: '2rem', textAlign: 'center', opacity: 0.5 }}>暂无缺陷</div>
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无缺陷"
+          description="当前项目还没有缺陷记录，可新建缺陷或切换筛选条件查看。"
+        />
       ) : (
         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
           <table className="table" style={{ margin: 0 }}>
@@ -366,17 +374,19 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
                       <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>关联用例: {bug.testCase.title}</div>
                     )}
                   </td>
-                  <td>
+                  <td onClick={e => e.stopPropagation()}>
                     {canWrite ? (
-                      <ThemedSelect
-                        value={bug.status}
-                        onChange={e => { e.stopPropagation(); void handleStatusChange(bug, e.target.value as BugStatus); }}
-                        style={{ color: STATUS_COLOR[bug.status], fontWeight: 600 }}
-                      >
-                        {STATUS_OPTIONS.filter(o => o.value).map(o => (
-                          <option key={o.value!} value={o.value}>{o.label}</option>
-                        ))}
-                      </ThemedSelect>
+                      <div onClick={e => e.stopPropagation()}>
+                        <ThemedSelect
+                          value={bug.status}
+                          onChange={e => { void handleStatusChange(bug, e.target.value as BugStatus); }}
+                          style={{ color: STATUS_COLOR[bug.status], fontWeight: 600 }}
+                        >
+                          {STATUS_OPTIONS.filter(o => o.value).map(o => (
+                            <option key={o.value!} value={o.value}>{o.label}</option>
+                          ))}
+                        </ThemedSelect>
+                      </div>
                     ) : (
                       <span style={{ color: STATUS_COLOR[bug.status], fontWeight: 600 }}>{STATUS_LABELS[bug.status]}</span>
                     )}
