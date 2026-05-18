@@ -991,6 +991,7 @@ function App() {
       是否阻塞: '否',
       阻塞原因: '',
       风险等级: '中',
+      '依赖/前置条件': String(form.get('dependencyPrerequisite') || '').trim(),
       里程碑: '否'
     };
     await runWithRetry('新增任务', async () => {
@@ -1021,6 +1022,7 @@ function App() {
       是否阻塞: '否',
       阻塞原因: '',
       风险等级: '中',
+      '依赖/前置条件': '',
       里程碑: '是'
     };
     await runWithRetry('新增里程碑', async () => {
@@ -1308,13 +1310,17 @@ function App() {
   const [feishuFilterAssignee, setFeishuFilterAssignee] = useState(() => localStorage.getItem('feishu_filter_assignee') || '');
   const [feishuFilterRisk, setFeishuFilterRisk] = useState(() => localStorage.getItem('feishu_filter_risk') || '');
   const [feishuVisibleColumns, setFeishuVisibleColumns] = useState<Array<keyof FeishuFormState>>(() => {
+    const defaultColumns = FEISHU_FIELDS.map((field) => field.key);
     const raw = localStorage.getItem('feishu_visible_columns');
-    if (!raw) return FEISHU_FIELDS.map((field) => field.key);
+    if (!raw) return defaultColumns;
     try {
       const parsed = JSON.parse(raw) as Array<keyof FeishuFormState>;
-      return parsed.length > 0 ? parsed : FEISHU_FIELDS.map((field) => field.key);
+      if (parsed.length === 0) return defaultColumns;
+      const validColumns = parsed.filter((key) => defaultColumns.includes(key));
+      const missingColumns = defaultColumns.filter((key) => !validColumns.includes(key));
+      return [...validColumns, ...missingColumns];
     } catch {
-      return FEISHU_FIELDS.map((field) => field.key);
+      return defaultColumns;
     }
   });
   const [selectedRequirementIds, setSelectedRequirementIds] = useState<number[]>([]);
@@ -1507,6 +1513,26 @@ function App() {
     localStorage.setItem('feishu_visible_columns', JSON.stringify(feishuVisibleColumns));
   }, [feishuVisibleColumns]);
 
+  useEffect(() => {
+    const defaultColumns = FEISHU_FIELDS.map((field) => field.key);
+    const raw = localStorage.getItem('feishu_known_columns');
+    let knownColumns: string[] = [];
+    try {
+      knownColumns = raw ? JSON.parse(raw) : [];
+    } catch {
+      knownColumns = [];
+    }
+    const newColumns = defaultColumns.filter((key) => !knownColumns.includes(key));
+    if (newColumns.length > 0) {
+      setFeishuVisibleColumns((prev) => {
+        const validColumns = prev.filter((key) => defaultColumns.includes(key));
+        const merged = [...validColumns, ...newColumns.filter((key) => !validColumns.includes(key))];
+        return merged.length > 0 ? merged : defaultColumns;
+      });
+    }
+    localStorage.setItem('feishu_known_columns', JSON.stringify(defaultColumns));
+  }, []);
+
   function normalizeDateInput(value: unknown) {
     if (value === null || value === undefined || value === '') return '';
     if (typeof value === 'number') {
@@ -1542,6 +1568,16 @@ function App() {
     return '';
   }
 
+  function readFeishuField(fields: Record<string, unknown>, names: string[]) {
+    for (const name of names) {
+      if (fields[name] !== undefined) return fields[name];
+    }
+    const normalize = (value: string) => value.replace(/\s+/g, '').replace(/[／/]/g, '').toLowerCase();
+    const targets = new Set(names.map(normalize));
+    const entry = Object.entries(fields).find(([key]) => targets.has(normalize(key)));
+    return entry?.[1];
+  }
+
   function resetFeishuForm() {
     setFeishuForm(FEISHU_DEFAULT_FORM);
     setFeishuEditingId(null);
@@ -1562,6 +1598,7 @@ function App() {
       是否阻塞: String(fields['是否阻塞'] ?? '否'),
       阻塞原因: String(fields['阻塞原因'] ?? ''),
       风险等级: String(fields['风险等级'] ?? '中'),
+      '依赖/前置条件': String(readFeishuField(fields, ['依赖/前置条件', '依赖/前置', '依赖 / 前置条件', '依赖 / 前置', '依赖前置条件', '依赖前置', '前置条件', '任务依赖']) ?? ''),
       里程碑: String(fields['里程碑'] ?? '否')
     };
   }
@@ -1584,6 +1621,7 @@ function App() {
       是否阻塞: form.是否阻塞.trim(),
       阻塞原因: form.阻塞原因.trim(),
       风险等级: form.风险等级.trim(),
+      '依赖/前置': form['依赖/前置条件'].trim(),
       里程碑: form.里程碑.trim()
     };
 

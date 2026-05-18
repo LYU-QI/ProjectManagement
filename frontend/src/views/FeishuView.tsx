@@ -148,6 +148,7 @@ export default function FeishuView({
     是否阻塞: '阻塞状态',
     阻塞原因: '阻塞说明',
     风险等级: '风险分级',
+    '依赖/前置条件': '进度计划前置依赖说明',
     里程碑: '关键节点标识'
   };
 
@@ -164,6 +165,7 @@ export default function FeishuView({
     任务名称: 'feishu-col-task-name',
     所属项目: 'feishu-col-project',
     阻塞原因: 'feishu-col-block-reason',
+    '依赖/前置条件': 'feishu-col-block-reason',
     任务ID: 'feishu-col-id',
     负责人: 'feishu-col-assignee'
   };
@@ -497,9 +499,9 @@ export default function FeishuView({
                     const cellValue = rowDraft[field.key];
                     const isCellEditing = isEditing && feishuEditingField === field.key;
                     const displayValue = (() => {
-                      const value = isEditing ? rowDraft[field.key] : fields[field.key];
+                      const value = isEditing ? rowDraft[field.key] : originalForm[field.key];
                       if (field.key === '负责人') {
-                        const name = isEditing ? String(value ?? '') : getAssigneeName(fields['负责人']);
+                        const name = isEditing ? String(value ?? '') : originalForm.负责人;
                         return name || '-';
                       }
                       if (field.key === '开始时间' || field.key === '截止时间') {

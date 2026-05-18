@@ -13,6 +13,7 @@ export const FEISHU_FIELDS: Array<{ key: keyof FeishuFormState; label: string; t
   { key: '是否阻塞', label: '是否阻塞', type: 'select', options: ['是', '否'], required: true },
   { key: '阻塞原因', label: '阻塞原因', type: 'text' },
   { key: '风险等级', label: '风险等级', type: 'select', options: ['低', '中', '高'], required: true },
+  { key: '依赖/前置条件', label: '依赖/前置条件', type: 'text' },
   { key: '里程碑', label: '里程碑', type: 'select', options: ['是', '否'], required: true }
 ];
 
@@ -31,5 +32,6 @@ export const FEISHU_DEFAULT_FORM: FeishuFormState = {
   是否阻塞: '否',
   阻塞原因: '',
   风险等级: '中',
+  '依赖/前置条件': '',
   里程碑: '否'
 };

@@ -3,9 +3,19 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import type { FeishuFormState, FeishuDependency } from '../types';
 import usePersistentBoolean from '../hooks/usePersistentBoolean';
 import AsyncStatePanel from '../components/AsyncStatePanel';
-import ThemedSelect from '../components/ui/ThemedSelect';
 
 type ScheduleRow = FeishuFormState & { recordId: string };
+type DependencyType = 'FS' | 'SS' | 'FF';
+type GanttDependency = {
+  id: string;
+  projectName?: string;
+  taskRecordId: string;
+  taskId?: string | null;
+  dependsOnRecordId: string;
+  dependsOnTaskId?: string | null;
+  type: DependencyType;
+  source: 'wbs' | 'field';
+};
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -68,41 +78,101 @@ function formatAssignee(value: string) {
   return cleaned || '-';
 }
 
+function normalizeDependencyToken(value: string) {
+  return value
+    .trim()
+    .replace(/^依赖\s*[:：]/, '')
+    .replace(/^前置\s*[:：]/, '')
+    .replace(/^前置条件\s*[:：]/, '')
+    .replace(/\s+/g, '')
+    .toLowerCase();
+}
+
 export default function ScheduleView({
-  canWrite,
   tasks,
   milestones,
   scheduleLoading,
   scheduleError,
   scheduleDependencies,
-  scheduleDependenciesError,
-  riskText,
-  onSubmitTask,
-  onSubmitMilestone,
-  scheduleEdit,
-  onSaveSchedule,
-  onDeleteSchedule,
-  onAddDependency,
-  onRemoveDependency,
-  onInlineKeyDown
+  riskText
 }: Props) {
   const [viewMode, setViewMode] = useState<'list' | 'gantt' | 'calendar' | 'kanban'>('list');
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:schedule:compactTable', false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
-  const [dependencyForm, setDependencyForm] = useState({ taskRecordId: '', dependsOnRecordId: '', type: 'FS' as 'FS' | 'SS' | 'FF' });
   const ganttWrapperRef = useRef<HTMLDivElement | null>(null);
-  const [depPaths, setDepPaths] = useState<Array<{ id: number; d: string; critical?: boolean }>>([]);
+  const [depPaths, setDepPaths] = useState<Array<{ id: string; d: string; critical?: boolean }>>([]);
   const [svgSize, setSvgSize] = useState({ width: 0, height: 0 });
 
-  const dependencyMap = useMemo(() => {
-    const map = new Map<string, FeishuDependency[]>();
+  const effectiveDependencies = useMemo<GanttDependency[]>(() => {
+    const lookup = new Map<string, ScheduleRow>();
+    for (const task of tasks) {
+      [
+        task.recordId,
+        task.任务ID,
+        task.任务名称,
+        normalizeDependencyToken(task.任务ID || ''),
+        normalizeDependencyToken(task.任务名称 || '')
+      ].forEach((key) => {
+        if (key) lookup.set(key, task);
+      });
+    }
+
+    const merged = new Map<string, GanttDependency>();
     for (const dep of scheduleDependencies) {
+      const key = `${dep.taskRecordId}:${dep.dependsOnRecordId}:${dep.type}`;
+      merged.set(key, {
+        id: `wbs:${dep.id}`,
+        projectName: dep.projectName,
+        taskRecordId: dep.taskRecordId,
+        taskId: dep.taskId,
+        dependsOnRecordId: dep.dependsOnRecordId,
+        dependsOnTaskId: dep.dependsOnTaskId,
+        type: dep.type,
+        source: 'wbs'
+      });
+    }
+
+    for (const task of tasks) {
+      const raw = task['依赖/前置条件']?.trim();
+      if (!raw) continue;
+      raw
+        .split(/[,，;；、\n]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((part, index) => {
+          const match = part.match(/^(.*?)(?:[（(]\s*(FS|SS|FF)\s*[)）])?$/i);
+          const refRaw = match?.[1]?.trim() || part;
+          const refText = normalizeDependencyToken(refRaw);
+          const type = ((match?.[2] || 'FS').toUpperCase() as DependencyType);
+          const dependsOn = lookup.get(refText) || lookup.get(refRaw);
+          if (!dependsOn || dependsOn.recordId === task.recordId) return;
+
+          const key = `${task.recordId}:${dependsOn.recordId}:${type}`;
+          if (merged.has(key)) return;
+          merged.set(key, {
+            id: `field:${task.recordId}:${dependsOn.recordId}:${type}:${index}`,
+            taskRecordId: task.recordId,
+            taskId: task.任务ID || null,
+            dependsOnRecordId: dependsOn.recordId,
+            dependsOnTaskId: dependsOn.任务ID || null,
+            type,
+            source: 'field'
+          });
+        });
+    }
+
+    return Array.from(merged.values());
+  }, [tasks, scheduleDependencies]);
+
+  const dependencyMap = useMemo(() => {
+    const map = new Map<string, GanttDependency[]>();
+    for (const dep of effectiveDependencies) {
       const list = map.get(dep.taskRecordId) ?? [];
       list.push(dep);
       map.set(dep.taskRecordId, list);
     }
     return map;
-  }, [scheduleDependencies]);
+  }, [effectiveDependencies]);
 
   const taskNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -113,11 +183,11 @@ export default function ScheduleView({
   }, [tasks]);
 
   const criticalPath = useMemo(() => {
-    if (tasks.length === 0 || scheduleDependencies.length === 0) {
+    if (tasks.length === 0 || effectiveDependencies.length === 0) {
       return { ids: new Set<string>(), chain: [] as string[], duration: 0 };
     }
     const taskIds = new Set(tasks.map((task) => task.recordId));
-    const deps = scheduleDependencies.filter(
+    const deps = effectiveDependencies.filter(
       (dep) => dep.type === 'FS' && taskIds.has(dep.taskRecordId) && taskIds.has(dep.dependsOnRecordId)
     );
 
@@ -201,7 +271,7 @@ export default function ScheduleView({
     }
     chain.reverse();
     return { ids: critical, chain, duration: max };
-  }, [tasks, scheduleDependencies]);
+  }, [tasks, effectiveDependencies]);
 
   const ganttData = useMemo(() => {
     const rows = [
@@ -234,6 +304,22 @@ export default function ScheduleView({
     return { days, rows };
   }, [tasks, milestones]);
 
+  const unresolvedGanttDependencies = useMemo(() => {
+    if (ganttData.days.length === 0) return [];
+    const drawableIds = new Set(
+      ganttData.rows
+        .filter(({ row }) => ganttData.days.includes(toDateKey(row.开始时间)))
+        .map(({ row }) => row.recordId)
+    );
+    return effectiveDependencies
+      .filter((dep) => !drawableIds.has(dep.dependsOnRecordId) || !drawableIds.has(dep.taskRecordId))
+      .map((dep) => {
+        const from = taskNameMap.get(dep.dependsOnRecordId) || dep.dependsOnTaskId || dep.dependsOnRecordId;
+        const to = taskNameMap.get(dep.taskRecordId) || dep.taskId || dep.taskRecordId;
+        return `${from} → ${to}(${dep.type})`;
+      });
+  }, [effectiveDependencies, ganttData, taskNameMap]);
+
   useEffect(() => {
     if (viewMode !== 'gantt') return;
     const wrapper = ganttWrapperRef.current;
@@ -247,8 +333,8 @@ export default function ScheduleView({
       const height = wrapper.scrollHeight || wrapperRect.height;
       setSvgSize({ width, height });
 
-      const paths: Array<{ id: number; d: string; critical?: boolean }> = [];
-      for (const dep of scheduleDependencies) {
+      const paths: Array<{ id: string; d: string; critical?: boolean }> = [];
+      for (const dep of effectiveDependencies) {
         const fromEl = wrapper.querySelector<HTMLElement>(`[data-bar-id="${dep.dependsOnRecordId}"]`);
         const toEl = wrapper.querySelector<HTMLElement>(`[data-bar-id="${dep.taskRecordId}"]`);
         if (!fromEl || !toEl) continue;
@@ -292,7 +378,7 @@ export default function ScheduleView({
       wrapper.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', scheduleUpdate);
     };
-  }, [viewMode, scheduleDependencies, ganttData, criticalPath]);
+  }, [viewMode, effectiveDependencies, ganttData, criticalPath]);
 
   const calendarDays = useMemo(() => {
     const year = calendarMonth.getFullYear();
@@ -345,10 +431,10 @@ export default function ScheduleView({
   const scheduleMetrics = useMemo(() => {
     const taskCount = tasks.length;
     const milestoneCount = milestones.length;
-    const dependencyCount = scheduleDependencies.length;
+    const dependencyCount = effectiveDependencies.length;
     const blockedCount = tasks.filter((item) => (item.状态 || '').includes('阻塞')).length;
     return { taskCount, milestoneCount, dependencyCount, blockedCount };
-  }, [tasks, milestones, scheduleDependencies]);
+  }, [tasks, milestones, effectiveDependencies]);
 
   return (
     <div>
@@ -362,7 +448,7 @@ export default function ScheduleView({
           <p className="metric-value">{scheduleMetrics.milestoneCount}</p>
         </article>
         <article className="metric-card">
-          <p className="metric-label">依赖关系</p>
+          <p className="metric-label">依赖/前置</p>
           <p className="metric-value">{scheduleMetrics.dependencyCount}</p>
         </article>
         <article className="metric-card">
@@ -394,7 +480,7 @@ export default function ScheduleView({
           <AsyncStatePanel
             tone="loading"
             title="正在加载进度视图"
-            description="正在同步飞书任务、里程碑和依赖关系，请稍候。"
+            description="正在同步飞书任务、里程碑和依赖/前置条件，请稍候。"
           />
         )}
         {scheduleError && (
@@ -424,7 +510,7 @@ export default function ScheduleView({
             ) : (
               <div className="table-wrap">
                 <table className={`table ${compactTable ? 'table-compact' : ''}`}>
-                  <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th></tr></thead>
+                  <thead><tr><th>任务</th><th>负责人</th><th>状态</th><th>计划开始</th><th>计划结束</th><th>进度</th><th>依赖/前置条件</th></tr></thead>
                   <tbody>
                     {tasks.map((t) => {
                       return (
@@ -435,6 +521,7 @@ export default function ScheduleView({
                           <td>{t.开始时间}</td>
                           <td>{t.截止时间}</td>
                           <td>{formatProgress(t.进度)}</td>
+                          <td>{t['依赖/前置条件'] || '-'}</td>
                         </tr>
                       );
                     })}
@@ -477,110 +564,6 @@ export default function ScheduleView({
               </div>
             )}
           </div>
-
-          <div className="card req-mt-12">
-            <div className="section-title-row">
-              <h3>任务依赖（WBS）</h3>
-              <span className="muted">支持 FS / SS / FF 关系</span>
-            </div>
-            {scheduleDependenciesError && (
-              <AsyncStatePanel
-                tone="error"
-                title="任务依赖加载异常"
-                description={scheduleDependenciesError}
-              />
-            )}
-            <div className="form schedule-dependency-form">
-              <div>
-                <label>任务</label>
-                <ThemedSelect
-                  value={dependencyForm.taskRecordId}
-                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, taskRecordId: e.target.value }))}
-                >
-                  <option value="">选择任务</option>
-                  {tasks.map((task) => (
-                    <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
-                  ))}
-                </ThemedSelect>
-              </div>
-              <div>
-                <label>依赖关系</label>
-                <ThemedSelect
-                  value={dependencyForm.type}
-                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, type: e.target.value as 'FS' | 'SS' | 'FF' }))}
-                >
-                  <option value="FS">FS 完成→开始</option>
-                  <option value="SS">SS 开始→开始</option>
-                  <option value="FF">FF 完成→完成</option>
-                </ThemedSelect>
-              </div>
-              <div>
-                <label>前置任务</label>
-                <ThemedSelect
-                  value={dependencyForm.dependsOnRecordId}
-                  onChange={(e) => setDependencyForm((prev) => ({ ...prev, dependsOnRecordId: e.target.value }))}
-                >
-                  <option value="">选择前置任务</option>
-                  {tasks.map((task) => (
-                    <option key={task.recordId} value={task.recordId}>{task.任务名称 || task.任务ID}</option>
-                  ))}
-                </ThemedSelect>
-              </div>
-              <div>
-                <button
-                  className="btn"
-                  type="button"
-                  disabled={!canWrite || !dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId}
-                  onClick={() => {
-                    if (!dependencyForm.taskRecordId || !dependencyForm.dependsOnRecordId) return;
-                    onAddDependency({
-                      taskRecordId: dependencyForm.taskRecordId,
-                      dependsOnRecordId: dependencyForm.dependsOnRecordId,
-                      type: dependencyForm.type
-                    });
-                    setDependencyForm((prev) => ({ ...prev, dependsOnRecordId: '' }));
-                  }}
-                >
-                  新增依赖
-                </button>
-              </div>
-            </div>
-
-            <table className={`table schedule-dependency-table ${compactTable ? 'table-compact' : ''}`}>
-              <thead><tr><th>任务</th><th>关系</th><th>前置任务</th><th>操作</th></tr></thead>
-              <tbody>
-                {scheduleDependencies.map((dep) => {
-                  const task = tasks.find((item) => item.recordId === dep.taskRecordId);
-                  const dependsOn = tasks.find((item) => item.recordId === dep.dependsOnRecordId);
-                  const taskLabel = task?.任务名称 || '未命名任务';
-                  const dependsOnLabel = dependsOn?.任务名称 || '未命名任务';
-                  return (
-                    <tr key={dep.id}>
-                      <td>{taskLabel}</td>
-                      <td>{dep.type}</td>
-                      <td>{dependsOnLabel}</td>
-                      <td>
-                        {canWrite ? (
-                          <button className="btn btn-danger" type="button" onClick={() => onRemoveDependency(dep.id)}>删除</button>
-                        ) : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {scheduleDependencies.length === 0 && (
-                  <tr>
-                    <td colSpan={4} style={{ padding: '1rem' }}>
-                      <AsyncStatePanel
-                        tone="empty"
-                        title="暂无任务依赖"
-                        description="当前还没有配置任务依赖关系，可按需新增 FS / SS / FF 依赖。"
-                      />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </>
       )}
 
@@ -588,7 +571,7 @@ export default function ScheduleView({
         <div className="card">
           <div className="section-title-row">
             <h3>甘特图</h3>
-            <span className="muted">关键路径高亮展示</span>
+            <span className="muted">依赖/前置条件支持 任务ID(FS)、任务ID(SS)、任务ID(FF) 自动画线</span>
             <button className="btn" type="button" onClick={exportGanttSvg} style={{ marginLeft: 'auto' }}>
               导出图片
             </button>
@@ -601,6 +584,13 @@ export default function ScheduleView({
             />
           ) : (
             <div className="gantt-wrapper" ref={ganttWrapperRef}>
+              {unresolvedGanttDependencies.length > 0 && (
+                <AsyncStatePanel
+                  tone="empty"
+                  title="部分依赖未画线"
+                  description={`以下依赖的前置或当前任务缺少有效开始时间，无法在甘特图定位：${unresolvedGanttDependencies.slice(0, 5).join('；')}${unresolvedGanttDependencies.length > 5 ? ' 等' : ''}`}
+                />
+              )}
               <svg className="gantt-deps" width={svgSize.width} height={svgSize.height}>
                 <defs>
                   <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
@@ -642,9 +632,12 @@ export default function ScheduleView({
                   if (startIndex < 0) return null;
                   const safeEnd = endIndex < 0 ? startIndex : endIndex;
                   const deps = dependencyMap.get(row.recordId) ?? [];
-                  const depLabel = deps.length
+                  const legacyDepLabel = deps.length
                     ? `依赖: ${deps.map((dep) => `${taskNameMap.get(dep.dependsOnRecordId) || dep.dependsOnTaskId || dep.dependsOnRecordId}(${dep.type})`).join(', ')}`
                     : '';
+                  const depLabel = row['依赖/前置条件']?.trim()
+                    ? `依赖/前置条件: ${row['依赖/前置条件']}`
+                    : legacyDepLabel;
                   const isCritical = criticalPath.ids.has(row.recordId);
                   const progress = Number(row.进度) || 0;
                   const isCompleted = progress >= 100 || String(row.状态 || '').includes('完成');

@@ -11,6 +11,7 @@ export type FeishuFormState = {
   是否阻塞: string;
   阻塞原因: string;
   风险等级: string;
+  '依赖/前置条件': string;
   里程碑: string;
 };
 
