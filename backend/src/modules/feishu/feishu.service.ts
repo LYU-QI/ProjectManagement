@@ -119,7 +119,7 @@ export class FeishuService {
       return cached.token;
     }
 
-    const res = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+    const res = await this.fetchWithRetry('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ app_id: appId, app_secret: appSecret })
@@ -141,7 +141,7 @@ export class FeishuService {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = await this.getTenantAccessToken();
-    const res = await fetch(`https://open.feishu.cn/open-apis${path}`, {
+    const res = await this.fetchWithRetry(`https://open.feishu.cn/open-apis${path}`, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
@@ -177,6 +177,21 @@ export class FeishuService {
     }
 
     return data.data as T;
+  }
+
+  private async fetchWithRetry(url: string, options: RequestInit, attempts = 3): Promise<Response> {
+    let lastError: unknown;
+    for (let index = 0; index < attempts; index += 1) {
+      try {
+        return await fetch(url, options);
+      } catch (err) {
+        lastError = err;
+        if (index < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (index + 1)));
+        }
+      }
+    }
+    throw lastError;
   }
 
   private async getTableFieldNames(appToken: string, tableId: string): Promise<Set<string>> {

@@ -40,6 +40,62 @@ type ClusterRiskBoardResponse = {
   items: ClusterRiskBoardItem[];
 };
 
+type DeliveryRoadmapSource = 'feishu' | 'config_missing' | 'error';
+
+type DeliveryRoadmapQuarter = {
+  key: string;
+  year: number;
+  quarter: number;
+  label: string;
+  start: string;
+  end: string;
+};
+
+type DeliveryRoadmapItem = {
+  id: string;
+  categoryL1: string;
+  categoryL2: string;
+  ySortOrder: number;
+  targetDate: string;
+  targetQuarter: string;
+  isTbd: boolean;
+  milestoneName: string;
+  techDetail: string;
+  iconStyle: string;
+  hasFlag: boolean;
+  laneId: string;
+  xPercent: number;
+};
+
+type DeliveryRoadmapLane = {
+  id: string;
+  categoryL1: string;
+  categoryL2: string;
+  ySortOrder: number;
+  items: DeliveryRoadmapItem[];
+};
+
+type DeliveryRoadmapLegendItem = {
+  iconStyle: string;
+  label: string;
+  color: string;
+};
+
+type DeliveryRoadmapResponse = {
+  generatedAt: string;
+  source: DeliveryRoadmapSource;
+  error?: string;
+  timeAxis: {
+    years: number[];
+    quarters: DeliveryRoadmapQuarter[];
+    startDate: string;
+    endDate: string;
+  };
+  lanes: DeliveryRoadmapLane[];
+  items: DeliveryRoadmapItem[];
+  legend: DeliveryRoadmapLegendItem[];
+};
+
 const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo', string> = {
   index: '序号',
   projectName: '重点项目',
@@ -53,6 +109,26 @@ const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> |
   riskResolution: '风险解决情况',
   qualityGap: '质量状态与GAP-叶芳',
   qualityLevel: '质量等级'
+};
+
+const DELIVERY_ROADMAP_FIELD_MAP: Record<string, string> = {
+  categoryL1: 'category_l1|一级分类',
+  categoryL2: 'category_l2|二级分类',
+  ySortOrder: 'y_sort_order|排序权重',
+  targetDate: 'target_date|精确日期',
+  targetQuarter: 'target_quarter|所属季度',
+  isTbd: 'is_tbd|是否待定',
+  milestoneName: 'milestone_name|里程碑名称',
+  techDetail: 'tech_detail|技术细节',
+  iconStyle: 'icon_style|图标样式',
+  hasFlag: 'has_flag|是否关键'
+};
+
+const ROADMAP_ICON_META: Record<string, DeliveryRoadmapLegendItem> = {
+  '1.0_main': { iconStyle: '1.0_main', label: '1.0 主线', color: '#8b5cf6' },
+  '1.0+_main': { iconStyle: '1.0+_main', label: '1.0+ 主线', color: '#1d4ed8' },
+  '2.0_main': { iconStyle: '2.0_main', label: '2.0 主线', color: '#22c7ee' },
+  edge_ai: { iconStyle: 'edge_ai', label: '端侧智能', color: '#f97316' }
 };
 
 @Injectable()
@@ -213,6 +289,47 @@ export class DashboardService {
     }
   }
 
+  async deliveryRoadmap(actor?: AuthActor & { organizationId?: string }, force = false): Promise<DeliveryRoadmapResponse> {
+    const cacheKey = `dashboard:delivery-roadmap:${actor?.organizationId ?? 'global'}`;
+    if (!force) {
+      const cached = await this.redisService.get<DeliveryRoadmapResponse>(cacheKey);
+      if (cached) return cached;
+    }
+
+    const appToken = await this.getClusterConfig('DELIVERY_ROADMAP_APP_TOKEN', actor?.organizationId);
+    const tableId = await this.getClusterConfig('DELIVERY_ROADMAP_TABLE_ID', actor?.organizationId);
+    const viewId = await this.getClusterConfig('DELIVERY_ROADMAP_VIEW_ID', actor?.organizationId);
+    const fieldMapRaw = await this.getClusterConfig('DELIVERY_ROADMAP_FIELD_MAP', actor?.organizationId);
+
+    if (!appToken || !tableId) {
+      return this.emptyDeliveryRoadmap(
+        'config_missing',
+        '缺少 DELIVERY_ROADMAP_APP_TOKEN 或 DELIVERY_ROADMAP_TABLE_ID，请先在系统设置中配置公司交付车型大图数据源。'
+      );
+    }
+
+    try {
+      const fieldMap = this.parseDeliveryRoadmapFieldMap(fieldMapRaw);
+      const data = await this.feishuService.listRecords({
+        pageSize: 500,
+        viewId: viewId || undefined,
+        opts: { appToken, tableId }
+      });
+      const rawItems = (data.items || [])
+        .flatMap((record, index) => {
+          const row = record as { record_id?: string; recordId?: string; id?: string; fields?: Record<string, unknown> };
+          const fields = row.fields || {};
+          if (!this.hasDeliveryRoadmapRow(fields, fieldMap)) return [];
+          return [this.normalizeDeliveryRoadmapRecord(fields, fieldMap, row.record_id || row.recordId || row.id || `row-${index + 1}`)];
+        });
+      const response = this.buildDeliveryRoadmapResponse('feishu', rawItems);
+      await this.redisService.set(cacheKey, response, this.cacheTtl);
+      return response;
+    } catch (err: any) {
+      return this.emptyDeliveryRoadmap('error', err?.message || '公司交付车型大图数据加载失败。');
+    }
+  }
+
   private async computeOverview(actor?: AuthActor) {
     const accessibleProjectIds = await this.accessService.getAccessibleProjectIds(actor);
     const projectFilter = accessibleProjectIds === null
@@ -316,6 +433,58 @@ export class DashboardService {
     };
   }
 
+  private emptyDeliveryRoadmap(source: Exclude<DeliveryRoadmapSource, 'feishu'>, error: string): DeliveryRoadmapResponse {
+    return {
+      generatedAt: new Date().toISOString(),
+      source,
+      error,
+      timeAxis: {
+        years: [],
+        quarters: [],
+        startDate: '',
+        endDate: ''
+      },
+      lanes: [],
+      items: [],
+      legend: []
+    };
+  }
+
+  private buildDeliveryRoadmapResponse(source: 'feishu', rawItems: Omit<DeliveryRoadmapItem, 'xPercent'>[]): DeliveryRoadmapResponse {
+    const timeAxis = this.buildRoadmapTimeAxis(rawItems);
+    const items = rawItems
+      .map((item) => ({
+        ...item,
+        xPercent: this.computeRoadmapXPercent(item, timeAxis.startDate, timeAxis.endDate)
+      }))
+      .sort((a, b) => a.ySortOrder - b.ySortOrder || a.categoryL1.localeCompare(b.categoryL1) || a.categoryL2.localeCompare(b.categoryL2));
+
+    const laneMap = new Map<string, DeliveryRoadmapLane>();
+    for (const item of items) {
+      const lane = laneMap.get(item.laneId) || {
+        id: item.laneId,
+        categoryL1: item.categoryL1,
+        categoryL2: item.categoryL2,
+        ySortOrder: item.ySortOrder,
+        items: []
+      };
+      lane.items.push(item);
+      laneMap.set(item.laneId, lane);
+    }
+    const lanes = Array.from(laneMap.values()).sort((a, b) => a.ySortOrder - b.ySortOrder || a.categoryL1.localeCompare(b.categoryL1) || a.categoryL2.localeCompare(b.categoryL2));
+    const legend = Array.from(new Set(items.filter((item) => item.milestoneName || item.targetDate || item.targetQuarter).map((item) => item.iconStyle || 'unknown')))
+      .map((iconStyle) => ROADMAP_ICON_META[iconStyle] || { iconStyle, label: iconStyle === 'unknown' ? '未分类' : iconStyle, color: '#64748b' });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      source,
+      timeAxis,
+      lanes,
+      items,
+      legend
+    };
+  }
+
   private normalizeClusterRecord(fields: Record<string, unknown>, fieldMap: Record<string, string>): ClusterRiskBoardItem {
     const get = (key: keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo') => this.fieldValue(fields, fieldMap[key] || CLUSTER_FIELD_MAP[key]);
     const qualityLevel = get('qualityLevel') || this.findBlankHeaderValue(fields) || this.inferQualityLevel(get('qualityGap'));
@@ -353,9 +522,106 @@ export class DashboardService {
     }
   }
 
+  private parseDeliveryRoadmapFieldMap(raw?: string | null): Record<string, string> {
+    if (!raw?.trim()) return { ...DELIVERY_ROADMAP_FIELD_MAP };
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...DELIVERY_ROADMAP_FIELD_MAP };
+      return {
+        ...DELIVERY_ROADMAP_FIELD_MAP,
+        ...Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>)
+            .map(([key, value]) => [key.trim(), String(value ?? '').trim()])
+            .filter(([key, value]) => key && value)
+        )
+      };
+    } catch {
+      return { ...DELIVERY_ROADMAP_FIELD_MAP };
+    }
+  }
+
+  private normalizeDeliveryRoadmapRecord(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): Omit<DeliveryRoadmapItem, 'xPercent'> {
+    const get = (key: keyof typeof DELIVERY_ROADMAP_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]);
+    const targetDate = this.normalizeDateText(get('targetDate'));
+    const targetQuarter = this.normalizeQuarterText(get('targetQuarter')) || this.quarterKeyFromDate(targetDate);
+    const categoryL1 = get('categoryL1') || '未分组';
+    const categoryL2 = get('categoryL2') || categoryL1;
+    const ySortOrder = Number(get('ySortOrder'));
+    return {
+      id: recordId,
+      categoryL1,
+      categoryL2,
+      ySortOrder: Number.isFinite(ySortOrder) ? ySortOrder : 9999,
+      targetDate,
+      targetQuarter,
+      isTbd: this.normalizeBoolean(get('isTbd')),
+      milestoneName: get('milestoneName'),
+      techDetail: get('techDetail'),
+      iconStyle: get('iconStyle') || 'unknown',
+      hasFlag: this.normalizeBoolean(get('hasFlag')),
+      laneId: `${categoryL1}::${categoryL2}`
+    };
+  }
+
+  private hasDeliveryRoadmapRow(fields: Record<string, unknown>, fieldMap: Record<string, string>): boolean {
+    const keys: Array<keyof typeof DELIVERY_ROADMAP_FIELD_MAP> = ['categoryL1', 'categoryL2', 'ySortOrder', 'targetDate', 'targetQuarter', 'milestoneName'];
+    return keys.some((key) => Boolean(this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]).trim()));
+  }
+
+  private buildRoadmapTimeAxis(items: Array<Pick<DeliveryRoadmapItem, 'targetDate' | 'targetQuarter'>>): DeliveryRoadmapResponse['timeAxis'] {
+    const dates = items.flatMap((item) => {
+      if (item.targetDate) return [item.targetDate];
+      const quarter = this.parseQuarter(item.targetQuarter);
+      return quarter ? [this.quarterStart(quarter.year, quarter.quarter), this.quarterEnd(quarter.year, quarter.quarter)] : [];
+    });
+    if (dates.length === 0) {
+      return { years: [], quarters: [], startDate: '', endDate: '' };
+    }
+    const sortedDates = dates.filter(Boolean).sort();
+    const first = new Date(`${sortedDates[0]}T00:00:00.000Z`);
+    const last = new Date(`${sortedDates[sortedDates.length - 1]}T00:00:00.000Z`);
+    const startQuarter = Math.floor(first.getUTCMonth() / 3) + 1;
+    const endQuarter = Math.floor(last.getUTCMonth() / 3) + 1;
+    const quarters: DeliveryRoadmapQuarter[] = [];
+    for (let year = first.getUTCFullYear(); year <= last.getUTCFullYear(); year += 1) {
+      const fromQ = year === first.getUTCFullYear() ? startQuarter : 1;
+      const toQ = year === last.getUTCFullYear() ? endQuarter : 4;
+      for (let quarter = fromQ; quarter <= toQ; quarter += 1) {
+        quarters.push({
+          key: `${year}-Q${quarter}`,
+          year,
+          quarter,
+          label: `Q${quarter}`,
+          start: this.quarterStart(year, quarter),
+          end: this.quarterEnd(year, quarter)
+        });
+      }
+    }
+    return {
+      years: Array.from(new Set(quarters.map((item) => item.year))),
+      quarters,
+      startDate: quarters[0]?.start || '',
+      endDate: quarters[quarters.length - 1]?.end || ''
+    };
+  }
+
+  private computeRoadmapXPercent(item: Pick<DeliveryRoadmapItem, 'targetDate' | 'targetQuarter'>, startDate: string, endDate: string): number {
+    if (!startDate || !endDate) return 50;
+    const target = item.targetDate || this.quarterMidpoint(item.targetQuarter);
+    if (!target) return 50;
+    const start = new Date(`${startDate}T00:00:00.000Z`).getTime();
+    const end = new Date(`${endDate}T00:00:00.000Z`).getTime();
+    const point = new Date(`${target}T00:00:00.000Z`).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(point) || end <= start) return 50;
+    return Math.max(0, Math.min(100, Math.round(((point - start) / (end - start)) * 10000) / 100));
+  }
+
   private fieldValue(fields: Record<string, unknown>, desiredHeader: string): string {
-    const normalizedDesired = this.normalizeFieldHeader(desiredHeader);
-    const entry = Object.entries(fields).find(([key]) => this.normalizeFieldHeader(key) === normalizedDesired);
+    const candidates = String(desiredHeader || '')
+      .split(/[|,，]/)
+      .map((item) => this.normalizeFieldHeader(item))
+      .filter(Boolean);
+    const entry = Object.entries(fields).find(([key]) => candidates.includes(this.normalizeFieldHeader(key)));
     return this.toPlainText(entry?.[1]);
   }
 
@@ -397,6 +663,82 @@ export class DashboardService {
     if (['是', 'yes', 'y', 'true', '1', '有'].includes(text)) return true;
     if (['否', 'no', 'n', 'false', '0', '无'].includes(text)) return false;
     return null;
+  }
+
+  private normalizeBoolean(value: string): boolean {
+    const text = value.trim().toLowerCase();
+    return ['是', 'yes', 'y', 'true', '1', '有', 'tbd', '待定'].includes(text);
+  }
+
+  private normalizeDateText(value: string): string {
+    const text = value.trim();
+    if (!text) return '';
+    if (/^\d+$/.test(text)) {
+      const raw = Number(text);
+      const timestamp = raw > 9999999999 ? raw : raw * 1000;
+      const parsed = new Date(timestamp);
+      if (!Number.isNaN(parsed.getTime())) return this.formatDateWithOffset(parsed, 8);
+    }
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(text)) {
+      const [year, month, day] = text.split('-').map(Number);
+      return this.formatDateUtc(new Date(Date.UTC(year, month - 1, day)));
+    }
+    if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(text)) {
+      const [year, month, day] = text.split('/').map(Number);
+      return this.formatDateUtc(new Date(Date.UTC(year, month - 1, day)));
+    }
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) return this.formatDateUtc(parsed);
+    return '';
+  }
+
+  private normalizeQuarterText(value: string): string {
+    const text = value.trim().toUpperCase().replace(/\s+/g, '');
+    const match = text.match(/^(\d{4})[-/]?Q([1-4])$/);
+    if (!match) return '';
+    return `${match[1]}-Q${match[2]}`;
+  }
+
+  private quarterKeyFromDate(value: string): string {
+    if (!value) return '';
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getUTCFullYear()}-Q${Math.floor(date.getUTCMonth() / 3) + 1}`;
+  }
+
+  private parseQuarter(value: string): { year: number; quarter: number } | null {
+    const normalized = this.normalizeQuarterText(value);
+    const match = normalized.match(/^(\d{4})-Q([1-4])$/);
+    if (!match) return null;
+    return { year: Number(match[1]), quarter: Number(match[2]) };
+  }
+
+  private quarterStart(year: number, quarter: number): string {
+    return this.formatDateUtc(new Date(Date.UTC(year, (quarter - 1) * 3, 1)));
+  }
+
+  private quarterEnd(year: number, quarter: number): string {
+    return this.formatDateUtc(new Date(Date.UTC(year, quarter * 3, 0)));
+  }
+
+  private quarterMidpoint(value: string): string {
+    const quarter = this.parseQuarter(value);
+    if (!quarter) return '';
+    const start = new Date(`${this.quarterStart(quarter.year, quarter.quarter)}T00:00:00.000Z`).getTime();
+    const end = new Date(`${this.quarterEnd(quarter.year, quarter.quarter)}T00:00:00.000Z`).getTime();
+    return this.formatDateUtc(new Date(Math.round((start + end) / 2)));
+  }
+
+  private formatDateUtc(date: Date): string {
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatDateWithOffset(date: Date, offsetHours: number): string {
+    return this.formatDateUtc(new Date(date.getTime() + offsetHours * 60 * 60 * 1000));
   }
 
   private inferQualityLevel(value: string): string {

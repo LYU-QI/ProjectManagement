@@ -63,6 +63,60 @@ export interface ClusterRiskBoardResponse {
   items: ClusterRiskBoardItem[];
 }
 
+export interface DeliveryRoadmapQuarter {
+  key: string;
+  year: number;
+  quarter: number;
+  label: string;
+  start: string;
+  end: string;
+}
+
+export interface DeliveryRoadmapItem {
+  id: string;
+  categoryL1: string;
+  categoryL2: string;
+  ySortOrder: number;
+  targetDate: string;
+  targetQuarter: string;
+  isTbd: boolean;
+  milestoneName: string;
+  techDetail: string;
+  iconStyle: string;
+  hasFlag: boolean;
+  laneId: string;
+  xPercent: number;
+}
+
+export interface DeliveryRoadmapLane {
+  id: string;
+  categoryL1: string;
+  categoryL2: string;
+  ySortOrder: number;
+  items: DeliveryRoadmapItem[];
+}
+
+export interface DeliveryRoadmapLegendItem {
+  iconStyle: string;
+  label: string;
+  color: string;
+}
+
+export interface DeliveryRoadmapResponse {
+  generatedAt: string;
+  source: 'feishu' | 'config_missing' | 'error';
+  error?: string;
+  timeAxis: {
+    years: number[];
+    quarters: DeliveryRoadmapQuarter[];
+    startDate: string;
+    endDate: string;
+  };
+  lanes: DeliveryRoadmapLane[];
+  items: DeliveryRoadmapItem[];
+  legend: DeliveryRoadmapLegendItem[];
+}
+
 export interface Requirement {
   id: number;
   projectId: number;

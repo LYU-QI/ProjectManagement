@@ -18,6 +18,14 @@ export class DashboardController {
     return this.dashboardService.clusterRiskBoard(req.user, force === 'true');
   }
 
+  @Get('delivery-roadmap')
+  async deliveryRoadmap(
+    @Query('force') force: string,
+    @Req() req: { user?: { sub?: number; role?: string; organizationId?: string } }
+  ) {
+    return this.dashboardService.deliveryRoadmap(req.user, force === 'true');
+  }
+
   @Get('efficiency')
   async efficiency(
     @Query('projectId') projectId: string,

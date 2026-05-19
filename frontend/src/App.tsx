@@ -23,6 +23,7 @@ import type {
   CostEntryItem,
   CostSummary,
   DashboardOverview,
+  DeliveryRoadmapResponse,
   FeishuFormState,
   FeishuDependency,
   RequirementChange,
@@ -216,6 +217,7 @@ function App() {
   const prevActiveOrgIdRef = useRef<string | null>(null);
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [clusterRiskBoard, setClusterRiskBoard] = useState<ClusterRiskBoardResponse | null>(null);
+  const [deliveryRoadmap, setDeliveryRoadmap] = useState<DeliveryRoadmapResponse | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
@@ -271,7 +273,7 @@ function App() {
     setError('');
     try {
       await runWithRetry('刷新数据', async () => {
-        const [dashboardRes, clusterRiskBoardRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
+        const [dashboardRes, clusterRiskBoardRes, deliveryRoadmapRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
           apiGet<DashboardOverview>('/dashboard/overview'),
           apiGet<ClusterRiskBoardResponse>('/dashboard/cluster-risk-board').catch((err) => ({
             generatedAt: new Date().toISOString(),
@@ -289,6 +291,15 @@ function App() {
             },
             items: []
           })),
+          apiGet<DeliveryRoadmapResponse>('/dashboard/delivery-roadmap').catch((err) => ({
+            generatedAt: new Date().toISOString(),
+            source: 'error' as const,
+            error: err instanceof Error ? err.message : '公司交付车型大图加载失败',
+            timeAxis: { years: [], quarters: [], startDate: '', endDate: '' },
+            lanes: [],
+            items: [],
+            legend: []
+          })),
           apiGet<ProjectItem[]>('/projects'),
           apiGet<UserItem[]>('/users'),
           apiGet<NotificationItem[]>('/notifications?unread=true'),
@@ -298,6 +309,7 @@ function App() {
 
         setOverview(dashboardRes);
         setClusterRiskBoard(clusterRiskBoardRes);
+        setDeliveryRoadmap(deliveryRoadmapRes);
         setProjects(projectList);
         setUsers(userList);
         setFeishuUsers(feishuUserList);
@@ -364,6 +376,7 @@ function App() {
     setUser(null);
     setOverview(null);
     setClusterRiskBoard(null);
+    setDeliveryRoadmap(null);
     setProjects([]);
     setUsers([]);
     setSelectedProjectIds([]);
@@ -382,6 +395,12 @@ function App() {
     if (!token) return;
     const data = await apiGet<ClusterRiskBoardResponse>('/dashboard/cluster-risk-board?force=true');
     setClusterRiskBoard(data);
+  }
+
+  async function refreshDeliveryRoadmap() {
+    if (!token) return;
+    const data = await apiGet<DeliveryRoadmapResponse>('/dashboard/delivery-roadmap?force=true');
+    setDeliveryRoadmap(data);
   }
 
   async function submitLogin(e: FormEvent<HTMLFormElement>) {
@@ -2568,6 +2587,8 @@ function App() {
             overview={overview}
             clusterRiskBoard={clusterRiskBoard}
             onRefreshClusterRiskBoard={() => refreshClusterRiskBoard()}
+            deliveryRoadmap={deliveryRoadmap}
+            onRefreshDeliveryRoadmap={() => refreshDeliveryRoadmap()}
             projects={projects}
             selectedProjectId={selectedProjectId}
             selectedProjectIds={selectedProjectIds}

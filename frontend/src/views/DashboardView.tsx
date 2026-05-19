@@ -1,6 +1,14 @@
 import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { ClusterRiskBoardItem, ClusterRiskBoardResponse, ClusterRiskLight, DashboardOverview, ProjectItem } from '../types';
+import type {
+  ClusterRiskBoardItem,
+  ClusterRiskBoardResponse,
+  ClusterRiskLight,
+  DashboardOverview,
+  DeliveryRoadmapItem,
+  DeliveryRoadmapResponse,
+  ProjectItem
+} from '../types';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -13,11 +21,22 @@ type InlineEditState<T, Id> = {
   cancel: () => void;
 };
 
+type RoadmapFixedQuarter = {
+  key: string;
+  label: string;
+  year: number;
+  quarter: number;
+  start: Date;
+  end: Date;
+};
+
 type Props = {
   canWrite: boolean;
   overview: DashboardOverview | null;
   clusterRiskBoard: ClusterRiskBoardResponse | null;
   onRefreshClusterRiskBoard: () => Promise<void>;
+  deliveryRoadmap: DeliveryRoadmapResponse | null;
+  onRefreshDeliveryRoadmap: () => Promise<void>;
   projects: ProjectItem[];
   selectedProjectId: number | null;
   selectedProjectIds: number[];
@@ -71,11 +90,91 @@ function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
   };
 }
 
+function roadmapDateLabel(item: DeliveryRoadmapItem): string {
+  const date = item.targetDate ? item.targetDate.slice(5).replace('-', '/') : (item.targetQuarter || '未定');
+  return item.isTbd ? `${date} (TBD)` : date;
+}
+
+function roadmapIconColor(item: DeliveryRoadmapItem, roadmap: DeliveryRoadmapResponse | null): string {
+  return roadmap?.legend.find((legend) => legend.iconStyle === item.iconStyle)?.color || '#64748b';
+}
+
+function roadmapLaneTone(categoryL1: string): 'main' | 'factory' | 'other' {
+  if (categoryL1.includes('主线')) return 'main';
+  if (categoryL1.includes('车厂') || categoryL1.includes('交付')) return 'factory';
+  return 'other';
+}
+
+function quarterStart(year: number, quarter: number): Date {
+  return new Date(year, (quarter - 1) * 3, 1);
+}
+
+function buildFixedRoadmapQuarters(count = 7): RoadmapFixedQuarter[] {
+  const now = new Date();
+  const startYear = now.getFullYear();
+  const startQuarter = Math.floor(now.getMonth() / 3) + 1;
+
+  return Array.from({ length: count }).map((_, index) => {
+    const zeroBasedQuarter = startQuarter - 1 + index;
+    const year = startYear + Math.floor(zeroBasedQuarter / 4);
+    const quarter = (zeroBasedQuarter % 4) + 1;
+    const start = quarterStart(year, quarter);
+    const end = quarterStart(year, quarter + 1);
+    return {
+      key: `${year}-Q${quarter}`,
+      label: `Q${quarter}`,
+      year,
+      quarter,
+      start,
+      end
+    };
+  });
+}
+
+function roadmapItemXPercent(item: DeliveryRoadmapItem, quarters: RoadmapFixedQuarter[]): number | null {
+  const quarterCount = quarters.length;
+  if (quarterCount === 0) return null;
+
+  if (item.targetDate) {
+    const date = new Date(`${item.targetDate}T00:00:00`);
+    const quarterIndex = quarters.findIndex((quarter) => date >= quarter.start && date < quarter.end);
+    if (quarterIndex < 0) return null;
+    const quarterDuration = quarters[quarterIndex].end.getTime() - quarters[quarterIndex].start.getTime();
+    const dateOffset = date.getTime() - quarters[quarterIndex].start.getTime();
+    const inQuarterRatio = quarterDuration > 0 ? dateOffset / quarterDuration : 0.5;
+    return ((quarterIndex + Math.min(0.96, Math.max(0.04, inQuarterRatio))) / quarterCount) * 100;
+  }
+
+  const quarterIndex = quarters.findIndex((quarter) => quarter.key === item.targetQuarter);
+  if (quarterIndex < 0) return null;
+  return ((quarterIndex + 0.5) / quarterCount) * 100;
+}
+
+function RoadmapCarIcon({ color }: { color: string }) {
+  return (
+    <svg className="roadmap-car-icon" viewBox="0 0 64 42" aria-hidden="true">
+      <path
+        d="M10 25h5l7-10h20l8 10h4c3 0 5 2 5 5v3H6v-3c0-3 1-5 4-5Z"
+        fill="none"
+        stroke={color}
+        strokeWidth="4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M24 25h22M25 15l-3 10M42 15l5 10" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" />
+      <circle cx="19" cy="33" r="5" fill={color} />
+      <circle cx="48" cy="33" r="5" fill={color} />
+    </svg>
+  );
+}
+
 export default function DashboardView({
   canWrite,
   overview,
   clusterRiskBoard,
   onRefreshClusterRiskBoard,
+  deliveryRoadmap,
+  onRefreshDeliveryRoadmap,
   projects,
   selectedProjectId,
   selectedProjectIds,
@@ -95,6 +194,9 @@ export default function DashboardView({
   const [clusterFullscreen, setClusterFullscreen] = useState(false);
   const [selectedClusterProject, setSelectedClusterProject] = useState<ClusterRiskBoardItem | null>(null);
   const [clusterRefreshing, setClusterRefreshing] = useState(false);
+  const [dashboardBoardTab, setDashboardBoardTab] = useState<'cluster' | 'roadmap'>('cluster');
+  const [roadmapFullscreen, setRoadmapFullscreen] = useState(false);
+  const [roadmapRefreshing, setRoadmapRefreshing] = useState(false);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
@@ -183,6 +285,15 @@ export default function DashboardView({
       await onRefreshClusterRiskBoard();
     } finally {
       setClusterRefreshing(false);
+    }
+  }
+
+  async function refreshRoadmapBoard() {
+    setRoadmapRefreshing(true);
+    try {
+      await onRefreshDeliveryRoadmap();
+    } finally {
+      setRoadmapRefreshing(false);
     }
   }
 
@@ -335,9 +446,154 @@ export default function DashboardView({
     </section>
   );
 
+  const fixedRoadmapQuarters = useMemo(() => buildFixedRoadmapQuarters(7), []);
+  const quarterWidthPercent = `${100 / fixedRoadmapQuarters.length}%`;
+  const roadmapYearSpans = useMemo(() => {
+    const quarters = fixedRoadmapQuarters;
+    return Array.from(new Set(quarters.map((quarter) => quarter.year))).map((year) => ({
+      year,
+      count: quarters.filter((quarter) => quarter.year === year).length
+    }));
+  }, [fixedRoadmapQuarters]);
+  const roadmapLaneGroups = useMemo(() => {
+    const lanes = deliveryRoadmap?.lanes || [];
+    return lanes.reduce<Array<{ categoryL1: string; tone: 'main' | 'factory' | 'other'; lanes: typeof lanes }>>((groups, lane) => {
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.categoryL1 === lane.categoryL1) {
+        lastGroup.lanes.push(lane);
+        return groups;
+      }
+      groups.push({
+        categoryL1: lane.categoryL1,
+        tone: roadmapLaneTone(lane.categoryL1),
+        lanes: [lane]
+      });
+      return groups;
+    }, []);
+  }, [deliveryRoadmap]);
+
+  const roadmapBoard = (
+    <section className={`delivery-roadmap-board ${roadmapFullscreen ? 'delivery-roadmap-fullscreen' : ''}`}>
+      <div className="delivery-roadmap-head">
+        <div>
+          <p className="cluster-board-eyebrow">Delivery roadmap</p>
+          <h2>公司交付车型大图 (1.0+、1.5、2.0、端侧智能)</h2>
+          <p className="muted">只读展示飞书宽表数据，按季度时间轴呈现主线、车厂交付和端侧智能节点。</p>
+        </div>
+        <div className="cluster-board-actions">
+          <span className={`cluster-source-pill ${deliveryRoadmap?.source === 'feishu' ? 'ok' : 'warn'}`}>
+            {deliveryRoadmap?.source === 'feishu' ? '飞书在线' : '数据源未就绪'}
+          </span>
+          <button className="btn" type="button" onClick={() => void refreshRoadmapBoard()} disabled={roadmapRefreshing}>
+            {roadmapRefreshing ? '刷新中...' : '刷新'}
+          </button>
+          <button className="btn" type="button" onClick={() => setRoadmapFullscreen((prev) => !prev)}>
+            {roadmapFullscreen ? '退出全屏' : '全屏'}
+          </button>
+        </div>
+      </div>
+
+      {deliveryRoadmap?.error && (
+        <div className="cluster-board-alert">
+          {deliveryRoadmap.error}
+        </div>
+      )}
+
+      {(deliveryRoadmap?.lanes.length || 0) === 0 ? (
+        <div className="cluster-empty">暂无路线图数据。请检查 DELIVERY_ROADMAP_* 配置或飞书字段映射。</div>
+      ) : (
+        <>
+          <div className="roadmap-chart-scroll">
+            <div className="roadmap-canvas">
+              <div className="roadmap-header-row">
+                <div className="roadmap-left-header" />
+                <div className="roadmap-time-header">
+                  <div className="roadmap-year-row">
+                    {roadmapYearSpans.map((span) => (
+                      <div key={span.year} style={{ width: `${(span.count / fixedRoadmapQuarters.length) * 100}%` }}>{span.year}</div>
+                    ))}
+                  </div>
+                  <div className="roadmap-quarter-row">
+                    {fixedRoadmapQuarters.map((quarter) => (
+                      <div key={quarter.key} style={{ width: quarterWidthPercent }}>{quarter.label}</div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {roadmapLaneGroups.map((group) => (
+                <div className={`roadmap-lane-group ${group.tone}`} key={group.categoryL1}>
+                  <div className="roadmap-group-label">
+                    <span>{group.categoryL1}</span>
+                  </div>
+                  <div className="roadmap-group-rows">
+                    {group.lanes.map((lane) => {
+                      return (
+                        <div className={`roadmap-lane-row ${group.tone}`} key={lane.id}>
+                          <div className="roadmap-left-cell">
+                            <strong>{lane.categoryL2}</strong>
+                          </div>
+                          <div className="roadmap-lane-track">
+                            {fixedRoadmapQuarters.map((quarter) => (
+                              <div className="roadmap-quarter-grid" key={`${lane.id}-${quarter.key}`} style={{ width: quarterWidthPercent }} />
+                            ))}
+                            {lane.items.map((item) => {
+                              const color = roadmapIconColor(item, deliveryRoadmap);
+                              const xPercent = roadmapItemXPercent(item, fixedRoadmapQuarters);
+                              if (xPercent === null) return null;
+                              return (
+                                <article className="roadmap-node" key={item.id} style={{ left: `${xPercent}%`, color }}>
+                                  {item.hasFlag && <span className="roadmap-flag" />}
+                                  <RoadmapCarIcon color={color} />
+                                  <strong>{item.milestoneName || '未命名节点'}</strong>
+                                  {item.techDetail && <span className="roadmap-tech">({item.techDetail})</span>}
+                                  <span className="roadmap-node-dot" style={{ background: color }} />
+                                  <em>{roadmapDateLabel(item)}</em>
+                                </article>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="roadmap-legend">
+            {(deliveryRoadmap?.legend || []).map((item) => (
+              <span key={item.iconStyle}>
+                <RoadmapCarIcon color={item.color} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+
   return (
     <div>
-      {clusterBoard}
+      <div className="dashboard-board-tabs">
+        <button
+          className={dashboardBoardTab === 'cluster' ? 'active' : ''}
+          type="button"
+          onClick={() => setDashboardBoardTab('cluster')}
+        >
+          集群风险状态
+        </button>
+        <button
+          className={dashboardBoardTab === 'roadmap' ? 'active' : ''}
+          type="button"
+          onClick={() => setDashboardBoardTab('roadmap')}
+        >
+          公司交付车型
+        </button>
+      </div>
+
+      {dashboardBoardTab === 'cluster' ? clusterBoard : roadmapBoard}
 
       {false && (
       <>
