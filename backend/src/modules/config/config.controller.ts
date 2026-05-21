@@ -43,7 +43,7 @@ export class ConfigController {
         return this.configService.updateAll(body);
     }
 
-    @Roles('viewer', 'member', 'pm', 'project_manager', 'super_admin')
+    @Roles('viewer', 'member', 'pm', 'dept_head', 'project_manager', 'super_admin')
     @Get('ui-visibility')
     getUiVisibility(@Req() req?: { user?: { organizationId?: string | null } }) {
         return this.configService.getUiVisibilityRules(req?.user?.organizationId);

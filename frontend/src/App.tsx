@@ -27,6 +27,7 @@ import type {
   FeishuFormState,
   FeishuDependency,
   RequirementChange,
+  ResourceCalendarResponse,
   RiskAlertsResponse,
   NotificationItem,
   ProjectItem,
@@ -75,15 +76,21 @@ const PlanSettingsView = lazy(() => import('./views/PlanSettingsView'));
 const SmartFillView = lazy(() => import('./views/SmartFillView'));
 const CapabilitiesView = lazy(() => import('./views/CapabilitiesView'));
 const TaskCenterView = lazy(() => import('./views/TaskCenterView'));
+const ResourceMaintenanceView = lazy(() => import('./views/ResourceMaintenanceView'));
 
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'resource-maintenance', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
 const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
   super_admin: { workspaceViews: ['*'], adminViews: ['*'], canAccessAdmin: true },
   project_manager: { workspaceViews: WORKSPACE_VIEWS, adminViews: [], canAccessAdmin: false },
+  dept_head: {
+    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'feishu', 'wiki', 'notifications'],
+    adminViews: [],
+    canAccessAdmin: false
+  },
   pm: {
     workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
     adminViews: [],
@@ -218,6 +225,7 @@ function App() {
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [clusterRiskBoard, setClusterRiskBoard] = useState<ClusterRiskBoardResponse | null>(null);
   const [deliveryRoadmap, setDeliveryRoadmap] = useState<DeliveryRoadmapResponse | null>(null);
+  const [resourceCalendar, setResourceCalendar] = useState<ResourceCalendarResponse | null>(null);
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<number[]>([]);
@@ -273,7 +281,7 @@ function App() {
     setError('');
     try {
       await runWithRetry('刷新数据', async () => {
-        const [dashboardRes, clusterRiskBoardRes, deliveryRoadmapRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
+        const [dashboardRes, clusterRiskBoardRes, deliveryRoadmapRes, resourceCalendarRes, projectList, userList, unreadNotifications, feishuUserList] = await Promise.all([
           apiGet<DashboardOverview>('/dashboard/overview'),
           apiGet<ClusterRiskBoardResponse>('/dashboard/cluster-risk-board').catch((err) => ({
             generatedAt: new Date().toISOString(),
@@ -300,6 +308,25 @@ function App() {
             items: [],
             legend: []
           })),
+          apiGet<ResourceCalendarResponse>('/dashboard/resource-calendar').catch((err) => ({
+            generatedAt: new Date().toISOString(),
+            source: 'error' as const,
+            error: err instanceof Error ? err.message : '项目资源日历加载失败',
+            range: { startDate: '', endDate: '', days: [] },
+            summary: {
+              peopleCount: 0,
+              availablePersonDays: 0,
+              allocatedPersonDays: 0,
+              utilizationRate: 0,
+              overloadedPeopleCount: 0,
+              conflictCount: 0
+            },
+            people: [],
+            allocations: [],
+            availability: [],
+            cells: [],
+            conflicts: []
+          })),
           apiGet<ProjectItem[]>('/projects'),
           apiGet<UserItem[]>('/users'),
           apiGet<NotificationItem[]>('/notifications?unread=true'),
@@ -310,6 +337,7 @@ function App() {
         setOverview(dashboardRes);
         setClusterRiskBoard(clusterRiskBoardRes);
         setDeliveryRoadmap(deliveryRoadmapRes);
+        setResourceCalendar(resourceCalendarRes);
         setProjects(projectList);
         setUsers(userList);
         setFeishuUsers(feishuUserList);
@@ -377,6 +405,7 @@ function App() {
     setOverview(null);
     setClusterRiskBoard(null);
     setDeliveryRoadmap(null);
+    setResourceCalendar(null);
     setProjects([]);
     setUsers([]);
     setSelectedProjectIds([]);
@@ -401,6 +430,12 @@ function App() {
     if (!token) return;
     const data = await apiGet<DeliveryRoadmapResponse>('/dashboard/delivery-roadmap?force=true');
     setDeliveryRoadmap(data);
+  }
+
+  async function refreshResourceCalendar() {
+    if (!token) return;
+    const data = await apiGet<ResourceCalendarResponse>('/dashboard/resource-calendar?force=true');
+    setResourceCalendar(data);
   }
 
   async function submitLogin(e: FormEvent<HTMLFormElement>) {
@@ -2589,6 +2624,8 @@ function App() {
             onRefreshClusterRiskBoard={() => refreshClusterRiskBoard()}
             deliveryRoadmap={deliveryRoadmap}
             onRefreshDeliveryRoadmap={() => refreshDeliveryRoadmap()}
+            resourceCalendar={resourceCalendar}
+            onRefreshResourceCalendar={() => refreshResourceCalendar()}
             projects={projects}
             selectedProjectId={selectedProjectId}
             selectedProjectIds={selectedProjectIds}
@@ -2702,6 +2739,10 @@ function App() {
             selectedProjectName={selectedProjectName}
             users={users}
           />
+        )}
+
+        {view === 'resource-maintenance' && (
+          <ResourceMaintenanceView />
         )}
 
         {view === 'milestone-board' && (

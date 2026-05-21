@@ -10,6 +10,7 @@ datasource db {
 enum UserRole {
   super_admin
   project_manager
+  dept_head
   pm
   member
   viewer

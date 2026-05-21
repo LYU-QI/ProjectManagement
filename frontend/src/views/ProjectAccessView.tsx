@@ -22,13 +22,14 @@ type Props = {
   onReloadUsers: () => Promise<void>;
 };
 
-const USER_ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_manager', 'pm', 'member', 'viewer'];
+const USER_ROLE_OPTIONS: UserItem['role'][] = ['super_admin', 'project_manager', 'dept_head', 'pm', 'member', 'viewer'];
 type ProjectAccessTab = 'users' | 'roles' | 'matrix' | 'visibility' | 'memberships';
 type PermissionType = 'menu' | 'action';
 
 const USER_ROLE_LABELS: Record<UserItem['role'], string> = {
   super_admin: '超级管理员',
   project_manager: '项目主管',
+  dept_head: '部门负责人',
   pm: '项目经理',
   member: '成员',
   viewer: '访客'
@@ -85,6 +86,12 @@ const ROLE_PROFILES: Array<{
     ]
   },
   {
+    code: 'dept_head',
+    name: '部门负责人',
+    description: '部门资源负责人，可维护人员资源、资源分配和人员日历例外。',
+    permissions: ['project.read', 'resource.read', 'resource.write', 'feishu.write', 'wiki.read']
+  },
+  {
     code: 'member',
     name: '成员',
     description: '项目成员，可查看并更新参与项目中的任务、缺陷、测试和协作记录。',
@@ -113,6 +120,8 @@ const PERMISSION_DEFINITIONS: Array<{
   { module: 'audit', code: 'audit.read', name: '查看审计日志', type: 'menu' },
   { module: 'project', code: 'project.read', name: '查看项目', type: 'menu' },
   { module: 'project', code: 'project.manage', name: '管理项目', type: 'action' },
+  { module: 'resource', code: 'resource.read', name: '查看资源', type: 'menu' },
+  { module: 'resource', code: 'resource.write', name: '维护资源', type: 'action' },
   { module: 'requirement', code: 'requirement.read', name: '查看需求', type: 'menu' },
   { module: 'requirement', code: 'requirement.manage', name: '管理需求', type: 'action' },
   { module: 'task', code: 'task.read', name: '查看任务', type: 'menu' },
@@ -141,6 +150,7 @@ const WORKSPACE_SCOPE_OPTIONS: Array<{ id: ViewKey; label: string; group: string
   { id: 'schedule', label: '进度计划', group: '项目管理' },
   { id: 'milestone-board', label: '里程碑看板', group: '项目管理' },
   { id: 'resources', label: '资源视图', group: '项目管理' },
+  { id: 'resource-maintenance', label: '资源维护台', group: '项目管理' },
   { id: 'sprints', label: '迭代管理', group: '项目管理' },
   { id: 'bugs', label: '缺陷管理', group: '项目管理' },
   { id: 'test-plans', label: '测试管理', group: '项目管理' },

@@ -37,7 +37,12 @@ const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
         canAccessAdmin: true
     },
     project_manager: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'capabilities', 'webhooks', 'api-keys', 'feishu', 'wiki', 'notifications', 'departments'],
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'capabilities', 'webhooks', 'api-keys', 'feishu', 'wiki', 'notifications', 'departments'],
+        adminViews: [],
+        canAccessAdmin: false
+    },
+    dept_head: {
+        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'feishu', 'wiki', 'notifications'],
         adminViews: [],
         canAccessAdmin: false
     },
@@ -100,6 +105,16 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     DELIVERY_ROADMAP_TABLE_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '公司交付车型大图飞书 Table ID' },
     DELIVERY_ROADMAP_VIEW_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '公司交付车型大图飞书 View ID（可选）' },
     DELIVERY_ROADMAP_FIELD_MAP: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '公司交付车型大图字段映射 JSON（可选）' },
+    RESOURCE_CALENDAR_PEOPLE_APP_TOKEN: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员资源表飞书 App Token' },
+    RESOURCE_CALENDAR_PEOPLE_TABLE_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员资源表 Table ID' },
+    RESOURCE_CALENDAR_PEOPLE_VIEW_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员资源表 View ID（可选）' },
+    RESOURCE_CALENDAR_ALLOCATIONS_APP_TOKEN: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历资源分配表飞书 App Token' },
+    RESOURCE_CALENDAR_ALLOCATIONS_TABLE_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历资源分配表 Table ID' },
+    RESOURCE_CALENDAR_ALLOCATIONS_VIEW_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历资源分配表 View ID（可选）' },
+    RESOURCE_CALENDAR_AVAILABILITY_APP_TOKEN: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员日历表飞书 App Token（可选）' },
+    RESOURCE_CALENDAR_AVAILABILITY_TABLE_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员日历表 Table ID（可选）' },
+    RESOURCE_CALENDAR_AVAILABILITY_VIEW_ID: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历人员日历表 View ID（可选）' },
+    RESOURCE_CALENDAR_FIELD_MAP: { group: 'dashboard', groupLabel: '大看板配置', sensitive: false, description: '项目资源日历字段映射 JSON（可选）' },
     AI_API_URL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型 API 端点（兼容 OpenAI 格式，如 https://api.deepseek.com/v1）' },
     AI_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'AI 模型 API 密钥' },
     AI_MODEL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型名称（如 deepseek-chat、gpt-4o、qwen-plus）' },

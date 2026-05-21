@@ -15,9 +15,10 @@ export type AuditableRequest = {
     name?: string;
     role?: string;
     organizationId?: string | null;
+    orgRole?: string | null;
   };
   params?: Record<string, string>;
-  org?: { id?: string | null };
+  org?: { id?: string | null; orgRole?: string | null };
   headers?: Record<string, string | string[] | undefined>;
   auditMeta?: AuditRequestMeta;
 };

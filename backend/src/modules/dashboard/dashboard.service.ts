@@ -96,6 +96,96 @@ type DeliveryRoadmapResponse = {
   legend: DeliveryRoadmapLegendItem[];
 };
 
+type ResourceCalendarSource = 'feishu' | 'config_missing' | 'error';
+type ResourceLoadStatus = 'idle' | 'normal' | 'saturated' | 'overloaded' | 'unavailable';
+
+type ResourcePerson = {
+  id: string;
+  personId: string;
+  name: string;
+  department: string;
+  role: string;
+  level: string;
+  location: string;
+  dailyCapacity: number;
+  status: string;
+  remark: string;
+};
+
+type ResourceAllocation = {
+  id: string;
+  personId: string;
+  name: string;
+  projectId: string;
+  projectName: string;
+  role: string;
+  startDate: string;
+  endDate: string;
+  allocationPercent: number;
+  allocationDays: number;
+  allocationType: string;
+  remark: string;
+};
+
+type ResourceAvailability = {
+  id: string;
+  personId: string;
+  name: string;
+  date: string;
+  availablePercent: number;
+  availabilityType: string;
+  reason: string;
+  remark: string;
+};
+
+type ResourceCalendarCell = {
+  personId: string;
+  date: string;
+  availablePercent: number;
+  allocatedPercent: number;
+  allocatedDays: number;
+  status: ResourceLoadStatus;
+  projects: Array<{
+    projectId: string;
+    projectName: string;
+    role: string;
+    allocationPercent: number;
+  }>;
+};
+
+type ResourceConflict = {
+  type: 'overload' | 'multi_project' | 'unavailable';
+  severity: 'high' | 'medium' | 'low';
+  personId: string;
+  name: string;
+  date: string;
+  message: string;
+};
+
+type ResourceCalendarResponse = {
+  generatedAt: string;
+  source: ResourceCalendarSource;
+  error?: string;
+  range: {
+    startDate: string;
+    endDate: string;
+    days: string[];
+  };
+  summary: {
+    peopleCount: number;
+    availablePersonDays: number;
+    allocatedPersonDays: number;
+    utilizationRate: number;
+    overloadedPeopleCount: number;
+    conflictCount: number;
+  };
+  people: ResourcePerson[];
+  allocations: ResourceAllocation[];
+  availability: ResourceAvailability[];
+  cells: ResourceCalendarCell[];
+  conflicts: ResourceConflict[];
+};
+
 const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo', string> = {
   index: '序号',
   projectName: '重点项目',
@@ -129,6 +219,33 @@ const ROADMAP_ICON_META: Record<string, DeliveryRoadmapLegendItem> = {
   '1.0+_main': { iconStyle: '1.0+_main', label: '1.0+ 主线', color: '#1d4ed8' },
   '2.0_main': { iconStyle: '2.0_main', label: '2.0 主线', color: '#22c7ee' },
   edge_ai: { iconStyle: 'edge_ai', label: '端侧智能', color: '#f97316' }
+};
+
+const RESOURCE_CALENDAR_FIELD_MAP: Record<string, string> = {
+  personId: 'person_id|人员ID',
+  name: 'name|姓名',
+  department: 'department|部门',
+  role: 'role|角色',
+  level: 'level|职级',
+  location: 'location|地点',
+  dailyCapacity: 'daily_capacity|日标准产能',
+  personStatus: 'status|状态',
+  personRemark: 'remark|备注',
+  allocationId: 'allocation_id|分配ID',
+  projectId: 'project_id|项目ID',
+  projectName: 'project_name|项目名称',
+  startDate: 'start_date|开始日期',
+  endDate: 'end_date|结束日期|结束时间',
+  allocationPercent: 'allocation_percent|投入比例',
+  allocationDays: 'allocation_days|投入人天',
+  allocationType: 'allocation_type|分配类型',
+  allocationRemark: 'remark|备注',
+  availabilityId: 'availability_id|记录ID',
+  date: 'date|日期',
+  availablePercent: 'available_percent|可用比例',
+  availabilityType: 'availability_type|不可用类型',
+  reason: 'reason|原因',
+  availabilityRemark: 'remark|备注'
 };
 
 @Injectable()
@@ -330,6 +447,77 @@ export class DashboardService {
     }
   }
 
+  async resourceCalendar(actor?: AuthActor & { organizationId?: string }, force = false): Promise<ResourceCalendarResponse> {
+    const cacheKey = `dashboard:resource-calendar:v2:${actor?.organizationId ?? 'global'}`;
+    if (!force) {
+      const cached = await this.redisService.get<ResourceCalendarResponse>(cacheKey);
+      if (cached) return cached;
+    }
+
+    const peopleAppToken = await this.getClusterConfig('RESOURCE_CALENDAR_PEOPLE_APP_TOKEN', actor?.organizationId);
+    const peopleTableId = await this.getClusterConfig('RESOURCE_CALENDAR_PEOPLE_TABLE_ID', actor?.organizationId);
+    const peopleViewId = await this.getClusterConfig('RESOURCE_CALENDAR_PEOPLE_VIEW_ID', actor?.organizationId);
+    const allocationsAppToken = await this.getClusterConfig('RESOURCE_CALENDAR_ALLOCATIONS_APP_TOKEN', actor?.organizationId);
+    const allocationsTableId = await this.getClusterConfig('RESOURCE_CALENDAR_ALLOCATIONS_TABLE_ID', actor?.organizationId);
+    const allocationsViewId = await this.getClusterConfig('RESOURCE_CALENDAR_ALLOCATIONS_VIEW_ID', actor?.organizationId);
+    const availabilityAppToken = await this.getClusterConfig('RESOURCE_CALENDAR_AVAILABILITY_APP_TOKEN', actor?.organizationId);
+    const availabilityTableId = await this.getClusterConfig('RESOURCE_CALENDAR_AVAILABILITY_TABLE_ID', actor?.organizationId);
+    const availabilityViewId = await this.getClusterConfig('RESOURCE_CALENDAR_AVAILABILITY_VIEW_ID', actor?.organizationId);
+    const fieldMapRaw = await this.getClusterConfig('RESOURCE_CALENDAR_FIELD_MAP', actor?.organizationId);
+
+    if (!peopleAppToken || !peopleTableId || !allocationsAppToken || !allocationsTableId) {
+      return this.emptyResourceCalendar(
+        'config_missing',
+        '缺少 RESOURCE_CALENDAR_PEOPLE_* 或 RESOURCE_CALENDAR_ALLOCATIONS_* 配置，请先在系统设置中配置项目资源日历飞书数据源。'
+      );
+    }
+
+    try {
+      const fieldMap = this.parseResourceCalendarFieldMap(fieldMapRaw);
+      const [peopleData, allocationsData, availabilityData] = await Promise.all([
+        this.feishuService.listRecords({
+          pageSize: 500,
+          viewId: peopleViewId || undefined,
+          opts: { appToken: peopleAppToken, tableId: peopleTableId }
+        }),
+        this.feishuService.listRecords({
+          pageSize: 500,
+          viewId: allocationsViewId || undefined,
+          opts: { appToken: allocationsAppToken, tableId: allocationsTableId }
+        }),
+        availabilityAppToken && availabilityTableId
+          ? this.feishuService.listRecords({
+              pageSize: 500,
+              viewId: availabilityViewId || undefined,
+              opts: { appToken: availabilityAppToken, tableId: availabilityTableId }
+            })
+          : Promise.resolve({ items: [] })
+      ]);
+
+      const people = (peopleData.items || []).flatMap((record, index) => {
+        const row = record as { record_id?: string; recordId?: string; id?: string; fields?: Record<string, unknown> };
+        const person = this.normalizeResourcePerson(row.fields || {}, fieldMap, row.record_id || row.recordId || row.id || `person-${index + 1}`);
+        return person.name || person.personId ? [person] : [];
+      });
+      const allocations = (allocationsData.items || []).flatMap((record, index) => {
+        const row = record as { record_id?: string; recordId?: string; id?: string; fields?: Record<string, unknown> };
+        const allocation = this.normalizeResourceAllocation(row.fields || {}, fieldMap, row.record_id || row.recordId || row.id || `allocation-${index + 1}`);
+        return (allocation.personId || allocation.name) && allocation.startDate && allocation.endDate ? [allocation] : [];
+      });
+      const availability = (availabilityData.items || []).flatMap((record, index) => {
+        const row = record as { record_id?: string; recordId?: string; id?: string; fields?: Record<string, unknown> };
+        const item = this.normalizeResourceAvailability(row.fields || {}, fieldMap, row.record_id || row.recordId || row.id || `availability-${index + 1}`);
+        return (item.personId || item.name) && item.date ? [item] : [];
+      });
+
+      const response = this.buildResourceCalendarResponse(people, allocations, availability);
+      await this.redisService.set(cacheKey, response, this.cacheTtl);
+      return response;
+    } catch (err: any) {
+      return this.emptyResourceCalendar('error', err?.message || '项目资源日历大看板数据加载失败。');
+    }
+  }
+
   private async computeOverview(actor?: AuthActor) {
     const accessibleProjectIds = await this.accessService.getAccessibleProjectIds(actor);
     const projectFilter = accessibleProjectIds === null
@@ -450,6 +638,122 @@ export class DashboardService {
     };
   }
 
+  private emptyResourceCalendar(source: Exclude<ResourceCalendarSource, 'feishu'>, error: string): ResourceCalendarResponse {
+    const days = this.buildResourceCalendarDays(56);
+    return {
+      generatedAt: new Date().toISOString(),
+      source,
+      error,
+      range: {
+        startDate: days[0] || '',
+        endDate: days[days.length - 1] || '',
+        days
+      },
+      summary: {
+        peopleCount: 0,
+        availablePersonDays: 0,
+        allocatedPersonDays: 0,
+        utilizationRate: 0,
+        overloadedPeopleCount: 0,
+        conflictCount: 0
+      },
+      people: [],
+      allocations: [],
+      availability: [],
+      cells: [],
+      conflicts: []
+    };
+  }
+
+  private buildResourceCalendarResponse(peopleInput: ResourcePerson[], allocations: ResourceAllocation[], availability: ResourceAvailability[]): ResourceCalendarResponse {
+    const days = this.buildResourceCalendarDays(56);
+    const people = this.mergeResourcePeople(peopleInput, allocations).sort(
+      (a, b) => a.department.localeCompare(b.department) || a.role.localeCompare(b.role) || a.name.localeCompare(b.name)
+    );
+    const availabilityMap = new Map(availability.map((item) => [`${this.resourcePersonKey(item)}::${item.date}`, item]));
+    const cells: ResourceCalendarCell[] = [];
+    const conflicts: ResourceConflict[] = [];
+    let availablePersonDays = 0;
+    let allocatedPersonDays = 0;
+
+    for (const person of people) {
+      const personKey = this.resourcePersonKey(person);
+      for (const date of days) {
+        const dayAvailability = availabilityMap.get(`${personKey}::${date}`);
+        const availablePercent = dayAvailability ? dayAvailability.availablePercent : 100;
+        const dayAllocations = allocations.filter((item) => this.resourcePersonKey(item) === personKey && this.isDateInRange(date, item.startDate, item.endDate));
+        const allocatedPercent = Math.round(dayAllocations.reduce((sum, item) => sum + this.effectiveAllocationPercent(item, person), 0) * 100) / 100;
+        const allocatedDays = Math.round((person.dailyCapacity * allocatedPercent / 100) * 100) / 100;
+        availablePersonDays += person.dailyCapacity * availablePercent / 100;
+        allocatedPersonDays += allocatedDays;
+
+        const projects = dayAllocations.map((item) => ({
+          projectId: item.projectId,
+          projectName: item.projectName,
+          role: item.role,
+          allocationPercent: this.effectiveAllocationPercent(item, person)
+        }));
+        const status = this.resourceLoadStatus(allocatedPercent, availablePercent);
+        cells.push({
+          personId: person.personId || person.name,
+          date,
+          availablePercent,
+          allocatedPercent,
+          allocatedDays,
+          status,
+          projects
+        });
+
+        if (status === 'overloaded') {
+          conflicts.push({
+            type: 'overload',
+            severity: 'high',
+            personId: person.personId || person.name,
+            name: person.name,
+            date,
+            message: `${person.name} ${date} 投入 ${allocatedPercent}%，超过可用 ${availablePercent}%`
+          });
+        }
+        if (availablePercent <= 0 && allocatedPercent > 0) {
+          conflicts.push({
+            type: 'unavailable',
+            severity: 'high',
+            personId: person.personId || person.name,
+            name: person.name,
+            date,
+            message: `${person.name} ${date} 不可用但仍有项目分配`
+          });
+        }
+      }
+    }
+
+    const overloadedPeopleCount = new Set(cells.filter((cell) => cell.status === 'overloaded').map((cell) => cell.personId)).size;
+    const roundedAvailable = Math.round(availablePersonDays * 100) / 100;
+    const roundedAllocated = Math.round(allocatedPersonDays * 100) / 100;
+    return {
+      generatedAt: new Date().toISOString(),
+      source: 'feishu',
+      range: {
+        startDate: days[0] || '',
+        endDate: days[days.length - 1] || '',
+        days
+      },
+      summary: {
+        peopleCount: people.length,
+        availablePersonDays: roundedAvailable,
+        allocatedPersonDays: roundedAllocated,
+        utilizationRate: roundedAvailable > 0 ? Math.round((roundedAllocated / roundedAvailable) * 10000) / 100 : 0,
+        overloadedPeopleCount,
+        conflictCount: conflicts.length
+      },
+      people,
+      allocations,
+      availability,
+      cells,
+      conflicts: conflicts.slice(0, 100)
+    };
+  }
+
   private buildDeliveryRoadmapResponse(source: 'feishu', rawItems: Omit<DeliveryRoadmapItem, 'xPercent'>[]): DeliveryRoadmapResponse {
     const timeAxis = this.buildRoadmapTimeAxis(rawItems);
     const items = rawItems
@@ -540,6 +844,24 @@ export class DashboardService {
     }
   }
 
+  private parseResourceCalendarFieldMap(raw?: string | null): Record<string, string> {
+    if (!raw?.trim()) return { ...RESOURCE_CALENDAR_FIELD_MAP };
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...RESOURCE_CALENDAR_FIELD_MAP };
+      return {
+        ...RESOURCE_CALENDAR_FIELD_MAP,
+        ...Object.fromEntries(
+          Object.entries(parsed as Record<string, unknown>)
+            .map(([key, value]) => [key.trim(), String(value ?? '').trim()])
+            .filter(([key, value]) => key && value)
+        )
+      };
+    } catch {
+      return { ...RESOURCE_CALENDAR_FIELD_MAP };
+    }
+  }
+
   private normalizeDeliveryRoadmapRecord(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): Omit<DeliveryRoadmapItem, 'xPercent'> {
     const get = (key: keyof typeof DELIVERY_ROADMAP_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]);
     const targetDate = this.normalizeDateText(get('targetDate'));
@@ -566,6 +888,131 @@ export class DashboardService {
   private hasDeliveryRoadmapRow(fields: Record<string, unknown>, fieldMap: Record<string, string>): boolean {
     const keys: Array<keyof typeof DELIVERY_ROADMAP_FIELD_MAP> = ['categoryL1', 'categoryL2', 'ySortOrder', 'targetDate', 'targetQuarter', 'milestoneName'];
     return keys.some((key) => Boolean(this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]).trim()));
+  }
+
+  private normalizeResourcePerson(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): ResourcePerson {
+    const get = (key: keyof typeof RESOURCE_CALENDAR_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || RESOURCE_CALENDAR_FIELD_MAP[key]);
+    const personId = get('personId') || recordId;
+    return {
+      id: recordId,
+      personId,
+      name: get('name') || personId,
+      department: get('department') || '未分组',
+      role: get('role') || '未配置角色',
+      level: get('level'),
+      location: get('location'),
+      dailyCapacity: this.normalizePositiveNumber(get('dailyCapacity'), 1),
+      status: get('personStatus') || '在职',
+      remark: get('personRemark')
+    };
+  }
+
+  private normalizeResourceAllocation(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): ResourceAllocation {
+    const get = (key: keyof typeof RESOURCE_CALENDAR_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || RESOURCE_CALENDAR_FIELD_MAP[key]);
+    const percent = this.normalizePercent(get('allocationPercent'), 100);
+    return {
+      id: get('allocationId') || recordId,
+      personId: get('personId'),
+      name: get('name'),
+      projectId: get('projectId'),
+      projectName: get('projectName') || '未命名项目',
+      role: get('role'),
+      startDate: this.normalizeDateText(get('startDate')),
+      endDate: this.normalizeDateText(get('endDate')) || this.normalizeDateText(get('startDate')),
+      allocationPercent: percent,
+      allocationDays: this.normalizePositiveNumber(get('allocationDays'), 0),
+      allocationType: get('allocationType'),
+      remark: get('allocationRemark')
+    };
+  }
+
+  private normalizeResourceAvailability(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): ResourceAvailability {
+    const get = (key: keyof typeof RESOURCE_CALENDAR_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || RESOURCE_CALENDAR_FIELD_MAP[key]);
+    return {
+      id: get('availabilityId') || recordId,
+      personId: get('personId'),
+      name: get('name'),
+      date: this.normalizeDateText(get('date')),
+      availablePercent: this.normalizePercent(get('availablePercent'), 0),
+      availabilityType: get('availabilityType'),
+      reason: get('reason'),
+      remark: get('availabilityRemark')
+    };
+  }
+
+  private mergeResourcePeople(people: ResourcePerson[], allocations: ResourceAllocation[]): ResourcePerson[] {
+    const map = new Map<string, ResourcePerson>();
+    for (const person of people) {
+      map.set(this.resourcePersonKey(person), person);
+    }
+    for (const allocation of allocations) {
+      const key = this.resourcePersonKey(allocation);
+      if (!key || map.has(key)) continue;
+      map.set(key, {
+        id: key,
+        personId: allocation.personId || allocation.name,
+        name: allocation.name || allocation.personId,
+        department: '未分组',
+        role: allocation.role || '未配置角色',
+        level: '',
+        location: '',
+        dailyCapacity: 1,
+        status: '从分配表推断',
+        remark: ''
+      });
+    }
+    return Array.from(map.values());
+  }
+
+  private resourcePersonKey(value: Pick<ResourcePerson | ResourceAllocation | ResourceAvailability, 'personId' | 'name'>): string {
+    return (value.personId || value.name || '').trim();
+  }
+
+  private effectiveAllocationPercent(allocation: ResourceAllocation, person: ResourcePerson): number {
+    if (allocation.allocationDays > 0) {
+      const days = this.inclusiveDayCount(allocation.startDate, allocation.endDate);
+      const dailyCapacity = person.dailyCapacity > 0 ? person.dailyCapacity : 1;
+      if (days > 0) return Math.round((allocation.allocationDays / days / dailyCapacity) * 10000) / 100;
+    }
+    return allocation.allocationPercent;
+  }
+
+  private inclusiveDayCount(startDate: string, endDate: string): number {
+    const start = new Date(`${startDate}T00:00:00+08:00`).getTime();
+    const end = new Date(`${(endDate || startDate)}T00:00:00+08:00`).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+    return Math.floor((end - start) / 86_400_000) + 1;
+  }
+
+  private resourceLoadStatus(allocatedPercent: number, availablePercent: number): ResourceLoadStatus {
+    if (availablePercent <= 0) return 'unavailable';
+    if (allocatedPercent > availablePercent) return 'overloaded';
+    if (allocatedPercent >= availablePercent * 0.9) return 'saturated';
+    if (allocatedPercent > 0) return 'normal';
+    return 'idle';
+  }
+
+  private buildResourceCalendarDays(length: number): string[] {
+    const now = new Date();
+    const start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    return Array.from({ length }).map((_, index) => this.formatDateUtc(new Date(start.getTime() + index * 24 * 60 * 60 * 1000)));
+  }
+
+  private isDateInRange(date: string, startDate: string, endDate: string): boolean {
+    return Boolean(date && startDate && endDate && date >= startDate && date <= endDate);
+  }
+
+  private normalizePositiveNumber(value: string, fallback: number): number {
+    const normalized = Number(String(value || '').replace('%', '').trim());
+    return Number.isFinite(normalized) && normalized >= 0 ? normalized : fallback;
+  }
+
+  private normalizePercent(value: string, fallback: number): number {
+    const text = String(value || '').trim();
+    if (!text) return fallback;
+    const raw = Number(text.replace('%', ''));
+    if (!Number.isFinite(raw)) return fallback;
+    return Math.max(0, Math.min(300, raw <= 1 && !text.includes('%') ? raw * 100 : raw));
   }
 
   private buildRoadmapTimeAxis(items: Array<Pick<DeliveryRoadmapItem, 'targetDate' | 'targetQuarter'>>): DeliveryRoadmapResponse['timeAxis'] {

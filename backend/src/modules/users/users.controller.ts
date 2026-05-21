@@ -5,8 +5,8 @@ import { Roles } from '../auth/roles.decorator';
 import { UsersService } from './users.service';
 
 class UpdateUserRoleDto {
-  @IsIn(['super_admin', 'project_manager', 'pm', 'member', 'viewer'])
-  role!: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
+  @IsIn(['super_admin', 'project_manager', 'dept_head', 'pm', 'member', 'viewer'])
+  role!: 'super_admin' | 'project_manager' | 'dept_head' | 'pm' | 'member' | 'viewer';
 }
 
 class CreateUserDto {
@@ -20,8 +20,8 @@ class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @IsIn(['super_admin', 'project_manager', 'pm', 'member', 'viewer'])
-  role!: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
+  @IsIn(['super_admin', 'project_manager', 'dept_head', 'pm', 'member', 'viewer'])
+  role!: 'super_admin' | 'project_manager' | 'dept_head' | 'pm' | 'member' | 'viewer';
 }
 
 class ResetPasswordDto {

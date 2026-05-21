@@ -11,6 +11,7 @@ import {
   Settings,
   MessageSquare,
   Users,
+  UserCog,
   CalendarDays,
   ShieldCheck,
   Flag,
@@ -36,6 +37,7 @@ export type ViewKey =
   | 'costs'
   | 'schedule'
   | 'resources'
+  | 'resource-maintenance'
   | 'risks'
   | 'ai'
   | 'notifications'
@@ -112,6 +114,7 @@ const navGroups: NavGroup[] = [
     { id: 'schedule', label: '进度计划', icon: <CalendarDays size={16} /> },
     { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={16} /> },
     { id: 'resources', label: '资源视图', icon: <Users size={16} /> },
+    { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={16} /> },
     { id: 'sprints', label: '迭代管理', icon: <Layers size={16} /> },
     { id: 'bugs', label: '缺陷管理', icon: <Bug size={16} /> },
     { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={16} /> },
@@ -167,6 +170,7 @@ const navItems: Array<{
   { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
+  { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={18} />, platform: 'workspace' },
   { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={18} />, platform: 'workspace' },
   { id: 'wiki', label: '知识库', icon: <BookOpen size={18} />, platform: 'workspace' },
   { id: 'sprints', label: '迭代管理', icon: <Layers size={18} />, platform: 'workspace' },
@@ -196,6 +200,14 @@ const navItems: Array<{
 ];
 
 const HIDDEN_NAV_STORAGE_KEY = 'ui:hidden-nav-items';
+const USER_ROLE_LABELS: Record<string, string> = {
+  super_admin: '超级管理员',
+  project_manager: '项目主管',
+  dept_head: '部门负责人',
+  pm: '项目经理',
+  member: '成员',
+  viewer: '访客'
+};
 
 function isViewAllowedByScope(id: ViewKey, scope?: ViewKey[] | '*') {
   if (!scope || scope === '*') return true;
@@ -221,7 +233,7 @@ export default function AstraeaLayout({
 }: AstraeaLayoutProps) {
   const role = String(user?.role || '');
   const displayName = String(user?.username || user?.name || '未知用户');
-  const displayRole = role || 'unknown';
+  const displayRole = USER_ROLE_LABELS[role] || role || 'unknown';
   const isSuperAdmin = role === 'super_admin';
   const isProjectManager = role === 'project_manager';
   const canManageAdmin = canAccessAdmin || isSuperAdmin || isProjectManager || ['owner', 'admin'].includes(myOrgRole ?? '');

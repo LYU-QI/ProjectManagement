@@ -50,6 +50,7 @@ import { MetricsInterceptor } from './modules/monitoring/metrics.interceptor';
 import { EventsModule } from './modules/events/events.module';
 import { CapabilitiesModule } from './modules/capabilities/capabilities.module';
 import { TaskCenterModule } from './modules/task-center/task-center.module';
+import { ResourceMaintenanceModule } from './modules/resource-maintenance/resource-maintenance.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { TaskCenterModule } from './modules/task-center/task-center.module';
     EventsModule,
     CapabilitiesModule,
     TaskCenterModule,
+    ResourceMaintenanceModule,
     AuditModule,
     DatabaseModule,
     ScheduleModule.forRoot(),

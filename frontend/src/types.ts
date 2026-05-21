@@ -117,6 +117,84 @@ export interface DeliveryRoadmapResponse {
   legend: DeliveryRoadmapLegendItem[];
 }
 
+export type ResourceLoadStatus = 'idle' | 'normal' | 'saturated' | 'overloaded' | 'unavailable';
+
+export interface ResourceCalendarPerson {
+  id: string;
+  personId: string;
+  name: string;
+  department: string;
+  role: string;
+  level: string;
+  location: string;
+  dailyCapacity: number;
+  status: string;
+  remark: string;
+}
+
+export interface ResourceCalendarAllocation {
+  id: string;
+  personId: string;
+  name: string;
+  projectId: string;
+  projectName: string;
+  role: string;
+  startDate: string;
+  endDate: string;
+  allocationPercent: number;
+  allocationDays: number;
+  allocationType: string;
+  remark: string;
+}
+
+export interface ResourceCalendarCell {
+  personId: string;
+  date: string;
+  availablePercent: number;
+  allocatedPercent: number;
+  allocatedDays: number;
+  status: ResourceLoadStatus;
+  projects: Array<{
+    projectId: string;
+    projectName: string;
+    role: string;
+    allocationPercent: number;
+  }>;
+}
+
+export interface ResourceCalendarConflict {
+  type: 'overload' | 'multi_project' | 'unavailable';
+  severity: 'high' | 'medium' | 'low';
+  personId: string;
+  name: string;
+  date: string;
+  message: string;
+}
+
+export interface ResourceCalendarResponse {
+  generatedAt: string;
+  source: 'feishu' | 'config_missing' | 'error';
+  error?: string;
+  range: {
+    startDate: string;
+    endDate: string;
+    days: string[];
+  };
+  summary: {
+    peopleCount: number;
+    availablePersonDays: number;
+    allocatedPersonDays: number;
+    utilizationRate: number;
+    overloadedPeopleCount: number;
+    conflictCount: number;
+  };
+  people: ResourceCalendarPerson[];
+  allocations: ResourceCalendarAllocation[];
+  availability: unknown[];
+  cells: ResourceCalendarCell[];
+  conflicts: ResourceCalendarConflict[];
+}
+
 export interface Requirement {
   id: number;
   projectId: number;
@@ -292,7 +370,7 @@ export interface NotificationItem {
 export interface UserItem {
   id: number;
   name: string;
-  role: 'super_admin' | 'project_manager' | 'pm' | 'member' | 'viewer';
+  role: 'super_admin' | 'project_manager' | 'dept_head' | 'pm' | 'member' | 'viewer';
   username: string;
 }
 

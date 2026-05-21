@@ -7,7 +7,10 @@ import type {
   DashboardOverview,
   DeliveryRoadmapItem,
   DeliveryRoadmapResponse,
-  ProjectItem
+  ProjectItem,
+  ResourceCalendarCell,
+  ResourceCalendarPerson,
+  ResourceCalendarResponse
 } from '../types';
 
 type InlineEditState<T, Id> = {
@@ -30,6 +33,28 @@ type RoadmapFixedQuarter = {
   end: Date;
 };
 
+type ResourceCalendarRangeFilter = 'thisWeek' | 'thisMonth' | 'next4Weeks' | 'next8Weeks';
+type ResourceCalendarLoadFilter = 'all' | ResourceCalendarCell['status'];
+type ResourceCalendarColumn = {
+  key: string;
+  label: string;
+  tooltipLabel: string;
+  dates: string[];
+  mode: 'day' | 'week';
+};
+type ResourceCalendarDisplayCell = {
+  availablePercent: number;
+  allocatedPercent: number;
+  allocatedDays: number;
+  status: ResourceCalendarCell['status'];
+  projects: Array<{
+    projectId: string;
+    projectName: string;
+    role: string;
+    allocationPercent: number;
+  }>;
+};
+
 type Props = {
   canWrite: boolean;
   overview: DashboardOverview | null;
@@ -37,6 +62,8 @@ type Props = {
   onRefreshClusterRiskBoard: () => Promise<void>;
   deliveryRoadmap: DeliveryRoadmapResponse | null;
   onRefreshDeliveryRoadmap: () => Promise<void>;
+  resourceCalendar: ResourceCalendarResponse | null;
+  onRefreshResourceCalendar: () => Promise<void>;
   projects: ProjectItem[];
   selectedProjectId: number | null;
   selectedProjectIds: number[];
@@ -97,6 +124,140 @@ function roadmapDateLabel(item: DeliveryRoadmapItem): string {
 
 function roadmapIconColor(item: DeliveryRoadmapItem, roadmap: DeliveryRoadmapResponse | null): string {
   return roadmap?.legend.find((legend) => legend.iconStyle === item.iconStyle)?.color || '#64748b';
+}
+
+function resourceCellStatusLabel(status: ResourceCalendarCell['status']): string {
+  if (status === 'overloaded') return '过载';
+  if (status === 'saturated') return '饱和';
+  if (status === 'normal') return '已排';
+  if (status === 'unavailable') return '不可用';
+  return '空闲';
+}
+
+function resourceCellFor(person: ResourceCalendarPerson, date: string, cells: ResourceCalendarCell[]): ResourceCalendarCell | null {
+  return cells.find((cell) => cell.personId === (person.personId || person.name) && cell.date === date) || null;
+}
+
+function roundResourceNumber(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function parseDateKey(dateKey: string): Date {
+  return new Date(`${dateKey}T00:00:00`);
+}
+
+function resourceRangeLabel(range: ResourceCalendarRangeFilter): string {
+  if (range === 'thisWeek') return '本周';
+  if (range === 'thisMonth') return '本月';
+  if (range === 'next8Weeks') return '未来 8 周';
+  return '未来 4 周';
+}
+
+function filterResourceDays(days: string[], range: ResourceCalendarRangeFilter): string[] {
+  if (range === 'next4Weeks') return days.slice(0, 28);
+  if (range === 'next8Weeks') return days.slice(0, 56);
+
+  const firstDay = days[0] ? parseDateKey(days[0]) : new Date();
+  if (range === 'thisMonth') {
+    const year = firstDay.getFullYear();
+    const month = firstDay.getMonth();
+    return days.filter((date) => {
+      const current = parseDateKey(date);
+      return current.getFullYear() === year && current.getMonth() === month;
+    });
+  }
+
+  const weekEnd = new Date(firstDay);
+  weekEnd.setDate(firstDay.getDate() + ((7 - firstDay.getDay()) % 7));
+  return days.filter((date) => parseDateKey(date) <= weekEnd);
+}
+
+function buildResourceColumns(days: string[], range: ResourceCalendarRangeFilter): ResourceCalendarColumn[] {
+  if (range !== 'next8Weeks') {
+    return days.map((date) => ({
+      key: date,
+      label: date.slice(5),
+      tooltipLabel: date,
+      dates: [date],
+      mode: 'day'
+    }));
+  }
+
+  const columns: ResourceCalendarColumn[] = [];
+  for (let index = 0; index < days.length; index += 7) {
+    const weekDays = days.slice(index, index + 7);
+    const start = weekDays[0] || '';
+    const end = weekDays[weekDays.length - 1] || start;
+    columns.push({
+      key: `${start}::${end}`,
+      label: `${start.slice(5)}-${end.slice(5)}`,
+      tooltipLabel: `${start} 至 ${end}`,
+      dates: weekDays,
+      mode: 'week'
+    });
+  }
+  return columns;
+}
+
+function summarizeResourceCells(cells: ResourceCalendarCell[]): ResourceCalendarDisplayCell {
+  if (cells.length === 0) {
+    return {
+      availablePercent: 100,
+      allocatedPercent: 0,
+      allocatedDays: 0,
+      status: 'idle',
+      projects: []
+    };
+  }
+
+  const availablePercent = roundResourceNumber(cells.reduce((sum, cell) => sum + cell.availablePercent, 0) / cells.length);
+  const allocatedPercent = roundResourceNumber(cells.reduce((sum, cell) => sum + cell.allocatedPercent, 0) / cells.length);
+  const allocatedDays = roundResourceNumber(cells.reduce((sum, cell) => sum + cell.allocatedDays, 0));
+  const statuses = new Set(cells.map((cell) => cell.status));
+  const projectMap = new Map<string, ResourceCalendarDisplayCell['projects'][number] & { count: number }>();
+  for (const cell of cells) {
+    for (const project of cell.projects || []) {
+      const key = project.projectId || project.projectName || 'unknown';
+      const existing = projectMap.get(key) || {
+        projectId: project.projectId,
+        projectName: project.projectName,
+        role: project.role,
+        allocationPercent: 0,
+        count: 0
+      };
+      existing.allocationPercent += project.allocationPercent;
+      existing.count += 1;
+      projectMap.set(key, existing);
+    }
+  }
+  const projects = Array.from(projectMap.values()).map((project) => ({
+    projectId: project.projectId,
+    projectName: project.projectName,
+    role: project.role,
+    allocationPercent: roundResourceNumber(project.allocationPercent / Math.max(project.count, 1))
+  }));
+
+  let status: ResourceCalendarCell['status'] = 'idle';
+  if (statuses.has('overloaded')) status = 'overloaded';
+  else if (statuses.has('saturated')) status = 'saturated';
+  else if (statuses.has('normal')) status = 'normal';
+  else if (statuses.has('unavailable')) status = 'unavailable';
+
+  return {
+    availablePercent,
+    allocatedPercent,
+    allocatedDays,
+    status,
+    projects
+  };
+}
+
+function resourceConflictRank(conflict: ResourceCalendarResponse['conflicts'][number]): number {
+  if (conflict.type === 'overload') return 0;
+  if (conflict.severity === 'high') return 1;
+  if (conflict.type === 'unavailable') return 2;
+  if (conflict.type === 'multi_project') return 3;
+  return 4;
 }
 
 function roadmapLaneTone(categoryL1: string): 'main' | 'factory' | 'other' {
@@ -175,6 +336,8 @@ export default function DashboardView({
   onRefreshClusterRiskBoard,
   deliveryRoadmap,
   onRefreshDeliveryRoadmap,
+  resourceCalendar,
+  onRefreshResourceCalendar,
   projects,
   selectedProjectId,
   selectedProjectIds,
@@ -194,9 +357,17 @@ export default function DashboardView({
   const [clusterFullscreen, setClusterFullscreen] = useState(false);
   const [selectedClusterProject, setSelectedClusterProject] = useState<ClusterRiskBoardItem | null>(null);
   const [clusterRefreshing, setClusterRefreshing] = useState(false);
-  const [dashboardBoardTab, setDashboardBoardTab] = useState<'cluster' | 'roadmap'>('cluster');
+  const [dashboardBoardTab, setDashboardBoardTab] = useState<'cluster' | 'roadmap' | 'resources'>('cluster');
   const [roadmapFullscreen, setRoadmapFullscreen] = useState(false);
   const [roadmapRefreshing, setRoadmapRefreshing] = useState(false);
+  const [resourceRoleFilter, setResourceRoleFilter] = useState('all');
+  const [resourceDepartmentFilter, setResourceDepartmentFilter] = useState('all');
+  const [resourcePersonKeyword, setResourcePersonKeyword] = useState('');
+  const [resourceProjectFilter, setResourceProjectFilter] = useState('all');
+  const [resourceLoadFilter, setResourceLoadFilter] = useState<ResourceCalendarLoadFilter>('all');
+  const [resourceRangeFilter, setResourceRangeFilter] = useState<ResourceCalendarRangeFilter>('next4Weeks');
+  const [resourceFullscreen, setResourceFullscreen] = useState(false);
+  const [resourceCalendarRefreshing, setResourceCalendarRefreshing] = useState(false);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
@@ -294,6 +465,15 @@ export default function DashboardView({
       await onRefreshDeliveryRoadmap();
     } finally {
       setRoadmapRefreshing(false);
+    }
+  }
+
+  async function refreshResourceCalendarBoard() {
+    setResourceCalendarRefreshing(true);
+    try {
+      await onRefreshResourceCalendar();
+    } finally {
+      setResourceCalendarRefreshing(false);
     }
   }
 
@@ -574,6 +754,266 @@ export default function DashboardView({
     </section>
   );
 
+  const resourceRoleOptions = useMemo(() => {
+    return Array.from(new Set((resourceCalendar?.people || []).map((person) => person.role.trim() || '未填角色'))).sort((a, b) => a.localeCompare(b));
+  }, [resourceCalendar]);
+  const resourceDepartmentOptions = useMemo(() => {
+    return Array.from(new Set((resourceCalendar?.people || []).map((person) => person.department.trim() || '未填部门'))).sort((a, b) => a.localeCompare(b));
+  }, [resourceCalendar]);
+  const resourceProjectOptions = useMemo(() => {
+    const projectMap = new Map<string, string>();
+    for (const cell of resourceCalendar?.cells || []) {
+      for (const project of cell.projects || []) {
+        const key = project.projectId || project.projectName;
+        if (key) projectMap.set(key, project.projectName || project.projectId || '未命名项目');
+      }
+    }
+    return Array.from(projectMap.entries()).map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [resourceCalendar]);
+  const filteredResourceDays = useMemo(() => {
+    return filterResourceDays(resourceCalendar?.range.days || [], resourceRangeFilter);
+  }, [resourceCalendar, resourceRangeFilter]);
+  const resourceDisplayColumns = useMemo(() => {
+    return buildResourceColumns(filteredResourceDays, resourceRangeFilter);
+  }, [filteredResourceDays, resourceRangeFilter]);
+  const filteredResourceDaySet = useMemo(() => new Set(filteredResourceDays), [filteredResourceDays]);
+  const resourceCellsInRange = useMemo(() => {
+    return (resourceCalendar?.cells || []).filter((cell) => filteredResourceDaySet.has(cell.date));
+  }, [filteredResourceDaySet, resourceCalendar]);
+  const filteredResourcePeople = useMemo(() => {
+    const keyword = resourcePersonKeyword.trim().toLowerCase();
+    return (resourceCalendar?.people || []).filter((person) => {
+      const personKey = person.personId || person.name;
+      if (resourceRoleFilter !== 'all' && (person.role.trim() || '未填角色') !== resourceRoleFilter) return false;
+      if (resourceDepartmentFilter !== 'all' && (person.department.trim() || '未填部门') !== resourceDepartmentFilter) return false;
+      if (keyword) {
+        const text = `${person.name} ${person.personId} ${person.department} ${person.role} ${person.location}`.toLowerCase();
+        if (!text.includes(keyword)) return false;
+      }
+      const personCells = resourceCellsInRange.filter((cell) => cell.personId === personKey);
+      if (resourceProjectFilter !== 'all' && !personCells.some((cell) => cell.projects.some((project) => (project.projectId || project.projectName) === resourceProjectFilter))) return false;
+      if (resourceLoadFilter !== 'all' && !personCells.some((cell) => cell.status === resourceLoadFilter)) return false;
+      return true;
+    });
+  }, [resourceCalendar, resourceCellsInRange, resourceDepartmentFilter, resourceLoadFilter, resourcePersonKeyword, resourceProjectFilter, resourceRoleFilter]);
+  const filteredResourcePersonIds = useMemo(() => new Set(filteredResourcePeople.map((person) => person.personId || person.name)), [filteredResourcePeople]);
+  const filteredResourceCells = useMemo(() => {
+    return resourceCellsInRange.filter((cell) => filteredResourcePersonIds.has(cell.personId));
+  }, [filteredResourcePersonIds, resourceCellsInRange]);
+  const filteredResourceConflicts = useMemo(() => {
+    return (resourceCalendar?.conflicts || [])
+      .filter((conflict) => conflict.type !== 'multi_project')
+      .filter((conflict) => filteredResourcePersonIds.has(conflict.personId) && filteredResourceDaySet.has(conflict.date))
+      .sort((a, b) => resourceConflictRank(a) - resourceConflictRank(b) || a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+  }, [filteredResourceDaySet, filteredResourcePersonIds, resourceCalendar]);
+  const filteredResourceSummary = useMemo(() => {
+    const personCapacityMap = new Map(filteredResourcePeople.map((person) => [person.personId || person.name, person.dailyCapacity || 1]));
+    const availablePersonDays = roundResourceNumber(
+      filteredResourceCells.reduce((sum, cell) => sum + (personCapacityMap.get(cell.personId) || 1) * cell.availablePercent / 100, 0)
+    );
+    const allocatedPersonDays = roundResourceNumber(filteredResourceCells.reduce((sum, cell) => sum + cell.allocatedDays, 0));
+    return {
+      peopleCount: filteredResourcePeople.length,
+      availablePersonDays,
+      allocatedPersonDays,
+      utilizationRate: availablePersonDays > 0 ? roundResourceNumber((allocatedPersonDays / availablePersonDays) * 100) : 0,
+      overloadedPeopleCount: new Set(filteredResourceCells.filter((cell) => cell.status === 'overloaded').map((cell) => cell.personId)).size,
+      conflictCount: filteredResourceConflicts.length
+    };
+  }, [filteredResourceCells, filteredResourceConflicts, filteredResourcePeople]);
+
+  const resourceBoard = (
+    <section className={`resource-calendar-board ${resourceFullscreen ? 'resource-calendar-fullscreen' : ''}`}>
+      <div className="resource-calendar-head">
+        <div>
+          <p className="cluster-board-eyebrow">Resource calendar</p>
+          <h2>项目资源日历大看板</h2>
+          <p className="muted">基于飞书人员资源、资源分配和人员日历表，展示{resourceRangeLabel(resourceRangeFilter)}资源占用与冲突。</p>
+        </div>
+        <div className="cluster-board-actions">
+          <span className={`cluster-source-pill ${resourceCalendar?.source === 'feishu' ? 'ok' : 'warn'}`}>
+            {resourceCalendar?.source === 'feishu' ? '飞书在线' : '数据源未就绪'}
+          </span>
+          <button className="btn" type="button" onClick={() => void refreshResourceCalendarBoard()} disabled={resourceCalendarRefreshing}>
+            {resourceCalendarRefreshing ? '刷新中...' : '刷新'}
+          </button>
+          <button className="btn" type="button" onClick={() => setResourceFullscreen((prev) => !prev)}>
+            {resourceFullscreen ? '退出全屏' : '全屏'}
+          </button>
+        </div>
+      </div>
+
+      {resourceCalendar?.error && (
+        <div className="cluster-board-alert">
+          {resourceCalendar.error}
+        </div>
+      )}
+
+      <div className="resource-calendar-filters">
+        <label>
+          <span>人员搜索</span>
+          <input
+            value={resourcePersonKeyword}
+            onChange={(e) => setResourcePersonKeyword(e.target.value)}
+            placeholder="姓名 / ID / 部门 / 角色"
+          />
+        </label>
+        <label>
+          <span>按角色筛选</span>
+          <select value={resourceRoleFilter} onChange={(e) => setResourceRoleFilter(e.target.value)}>
+            <option value="all">全部角色</option>
+            {resourceRoleOptions.map((role) => (
+              <option value={role} key={role}>{role}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>按部门筛选</span>
+          <select value={resourceDepartmentFilter} onChange={(e) => setResourceDepartmentFilter(e.target.value)}>
+            <option value="all">全部部门</option>
+            {resourceDepartmentOptions.map((department) => (
+              <option value={department} key={department}>{department}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>按项目筛选</span>
+          <select value={resourceProjectFilter} onChange={(e) => setResourceProjectFilter(e.target.value)}>
+            <option value="all">全部项目</option>
+            {resourceProjectOptions.map((project) => (
+              <option value={project.value} key={project.value}>{project.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>负载状态</span>
+          <select value={resourceLoadFilter} onChange={(e) => setResourceLoadFilter(e.target.value as ResourceCalendarLoadFilter)}>
+            <option value="all">全部状态</option>
+            <option value="idle">空闲</option>
+            <option value="normal">正常负载</option>
+            <option value="saturated">接近饱和</option>
+            <option value="overloaded">过载</option>
+            <option value="unavailable">不可用</option>
+          </select>
+        </label>
+        <label>
+          <span>视图范围</span>
+          <select value={resourceRangeFilter} onChange={(e) => setResourceRangeFilter(e.target.value as ResourceCalendarRangeFilter)}>
+            <option value="thisWeek">本周</option>
+            <option value="thisMonth">本月</option>
+            <option value="next4Weeks">未来 4 周</option>
+            <option value="next8Weeks">未来 8 周</option>
+          </select>
+        </label>
+        <p className="muted">
+          当前显示 {filteredResourcePeople.length} / {resourceCalendar?.people.length || 0} 人，
+          {resourceRangeFilter === 'next8Weeks' ? `${resourceDisplayColumns.length} 周` : `${filteredResourceDays.length} 天`}
+        </p>
+      </div>
+
+      <div className="resource-kpis">
+        <article>
+          <span>总人数</span>
+          <strong>{filteredResourceSummary.peopleCount}</strong>
+        </article>
+        <article>
+          <span>可用人天</span>
+          <strong>{filteredResourceSummary.availablePersonDays}</strong>
+        </article>
+        <article>
+          <span>已分配人天</span>
+          <strong>{filteredResourceSummary.allocatedPersonDays}</strong>
+        </article>
+        <article>
+          <span>利用率</span>
+          <strong>{filteredResourceSummary.utilizationRate}%</strong>
+        </article>
+        <article>
+          <span>过载人数</span>
+          <strong className="danger">{filteredResourceSummary.overloadedPeopleCount}</strong>
+        </article>
+        <article>
+          <span>冲突数</span>
+          <strong className="warn">{filteredResourceSummary.conflictCount}</strong>
+        </article>
+      </div>
+
+      {filteredResourcePeople.length === 0 || filteredResourceDays.length === 0 ? (
+        <div className="cluster-empty">暂无资源日历数据。请检查 RESOURCE_CALENDAR_* 配置或飞书字段映射。</div>
+      ) : (
+        <div className="resource-calendar-layout">
+          <div className="resource-calendar-scroll">
+            <div className="resource-calendar-grid" style={{ gridTemplateColumns: `220px repeat(${resourceDisplayColumns.length || 1}, minmax(${resourceRangeFilter === 'next8Weeks' ? 112 : 54}px, 1fr))` }}>
+              <div className="resource-grid-sticky resource-grid-head">人员</div>
+              {resourceDisplayColumns.map((column) => (
+                <div className={`resource-grid-head ${column.mode === 'week' ? 'week' : ''}`} key={column.key}>
+                  <strong>{column.label}</strong>
+                </div>
+              ))}
+              {filteredResourcePeople.map((person) => (
+                <div className="resource-person-row" key={person.personId || person.name}>
+                  <div className="resource-person-cell resource-grid-sticky" key={`${person.personId}-person`}>
+                    <strong>{person.name}</strong>
+                    <span>{person.department} / {person.role}</span>
+                  </div>
+                  {resourceDisplayColumns.map((column) => {
+                    const dailyCells = column.dates.flatMap((date) => {
+                      const cell = resourceCellFor(person, date, filteredResourceCells);
+                      return cell ? [cell] : [];
+                    });
+                    const displayCell = summarizeResourceCells(dailyCells);
+                    const status = displayCell.status;
+                    return (
+                      <div className={`resource-day-cell ${status}`} key={`${person.personId}-${column.key}`} tabIndex={0}>
+                        <strong>{displayCell.allocatedPercent}%</strong>
+                        <span>{resourceCellStatusLabel(status)}</span>
+                        <div className="resource-day-tooltip" role="tooltip">
+                          <strong>{person.name} · {column.tooltipLabel}</strong>
+                          <span>状态：{resourceCellStatusLabel(status)}</span>
+                          <span>可用：{displayCell.availablePercent}%</span>
+                          <span>
+                            {column.mode === 'week' ? '周均分配' : '已分配'}：
+                            {displayCell.allocatedPercent}% / {displayCell.allocatedDays} 人天
+                          </span>
+                          {(displayCell.projects.length || 0) > 0 ? (
+                            <div>
+                              {displayCell.projects.map((project, index) => (
+                                <p key={`${project.projectId || project.projectName}-${index}`}>
+                                  {project.projectName || project.projectId || '未命名项目'}：{column.mode === 'week' ? '活跃日均 ' : ''}{project.allocationPercent}%
+                                  {project.role ? ` · ${project.role}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p>暂无项目分配</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <aside className="resource-conflicts">
+            <h3>冲突与过载</h3>
+            {filteredResourceConflicts.length === 0 ? (
+              <p className="muted">暂无资源冲突。</p>
+            ) : (
+              filteredResourceConflicts.slice(0, 30).map((conflict, index) => (
+                <article className={`resource-conflict ${conflict.severity}`} key={`${conflict.type}-${conflict.personId}-${conflict.date}-${index}`}>
+                  <strong>{conflict.name} · {conflict.date.slice(5)}</strong>
+                  <span>{conflict.message}</span>
+                </article>
+              ))
+            )}
+          </aside>
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div>
       <div className="dashboard-board-tabs">
@@ -591,9 +1031,16 @@ export default function DashboardView({
         >
           公司交付车型
         </button>
+        <button
+          className={dashboardBoardTab === 'resources' ? 'active' : ''}
+          type="button"
+          onClick={() => setDashboardBoardTab('resources')}
+        >
+          项目资源日历
+        </button>
       </div>
 
-      {dashboardBoardTab === 'cluster' ? clusterBoard : roadmapBoard}
+      {dashboardBoardTab === 'cluster' ? clusterBoard : dashboardBoardTab === 'roadmap' ? roadmapBoard : resourceBoard}
 
       {false && (
       <>

@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 
-type Role = 'super_admin' | 'project_manager' | 'project_director' | 'member' | 'pm' | 'lead' | 'viewer';
+type Role = 'super_admin' | 'project_manager' | 'project_director' | 'dept_head' | 'member' | 'pm' | 'lead' | 'viewer';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -29,8 +29,13 @@ export class RolesGuard implements CanActivate {
     }
     // project_manager: org-level global role, implies member (can read org data)
     if (normalizedRole === 'project_manager') {
+      roles.add('dept_head');
       roles.add('member');
       roles.add('pm');
+      roles.add('viewer');
+    }
+    if (normalizedRole === 'dept_head') {
+      roles.add('member');
       roles.add('viewer');
     }
     // member: basic org member, implies viewer (can read org data)
