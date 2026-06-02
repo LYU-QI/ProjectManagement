@@ -24,6 +24,13 @@ npm run -w backend prisma:seed        # 创建 pm/lead/viewer 测试用户
 npm run dev                           # 同时启动后端（3000）和前端（5173）
 npm run dev:backend
 npm run dev:frontend
+npm start                             # 等价于 docker compose up -d + dev:backend + dev:frontend
+npm stop                              # 杀 nest/vite 进程并停止 docker
+npm restart                           # stop + sleep 2 + start
+
+# 也提供 shell 脚本封装
+./start-all.sh
+./stop-all.sh
 
 # 构建
 npm run build
@@ -81,6 +88,12 @@ npm run -w frontend build
 | `cost-report` | `/cost-report` | 成本报表 |
 | `monitoring` | `/monitoring` | 健康检查与指标 |
 | `cache` | — | 缓存服务 |
+| `capabilities` | `/capabilities` | 能力/角色能力清单 |
+| `events` | `/events` | 事件流 |
+| `project-metrics` | `/project-metrics` | 项目级指标聚合 |
+| `resource-maintenance` | `/resource-maintenance` | 资源日历维护 |
+| `task-center` | `/task-center` | 任务中心聚合视图 |
+| `cluster-risk` | 嵌入 `risks` | 集群风险（前端 `ClusterRiskMaintenanceView`） |
 
 ### 横切关注点
 
@@ -164,6 +177,9 @@ npm run -w frontend build
 | `cost-report` | CostReportView | workspace |
 | `efficiency` | EfficiencyView | workspace |
 | `plan-settings` | PlanSettingsView | admin |
+| `capabilities` | CapabilitiesView | workspace |
+| `task-center` | TaskCenterView | workspace |
+| `cluster-risk` | ClusterRiskMaintenanceView | workspace |
 
 ### 关键文件
 
@@ -191,3 +207,13 @@ npm run -w frontend build
 - **项目访问控制**：controller 中调用 `accessService.assertProjectAccess()`
 - **配置**：运行时配置用 `ConfigService.get(key)`，不用 `process.env`
 - **样式**：新增 CSS 类写入 `glass.css`，不另起文件
+
+## 仓库顶层结构
+
+- `backend/` — NestJS 后端工作区（`backend/src/modules/*`）
+- `frontend/` — React + Vite 前端工作区（`frontend/src/views/*`、`frontend/src/components/*`、`frontend/src/stores/*`）
+- `desktop/` — 桌面端封装（Electron/类似）
+- `docs/` — 设计与开发文档（如 `spec.md`、`development-plan.md`）
+- `scripts/` — 运维/迁移脚本
+- `docker-compose.yml` — PostgreSQL + Redis 基础设施
+- `start-all.sh` / `stop-all.sh` — 一键启停封装

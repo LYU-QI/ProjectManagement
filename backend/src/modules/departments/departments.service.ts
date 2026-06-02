@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
-import { FeishuService } from '../feishu/feishu.service';
 import { AccessService, AuthActor } from '../access/access.service';
+import { RedisService } from '../cache/cache.service';
 
 export interface CreateDepartmentInput {
   name: string;
@@ -28,11 +28,12 @@ export interface DepartmentTreeNode {
 export class DepartmentsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly feishuService: FeishuService,
-    private readonly accessService: AccessService
+    private readonly accessService: AccessService,
+    private readonly redisService: RedisService
   ) {}
 
-  async getDepartmentTree(actor: AuthActor | undefined, organizationId: string) {
+  async getDepartmentTree(actor: AuthActor | undefined, organizationId: string, actorOrgRole?: string | null) {
+    this.assertCanRead(actor, organizationId, actorOrgRole);
     const departments = await this.prisma.department.findMany({
       where: { organizationId },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }]
@@ -41,7 +42,8 @@ export class DepartmentsService {
     return this.buildTree(departments);
   }
 
-  async getDepartmentById(actor: AuthActor | undefined, id: string) {
+  async getDepartmentById(actor: AuthActor | undefined, organizationId: string, actorOrgRole: string | null | undefined, id: string) {
+    this.assertCanRead(actor, organizationId, actorOrgRole);
     const dept = await this.prisma.department.findUnique({
       where: { id },
       include: {
@@ -57,12 +59,22 @@ export class DepartmentsService {
     if (!dept) {
       throw new NotFoundException('Department not found');
     }
+    this.assertSameOrganization(dept.organizationId, organizationId);
 
     return dept;
   }
 
-  async create(actor: AuthActor | undefined, organizationId: string, input: CreateDepartmentInput) {
-    return this.prisma.department.create({
+  async create(actor: AuthActor | undefined, organizationId: string, actorOrgRole: string | null | undefined, input: CreateDepartmentInput) {
+    this.assertCanManage(actor, organizationId, actorOrgRole);
+    if (input.parentId) {
+      const parent = await this.prisma.department.findUnique({
+        where: { id: input.parentId },
+        select: { organizationId: true }
+      });
+      if (!parent) throw new NotFoundException('Parent department not found');
+      this.assertSameOrganization(parent.organizationId, organizationId);
+    }
+    const department = await this.prisma.department.create({
       data: {
         name: input.name,
         organizationId,
@@ -70,15 +82,28 @@ export class DepartmentsService {
         sortOrder: input.sortOrder ?? 0
       }
     });
+    await this.invalidateResourceCalendarCache(organizationId);
+    return department;
   }
 
-  async update(actor: AuthActor | undefined, id: string, input: UpdateDepartmentInput) {
+  async update(actor: AuthActor | undefined, organizationId: string, actorOrgRole: string | null | undefined, id: string, input: UpdateDepartmentInput) {
+    this.assertCanManage(actor, organizationId, actorOrgRole);
     const existing = await this.prisma.department.findUnique({ where: { id } });
     if (!existing) {
       throw new NotFoundException('Department not found');
     }
+    this.assertSameOrganization(existing.organizationId, organizationId);
+    if (input.parentId) {
+      if (input.parentId === id) throw new BadRequestException('Department cannot be its own parent');
+      const parent = await this.prisma.department.findUnique({
+        where: { id: input.parentId },
+        select: { organizationId: true }
+      });
+      if (!parent) throw new NotFoundException('Parent department not found');
+      this.assertSameOrganization(parent.organizationId, organizationId);
+    }
 
-    return this.prisma.department.update({
+    const department = await this.prisma.department.update({
       where: { id },
       data: {
         name: input.name ?? existing.name,
@@ -86,9 +111,17 @@ export class DepartmentsService {
         sortOrder: input.sortOrder ?? existing.sortOrder
       }
     });
+    await this.invalidateResourceCalendarCache(existing.organizationId);
+    return department;
   }
 
-  async delete(actor: AuthActor | undefined, id: string) {
+  async delete(actor: AuthActor | undefined, organizationId: string, actorOrgRole: string | null | undefined, id: string) {
+    this.assertCanManage(actor, organizationId, actorOrgRole);
+    const existing = await this.prisma.department.findUnique({ where: { id } });
+    if (!existing) {
+      throw new NotFoundException('Department not found');
+    }
+    this.assertSameOrganization(existing.organizationId, organizationId);
     const children = await this.prisma.department.count({ where: { parentId: id } });
     if (children > 0) {
       throw new BadRequestException('Cannot delete department with child departments');
@@ -104,139 +137,33 @@ export class DepartmentsService {
       data: { departmentId: null }
     });
 
-    return this.prisma.department.delete({ where: { id } });
+    const deleted = await this.prisma.department.delete({ where: { id } });
+    await this.invalidateResourceCalendarCache(existing.organizationId);
+    return deleted;
   }
 
-  async syncFromFeishu(organizationId: string): Promise<{ created: number; updated: number }> {
-    let created = 0;
-    let updated = 0;
+  private async invalidateResourceCalendarCache(orgId: string) {
+    await this.redisService.del(`dashboard:resource-calendar:v2:${orgId}`);
+  }
 
-    try {
-      const feishuDepts = await this.fetchFeishuDepartments();
+  private assertCanRead(actor: AuthActor | undefined, organizationId: string, actorOrgRole?: string | null) {
+    if (!organizationId) throw new ForbiddenException('Organization context is required');
+    if (actor?.role === 'super_admin') return;
+    if (actorOrgRole) return;
+    throw new ForbiddenException('Access denied to this organization');
+  }
 
-      for (const dept of feishuDepts) {
-        const existing = await this.prisma.department.findFirst({
-          where: { organizationId, feishuDeptId: dept.dept_id }
-        });
+  private assertCanManage(actor: AuthActor | undefined, organizationId: string, actorOrgRole?: string | null) {
+    if (!organizationId) throw new ForbiddenException('Organization context is required');
+    if (actor?.role === 'super_admin') return;
+    if (actorOrgRole === 'owner' || actorOrgRole === 'admin') return;
+    throw new ForbiddenException('Only owner or admin can manage departments');
+  }
 
-        if (existing) {
-          await this.prisma.department.update({
-            where: { id: existing.id },
-            data: {
-              name: dept.name,
-              sortOrder: dept.order ?? 0
-            }
-          });
-          updated++;
-        } else {
-          await this.prisma.department.create({
-            data: {
-              name: dept.name,
-              organizationId,
-              feishuDeptId: dept.dept_id,
-              parentId: null,
-              sortOrder: dept.order ?? 0
-            }
-          });
-          created++;
-        }
-      }
-
-      // Update parent relationships
-      for (const dept of feishuDepts) {
-        if (dept.parent_id && dept.parent_id !== '0') {
-          const child = await this.prisma.department.findFirst({
-            where: { organizationId, feishuDeptId: dept.dept_id }
-          });
-          const parent = await this.prisma.department.findFirst({
-            where: { organizationId, feishuDeptId: dept.parent_id }
-          });
-
-          if (child && parent && child.parentId !== parent.id) {
-            await this.prisma.department.update({
-              where: { id: child.id },
-              data: { parentId: parent.id }
-            });
-          }
-        }
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error';
-      throw new BadRequestException(`Feishu sync failed: ${message}`);
+  private assertSameOrganization(targetOrganizationId: string | null, organizationId: string) {
+    if (targetOrganizationId !== organizationId) {
+      throw new ForbiddenException('Department does not belong to this organization');
     }
-
-    return { created, updated };
-  }
-
-  private async fetchFeishuDepartments(): Promise<Array<{ dept_id: string; parent_id: string; name: string; order: number }>> {
-    const token = await (this.feishuService as any).getTenantAccessToken?.() ?? '';
-    const results: Array<{ dept_id: string; parent_id: string; name: string; order: number }> = [];
-
-    const fetchPage = async (parentId?: string) => {
-      const params = new URLSearchParams({ fetch_child: 'true', user_id_type: 'open_id' });
-      if (parentId) {
-        params.set('parent_department_id', parentId);
-      }
-
-      const res = await fetch(
-        `https://open.feishu.cn/open-apis/contact/v3/departments?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (!res.ok) {
-        throw new BadRequestException(`Feishu API failed: HTTP ${res.status}`);
-      }
-
-      const data = (await res.json()) as { code: number; msg: string; data?: { items?: any[]; page_token?: string; has_more: boolean } };
-
-      if (data.code !== 0) {
-        throw new BadRequestException(`Feishu API failed: ${data.code} ${data.msg}`);
-      }
-
-      if (data.data?.items) {
-        for (const item of data.data.items) {
-          results.push({
-            dept_id: item.department_id,
-            parent_id: item.parent_id ?? '0',
-            name: item.name,
-            order: item.order ?? 0
-          });
-        }
-      }
-
-      if (data.data?.has_more) {
-        const nextToken = data.data.page_token;
-        if (nextToken) {
-          const nextParams = new URLSearchParams({ page_token: nextToken });
-          if (parentId) nextParams.set('parent_department_id', parentId);
-          const nextRes = await fetch(
-            `https://open.feishu.cn/open-apis/contact/v3/departments?${nextParams.toString()}`,
-            { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-          );
-          if (nextRes.ok) {
-            const nextData = (await nextRes.json()) as { code: number; data?: { items?: any[] } };
-            if (nextData.code === 0 && nextData.data?.items) {
-              for (const item of nextData.data.items) {
-                results.push({
-                  dept_id: item.department_id,
-                  parent_id: item.parent_id ?? '0',
-                  name: item.name,
-                  order: item.order ?? 0
-                });
-              }
-            }
-          }
-        }
-      }
-    };
-
-    await fetchPage();
-    return results;
   }
 
   private buildTree(departments: Array<{

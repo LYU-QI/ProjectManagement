@@ -216,6 +216,7 @@ export default function SettingsView({
     }
 
     const groups = getGroups();
+    const hasUnsavedAiChanges = items.some((item) => item.group === 'ai' && editValues[item.key] !== item.value);
 
     return (
         <div>
@@ -304,9 +305,10 @@ export default function SettingsView({
                                 className="btn settings-mini-btn settings-ai-test-btn"
                                 type="button"
                                 onClick={() => void handleAiHealthCheck()}
-                                disabled={aiHealthLoading}
+                                disabled={aiHealthLoading || hasUnsavedAiChanges}
+                                title={hasUnsavedAiChanges ? '请先保存 AI 配置后再测试连通性' : undefined}
                             >
-                                {aiHealthLoading ? '检测中...' : 'AI 连通性测试'}
+                                {aiHealthLoading ? '检测中...' : hasUnsavedAiChanges ? '请先保存配置' : 'AI 连通性测试'}
                             </button>
                         )}
                     </div>

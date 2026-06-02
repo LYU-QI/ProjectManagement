@@ -194,7 +194,7 @@ export class FeishuService {
     throw lastError;
   }
 
-  private async getTableFieldNames(appToken: string, tableId: string): Promise<Set<string>> {
+  async getTableFieldNames(appToken: string, tableId: string): Promise<Set<string>> {
     try {
       const data = await this.request<{ items: Array<{ field_name: string }> }>(
         `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields`
@@ -570,6 +570,38 @@ export class FeishuService {
     }
   }
 
+  async createRawRecord(fields: Record<string, unknown>, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+    const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
+    try {
+      return await this.request(
+        `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ fields })
+        }
+      );
+    } catch (err: any) {
+      const message = err?.message || '';
+      if (message.includes('FieldNameNotFound')) {
+        const existingFields = await this.getTableFieldNames(appToken, tableId);
+        const filtered = Object.fromEntries(
+          Object.entries(fields).filter(([key]) => existingFields.has(key))
+        );
+        if (Object.keys(filtered).length === 0) {
+          throw new BadRequestException('所有字段均不存在于该飞书表格，请检查字段配置。');
+        }
+        this.logger.warn(`FieldNameNotFound, retrying raw create with ${Object.keys(filtered).join(',')}`);
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records${userIdType}`,
+          { method: 'POST', body: JSON.stringify({ fields: filtered }) }
+        );
+      }
+      throw err;
+    }
+  }
+
   async updateRecord(recordId: string, fields: Record<string, unknown>, opts?: { appToken?: string; tableId?: string }) {
     const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
     const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
@@ -627,6 +659,38 @@ export class FeishuService {
         for (const [key, value] of Object.entries(normalized)) {
           if (existingFields.has(key)) filtered[key] = value;
         }
+        return this.request(
+          `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+          { method: 'PUT', body: JSON.stringify({ fields: filtered }) }
+        );
+      }
+      throw err;
+    }
+  }
+
+  async updateRawRecord(recordId: string, fields: Record<string, unknown>, opts?: { appToken?: string; tableId?: string }) {
+    const appToken = opts?.appToken || this.requireEnv(this.appToken, 'FEISHU_APP_TOKEN');
+    const tableId = opts?.tableId || this.requireEnv(this.tableId, 'FEISHU_TABLE_ID');
+    const userIdType = this.userIdType ? `?user_id_type=${encodeURIComponent(this.userIdType)}` : '';
+    try {
+      return await this.request(
+        `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ fields })
+        }
+      );
+    } catch (err: any) {
+      const message = err?.message || '';
+      if (message.includes('FieldNameNotFound')) {
+        const existingFields = await this.getTableFieldNames(appToken, tableId);
+        const filtered = Object.fromEntries(
+          Object.entries(fields).filter(([key]) => existingFields.has(key))
+        );
+        if (Object.keys(filtered).length === 0) {
+          throw new BadRequestException('所有字段均不存在于该飞书表格，请检查字段配置。');
+        }
+        this.logger.warn(`FieldNameNotFound, retrying raw update with ${Object.keys(filtered).join(',')}`);
         return this.request(
           `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
           { method: 'PUT', body: JSON.stringify({ fields: filtered }) }

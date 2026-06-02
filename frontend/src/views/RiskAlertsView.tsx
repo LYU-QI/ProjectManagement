@@ -8,6 +8,8 @@ type Props = {
   rows: Array<FeishuFormState & { recordId: string }>;
   thresholdDays?: number;
   progressThreshold?: number;
+  loading?: boolean;
+  error?: string;
 };
 
 function parseDate(value: string) {
@@ -27,7 +29,9 @@ function parseProgress(value: string) {
 export default function RiskAlertsView({
   rows,
   thresholdDays = 7,
-  progressThreshold = 80
+  progressThreshold = 80,
+  loading = false,
+  error = ''
 }: Props) {
   const alerts = useMemo(() => {
     const today = new Date();
@@ -46,7 +50,19 @@ export default function RiskAlertsView({
   return (
     <div className="card risk-alerts-card">
       <h3>延期预警（截止 ≤ {thresholdDays} 天且进度 &lt; {progressThreshold}%）</h3>
-      {alerts.length === 0 ? (
+      {loading ? (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在刷新延期预警"
+          description="正在读取当前项目的进度计划数据。"
+        />
+      ) : error ? (
+        <AsyncStatePanel
+          tone="error"
+          title="延期预警加载失败"
+          description={error}
+        />
+      ) : alerts.length === 0 ? (
         <AsyncStatePanel
           tone="empty"
           title="暂无延期风险任务"

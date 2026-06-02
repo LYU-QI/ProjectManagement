@@ -61,13 +61,6 @@ export default function DepartmentsView() {
       .catch((e: Error) => setError(e.message));
   }
 
-  function syncFromFeishu() {
-    if (!window.confirm('确定从飞书同步部门？')) return;
-    apiPost('/departments/sync', { departments: [] })
-      .then(() => setMessage('同步已发起'))
-      .catch((e: Error) => setError(`同步失败：${e.message}`));
-  }
-
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -113,12 +106,11 @@ export default function DepartmentsView() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
           <button className="btn" onClick={load}>刷新</button>
           <button className="btn primary" style={{ marginLeft: '0.5rem' }} onClick={() => setShowCreate(true)}>新建部门</button>
         </div>
-        <button className="btn" onClick={syncFromFeishu}>从飞书同步</button>
       </div>
 
       {error && (
@@ -165,7 +157,7 @@ export default function DepartmentsView() {
         <AsyncStatePanel
           tone="empty"
           title="暂无部门"
-          description="当前组织还没有部门数据，可手动创建或从飞书同步。"
+          description="当前组织还没有部门数据，可手动创建部门。"
         />
       )}
 

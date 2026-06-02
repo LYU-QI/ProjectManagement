@@ -11,6 +11,7 @@ interface CreateProjectInput {
   feishuChatIds?: string;
   feishuAppToken?: string;
   feishuTableId?: string;
+  feishuViewId?: string;
 }
 
 interface UpdateProjectInput {
@@ -22,6 +23,7 @@ interface UpdateProjectInput {
   feishuChatIds?: string;
   feishuAppToken?: string;
   feishuTableId?: string;
+  feishuViewId?: string;
 }
 
 @Injectable()
@@ -31,10 +33,14 @@ export class ProjectsService {
     private readonly accessService: AccessService
   ) {}
 
-  async list(actor?: AuthActor) {
+  async list(actor?: AuthActor, organizationId?: string | null) {
+    if (!organizationId) return [];
     const ids = await this.accessService.getAccessibleProjectIds(actor);
     return this.prisma.project.findMany({
-      where: ids === null ? undefined : { id: { in: ids } },
+      where: {
+        organizationId,
+        ...(ids === null ? {} : { id: { in: ids } })
+      },
       orderBy: { id: 'asc' }
     });
   }
@@ -49,10 +55,13 @@ export class ProjectsService {
     return alias;
   }
 
-  create(input: CreateProjectInput, actor?: AuthActor) {
+  create(input: CreateProjectInput, actor?: AuthActor, organizationId?: string | null) {
     const ownerId = Number(actor?.sub);
     if (!ownerId) {
       throw new ForbiddenException('Only authenticated users can create project');
+    }
+    if (!organizationId) {
+      throw new ForbiddenException('No organization context');
     }
     const alias = this.normalizeAlias(input.alias);
     if (!alias) {
@@ -63,18 +72,21 @@ export class ProjectsService {
         ...input,
         alias,
         ownerId,
-        organizationId: actor?.organizationId ?? 'default'
+        organizationId
       }
     });
   }
 
-  async update(id: number, input: UpdateProjectInput, actor?: AuthActor) {
+  async update(id: number, input: UpdateProjectInput, actor?: AuthActor, organizationId?: string | null) {
+    if (!organizationId) {
+      throw new ForbiddenException('No organization context');
+    }
     await this.accessService.assertProjectAccess(actor, id);
     const exists = await this.prisma.project.findUnique({
       where: { id },
-      select: { id: true }
+      select: { id: true, organizationId: true }
     });
-    if (!exists) {
+    if (!exists || exists.organizationId !== organizationId) {
       throw new NotFoundException('Project not found');
     }
 
@@ -88,13 +100,16 @@ export class ProjectsService {
     });
   }
 
-  async remove(id: number, actor?: AuthActor) {
+  async remove(id: number, actor?: AuthActor, organizationId?: string | null) {
+    if (!organizationId) {
+      throw new ForbiddenException('No organization context');
+    }
     await this.accessService.assertProjectAccess(actor, id);
     const exists = await this.prisma.project.findUnique({
       where: { id },
-      select: { id: true }
+      select: { id: true, organizationId: true }
     });
-    if (!exists) {
+    if (!exists || exists.organizationId !== organizationId) {
       throw new NotFoundException('Project not found');
     }
 

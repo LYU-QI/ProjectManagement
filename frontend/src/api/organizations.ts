@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPostForm } from './client';
 
 interface OrgInfo {
   id: string;
@@ -16,6 +16,7 @@ interface OrgDetail {
   plan: string;
   maxMembers: number;
   memberCount: number;
+  projectCount?: number;
 }
 
 interface OrgMember {
@@ -24,7 +25,26 @@ interface OrgMember {
   username: string;
   globalRole: string;
   orgRole: 'owner' | 'admin' | 'member' | 'viewer';
+  departmentId?: string | null;
+  departmentName?: string | null;
   joinedAt: string;
+}
+
+export interface ImportMemberDepartmentsResult {
+  summary: {
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+  };
+  results: Array<{
+    row: number;
+    username?: string;
+    name?: string;
+    department?: string;
+    status: 'success' | 'failed' | 'skipped';
+    message: string;
+  }>;
 }
 
 export async function listOrganizations(): Promise<OrgInfo[]> {
@@ -57,6 +77,16 @@ export async function inviteOrgMember(orgId: string, userId: string, role?: stri
 
 export async function updateOrgMemberRole(orgId: string, userId: string, role: string): Promise<void> {
   return apiPatch<void>(`/organizations/${orgId}/members/${userId}`, { role });
+}
+
+export async function updateOrgMemberDepartment(orgId: string, userId: string, departmentId: string | null): Promise<void> {
+  return apiPatch<void>(`/organizations/${orgId}/members/${userId}/department`, { departmentId });
+}
+
+export async function importOrgMemberDepartments(orgId: string, file: File): Promise<ImportMemberDepartmentsResult> {
+  const form = new FormData();
+  form.append('file', file);
+  return apiPostForm<ImportMemberDepartmentsResult>(`/organizations/${orgId}/members/departments/import`, form);
 }
 
 export async function removeOrgMember(orgId: string, userId: string): Promise<void> {

@@ -38,6 +38,8 @@ export type ViewKey =
   | 'schedule'
   | 'resources'
   | 'resource-maintenance'
+  | 'cluster-risk-maintenance'
+  | 'overdue-alerts'
   | 'risks'
   | 'ai'
   | 'notifications'
@@ -51,6 +53,7 @@ export type ViewKey =
   | 'milestone-board'
   | 'org-settings'
   | 'org-members'
+  | 'department-members'
   | 'wiki'
   | 'sprints'
   | 'bugs'
@@ -106,6 +109,9 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   { id: 'overview', label: '总览', icon: <LayoutDashboard size={14} />, items: [
     { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={16} /> },
+    { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={16} /> },
+    { id: 'cluster-risk-maintenance', label: '集群风险状态维护台', icon: <AlertTriangle size={16} /> },
+    { id: 'overdue-alerts', label: '延期预警', icon: <AlertTriangle size={16} /> },
     { id: 'global', label: '全局检索', icon: <Search size={16} /> }
   ] },
   { id: 'project', label: '项目管理', icon: <ListTodo size={14} />, items: [
@@ -114,7 +120,6 @@ const navGroups: NavGroup[] = [
     { id: 'schedule', label: '进度计划', icon: <CalendarDays size={16} /> },
     { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={16} /> },
     { id: 'resources', label: '资源视图', icon: <Users size={16} /> },
-    { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={16} /> },
     { id: 'sprints', label: '迭代管理', icon: <Layers size={16} /> },
     { id: 'bugs', label: '缺陷管理', icon: <Bug size={16} /> },
     { id: 'test-plans', label: '测试管理', icon: <ClipboardList size={16} /> },
@@ -142,6 +147,7 @@ const navGroups: NavGroup[] = [
   ]},
   { id: 'admin-org', label: '组织管理', icon: <Building2 size={14} />, items: [
     { id: 'org-members', label: '成员管理', icon: <Users size={16} /> },
+    { id: 'department-members', label: '部门成员', icon: <UserCog size={16} /> },
     { id: 'org-settings', label: '组织设置', icon: <Settings size={16} /> },
     { id: 'feishu-users', label: '飞书成员', icon: <Users size={16} /> },
     { id: 'departments', label: '部门管理', icon: <Building2 size={16} /> },
@@ -163,6 +169,9 @@ const navItems: Array<{
   allowedUserRoles?: string[];
 }> = [
   { id: 'dashboard', label: '总览', icon: <LayoutDashboard size={18} />, platform: 'workspace' },
+  { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={18} />, platform: 'workspace', allowedUserRoles: ['dept_head', 'project_manager', 'super_admin'] },
+  { id: 'cluster-risk-maintenance', label: '集群风险状态维护台', icon: <AlertTriangle size={18} />, platform: 'workspace', allowedUserRoles: ['project_manager', 'super_admin', 'pm'] },
+  { id: 'overdue-alerts', label: '延期预警', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'global', label: '全局检索', icon: <Search size={18} />, platform: 'workspace' },
   { id: 'requirements', label: '项目与需求', icon: <ListTodo size={18} />, platform: 'workspace' },
   { id: 'work-items', label: '待办 / 问题池', icon: <ListTodo size={18} />, platform: 'workspace' },
@@ -170,7 +179,6 @@ const navItems: Array<{
   { id: 'risks', label: '风险中心', icon: <AlertTriangle size={18} />, platform: 'workspace' },
   { id: 'costs', label: '成本与工时', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'resources', label: '资源视图', icon: <Users size={18} />, platform: 'workspace' },
-  { id: 'resource-maintenance', label: '资源维护台', icon: <UserCog size={18} />, platform: 'workspace' },
   { id: 'milestone-board', label: '里程碑看板', icon: <Flag size={18} />, platform: 'workspace' },
   { id: 'wiki', label: '知识库', icon: <BookOpen size={18} />, platform: 'workspace' },
   { id: 'sprints', label: '迭代管理', icon: <Layers size={18} />, platform: 'workspace' },
@@ -187,6 +195,7 @@ const navItems: Array<{
   { id: 'capabilities', label: '能力模板', icon: <Sparkles size={18} />, platform: 'workspace' },
   { id: 'cost-report', label: '成本报告', icon: <CircleDollarSign size={18} />, platform: 'workspace' },
   { id: 'departments', label: '部门管理', icon: <Building2 size={18} />, platform: 'workspace' },
+  { id: 'department-members', label: '部门成员', icon: <UserCog size={18} />, platform: 'workspace', allowedOrgRoles: ['owner', 'admin'] },
   { id: 'plan-settings', label: '套餐设置', icon: <Settings size={18} />, platform: 'workspace' },
   { id: 'feishu', label: '飞书集成', icon: <MessageSquare size={18} />, platform: 'workspace' },
   { id: 'notifications', label: '通知', icon: <Bell size={18} />, platform: 'workspace' },
@@ -275,10 +284,10 @@ export default function AstraeaLayout({
         if (item.allowedUserRoles) return item.allowedUserRoles.includes(role);
         // super_admin bypasses all org-level role checks
         if (isSuperAdmin) return true;
-        // project_manager also bypasses (global role)
-        if (isProjectManager) return true;
         // Use OrgRole for admin platform items
         if (item.allowedOrgRoles) return item.allowedOrgRoles.includes(myOrgRole ?? '');
+        // project_manager also bypasses items without explicit org-role checks
+        if (isProjectManager) return true;
         return true;
       });
     },

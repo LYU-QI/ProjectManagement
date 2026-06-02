@@ -33,9 +33,10 @@ export default function HeaderOrgSelect({ isSuperAdmin }: Props) {
     setCreating(true);
     setMsg(null);
     try {
-      await createOrganization({ slug: slug.trim().toLowerCase().replace(/\s+/g, '-'), name: name.trim() });
+      const created = await createOrganization({ slug: slug.trim().toLowerCase().replace(/\s+/g, '-'), name: name.trim() });
       const orgs = await listOrganizations();
       setOrgList(orgs.map(o => ({ id: o.id, name: o.name, orgRole: o.orgRole })));
+      setActiveOrg(created.id);
       setShowCreate(false);
       setName('');
       setSlug('');

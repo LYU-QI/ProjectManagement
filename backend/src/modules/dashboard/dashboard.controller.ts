@@ -1,4 +1,5 @@
-﻿import { Controller, Get, Query, Req } from '@nestjs/common';
+﻿import { Body, Controller, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
+import { Roles } from '../auth/roles.decorator';
 import { DashboardService } from './dashboard.service';
 
 @Controller('api/v1/dashboard')
@@ -13,9 +14,35 @@ export class DashboardController {
   @Get('cluster-risk-board')
   async clusterRiskBoard(
     @Query('force') force: string,
-    @Req() req: { user?: { sub?: number; role?: string; organizationId?: string } }
+    @Req() req: { user?: { sub?: number; name?: string; role?: string; organizationId?: string }; org?: { id?: string | null } }
   ) {
-    return this.dashboardService.clusterRiskBoard(req.user, force === 'true');
+    return this.dashboardService.clusterRiskBoard({ ...req.user, organizationId: req.org?.id ?? req.user?.organizationId }, force === 'true');
+  }
+
+  @Post('cluster-risk-board')
+  @Roles('super_admin', 'project_manager')
+  async createClusterRiskBoard(
+    @Body() body: Record<string, unknown>,
+    @Req() req: { user?: { sub?: number; name?: string; role?: string; organizationId?: string }; org?: { id?: string | null } }
+  ) {
+    return this.dashboardService.createClusterRiskBoardItem(
+      body || {},
+      { ...req.user, organizationId: req.org?.id ?? req.user?.organizationId }
+    );
+  }
+
+  @Put('cluster-risk-board/:recordId')
+  @Roles('super_admin', 'project_manager', 'pm')
+  async updateClusterRiskBoard(
+    @Param('recordId') recordId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() req: { user?: { sub?: number; name?: string; role?: string; organizationId?: string }; org?: { id?: string | null } }
+  ) {
+    return this.dashboardService.updateClusterRiskBoardItem(
+      recordId,
+      body || {},
+      { ...req.user, organizationId: req.org?.id ?? req.user?.organizationId }
+    );
   }
 
   @Get('delivery-roadmap')

@@ -1,12 +1,13 @@
 import {
   Controller, Get, Post, Patch, Delete,
-  Body, Param, Req, ForbiddenException
+  Body, Param, Req, ForbiddenException, UploadedFile, UseInterceptors
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AuditableRequest } from '../../audit/audit.types';
 import { OrganizationsService } from './organizations.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
-import { InviteMemberDto, UpdateMemberRoleDto } from './dto/invite-member.dto';
+import { InviteMemberDto, UpdateMemberDepartmentDto, UpdateMemberRoleDto } from './dto/invite-member.dto';
 import { Public } from '../auth/public.decorator';
 import { SkipOrgGuard } from '../auth/skip-org-guard.decorator';
 
@@ -93,6 +94,30 @@ export class OrganizationsController {
     const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
     const globalRole = (req.user as { role?: string } | undefined)?.role;
     return this.orgService.updateMemberRole(id, Number(userId), dto.role, actorOrg?.orgRole ?? null, globalRole, req);
+  }
+
+  @Patch(':id/members/:userId/department')
+  async updateMemberDepartment(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateMemberDepartmentDto,
+    @Req() req: AuditableRequest
+  ) {
+    const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.updateMemberDepartment(id, Number(userId), dto.departmentId ?? null, actorOrg?.orgRole ?? null, globalRole, req);
+  }
+
+  @Post(':id/members/departments/import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importMemberDepartments(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: AuditableRequest
+  ) {
+    const actorOrg = req.org as { id: string | null; orgRole: string | null } | undefined;
+    const globalRole = (req.user as { role?: string } | undefined)?.role;
+    return this.orgService.importMemberDepartments(id, file, actorOrg?.orgRole ?? null, globalRole, req);
   }
 
   @Delete(':id/members/:userId')

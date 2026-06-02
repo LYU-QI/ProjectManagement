@@ -74,6 +74,16 @@ export async function apiPost<T>(path: string, body: Record<string, unknown>): P
   return res.json() as Promise<T>;
 }
 
+export async function apiPostForm<T>(path: string, body: FormData): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: buildHeaders(false),
+    body
+  });
+  await ensureOk(res, 'POST', path);
+  return res.json() as Promise<T>;
+}
+
 export async function apiPatch<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: 'PATCH',

@@ -297,6 +297,7 @@ model Project {
   feishuChatIds  String?
   feishuAppToken String?
   feishuTableId  String?
+  feishuViewId   String?
   owner          User                @relation("ProjectOwner", fields: [ownerId], references: [id])
   organization   Organization        @relation(fields: [organizationId], references: [id])
   memberships    ProjectMembership[]
@@ -759,6 +760,15 @@ model Bug {
   title          String
   description    String?     @db.Text
   steps          String?     @db.Text
+  clientContext  String?     @db.Text
+  memoryContext  String?     @db.Text
+  expectedResult String?     @db.Text
+  actualResult   String?     @db.Text
+  targetPerson   String?
+  requestId      String?
+  fixStatus      String?
+  issueCreatedAt String?
+  lastModifiedAt String?
   severity       BugSeverity @default(major)
   priority       BugPriority @default(medium)
   status         BugStatus   @default(open)

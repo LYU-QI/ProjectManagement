@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
 import {
-  createBug, deleteBug, listBugs, updateBug,
-  type Bug, type BugStatus, type BugSeverity, type BugPriority
+  createBug, deleteBug, exportBugs, importBugs, listBugs, updateBug,
+  type Bug, type BugStatus, type BugSeverity, type BugPriority, type BugImportResult
 } from '../api/testhub';
 
 type Props = {
@@ -68,8 +68,12 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [lastImportResult, setLastImportResult] = useState<BugImportResult | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<BugStatus | ''>('');
   const [severityFilter, setSeverityFilter] = useState<BugSeverity | ''>('');
@@ -78,14 +82,24 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
 
   const [showCreate, setShowCreate] = useState(false);
   const [editingBug, setEditingBug] = useState<Bug | null>(null);
-  const [form, setForm] = useState({
+  const emptyForm = {
     title: '',
     description: '',
     steps: '',
+    clientContext: '',
+    memoryContext: '',
+    expectedResult: '',
+    actualResult: '',
+    targetPerson: '',
+    requestId: '',
+    fixStatus: '',
+    issueCreatedAt: new Date().toISOString().slice(0, 10),
+    lastModifiedAt: new Date().toISOString().slice(0, 10),
     severity: 'major' as BugSeverity,
     priority: 'medium' as BugPriority,
     assigneeName: ''
-  });
+  };
+  const [form, setForm] = useState(emptyForm);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -133,13 +147,31 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
 
   function openCreate() {
     setEditingBug(null);
-    setForm({ title: '', description: '', steps: '', severity: 'major', priority: 'medium', assigneeName: '' });
+    const today = new Date().toISOString().slice(0, 10);
+    setForm({ ...emptyForm, issueCreatedAt: today, lastModifiedAt: today });
     setShowCreate(true);
   }
 
   function openEdit(bug: Bug) {
     setShowCreate(false);
     setEditingBug(bug);
+    setForm({
+      title: bug.title || '',
+      description: bug.description || '',
+      steps: bug.steps || '',
+      clientContext: bug.clientContext || '',
+      memoryContext: bug.memoryContext || '',
+      expectedResult: bug.expectedResult || '',
+      actualResult: bug.actualResult || '',
+      targetPerson: bug.targetPerson || '',
+      requestId: bug.requestId || '',
+      fixStatus: bug.fixStatus || '',
+      issueCreatedAt: bug.issueCreatedAt || new Date(bug.createdAt).toISOString().slice(0, 10),
+      lastModifiedAt: bug.lastModifiedAt || new Date(bug.updatedAt).toISOString().slice(0, 10),
+      severity: bug.severity,
+      priority: bug.priority,
+      assigneeName: bug.assigneeName || ''
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -157,6 +189,15 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           title: form.title,
           description: form.description || null,
           steps: form.steps || null,
+          clientContext: form.clientContext || null,
+          memoryContext: form.memoryContext || null,
+          expectedResult: form.expectedResult || null,
+          actualResult: form.actualResult || null,
+          targetPerson: form.targetPerson || null,
+          requestId: form.requestId || null,
+          fixStatus: form.fixStatus || null,
+          issueCreatedAt: form.issueCreatedAt || null,
+          lastModifiedAt: form.lastModifiedAt || null,
           severity: form.severity,
           priority: form.priority,
           assigneeName: form.assigneeName || null
@@ -168,6 +209,15 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           title: form.title,
           description: form.description || undefined,
           steps: form.steps || undefined,
+          clientContext: form.clientContext || undefined,
+          memoryContext: form.memoryContext || undefined,
+          expectedResult: form.expectedResult || undefined,
+          actualResult: form.actualResult || undefined,
+          targetPerson: form.targetPerson || undefined,
+          requestId: form.requestId || undefined,
+          fixStatus: form.fixStatus || undefined,
+          issueCreatedAt: form.issueCreatedAt || undefined,
+          lastModifiedAt: form.lastModifiedAt || undefined,
           severity: form.severity,
           priority: form.priority,
           assigneeName: form.assigneeName || undefined
@@ -203,6 +253,141 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
     }
   }
 
+  async function handleExport() {
+    if (!selectedProjectId) {
+      setError('请先选择项目');
+      return;
+    }
+    setExporting(true);
+    setError('');
+    setMessage('');
+    setLastImportResult(null);
+    try {
+      await exportBugs({
+        projectId: selectedProjectId,
+        status: statusFilter || undefined,
+        severity: severityFilter || undefined,
+        priority: priorityFilter || undefined,
+        search: search || undefined
+      });
+      setMessage('缺陷 Excel 已导出');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '导出失败');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(file: File | null) {
+    if (!file || !selectedProjectId) return;
+    setImporting(true);
+    setError('');
+    setMessage('');
+    setLastImportResult(null);
+    try {
+      const result = await importBugs(selectedProjectId, file);
+      setLastImportResult(result);
+      setMessage(`导入完成：成功 ${result.summary.success} 行，新建 ${result.summary.created} 行，更新 ${result.summary.updated} 行，失败 ${result.summary.failed} 行，跳过 ${result.summary.skipped} 行`);
+      void load(1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '导入失败');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  }
+
+  function renderBugForm(submitLabel: string, cancel: () => void) {
+    return (
+      <form onSubmit={handleSubmit}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>问题描述 *</label>
+            <input className="glass-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>指向人</label>
+            <input
+              className="glass-input"
+              list="bug-target-person-options"
+              value={form.targetPerson}
+              onChange={e => setForm(f => ({ ...f, targetPerson: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>负责人</label>
+            <input
+              className="glass-input"
+              list="bug-assignee-options"
+              value={form.assigneeName}
+              onChange={e => setForm(f => ({ ...f, assigneeName: e.target.value }))}
+            />
+            <datalist id="bug-assignee-options">
+              {formNameOptions.map(n => <option key={n} value={n} />)}
+            </datalist>
+            <datalist id="bug-target-person-options">
+              {formNameOptions.map(n => <option key={n} value={n} />)}
+            </datalist>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>request_id</label>
+            <input className="glass-input" value={form.requestId} onChange={e => setForm(f => ({ ...f, requestId: e.target.value }))} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>修复状态</label>
+            <input className="glass-input" value={form.fixStatus} onChange={e => setForm(f => ({ ...f, fixStatus: e.target.value }))} placeholder="待修复 / 修复中 / 已修复" />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>严重性</label>
+            <ThemedSelect value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value as BugSeverity }))}>
+              {SEVERITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
+            </ThemedSelect>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>优先级</label>
+            <ThemedSelect value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as BugPriority }))}>
+              {PRIORITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
+            </ThemedSelect>
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>问题创建时间</label>
+            <input className="glass-input" type="date" value={form.issueCreatedAt} onChange={e => setForm(f => ({ ...f, issueCreatedAt: e.target.value }))} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>最新修改日期</label>
+            <input className="glass-input" type="date" value={form.lastModifiedAt} onChange={e => setForm(f => ({ ...f, lastModifiedAt: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>端侧上下文</label>
+            <textarea className="glass-input" rows={3} value={form.clientContext} onChange={e => setForm(f => ({ ...f, clientContext: e.target.value }))} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>记忆上下文</label>
+            <textarea className="glass-input" rows={3} value={form.memoryContext} onChange={e => setForm(f => ({ ...f, memoryContext: e.target.value }))} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>预期结果</label>
+            <textarea className="glass-input" rows={3} value={form.expectedResult} onChange={e => setForm(f => ({ ...f, expectedResult: e.target.value }))} />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>实际结果</label>
+            <textarea className="glass-input" rows={3} value={form.actualResult} onChange={e => setForm(f => ({ ...f, actualResult: e.target.value }))} />
+          </div>
+        </div>
+        <div style={{ marginBottom: '0.75rem' }}>
+          <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>备注 / 复现步骤</label>
+          <textarea className="glass-input" rows={2} value={form.steps} onChange={e => setForm(f => ({ ...f, steps: e.target.value }))} />
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button type="submit" className="btn primary">{submitLabel}</button>
+          <button type="button" className="btn" onClick={cancel}>取消</button>
+        </div>
+      </form>
+    );
+  }
+
   return (
     <div>
       {/* Filters */}
@@ -218,13 +403,30 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
         </ThemedSelect>
         <input
           className="glass-input"
-          placeholder="搜索标题..."
+          placeholder="搜索问题描述 / request_id / 指向人..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 160 }}
         />
+        {selectedProjectId && (
+          <button className="btn" onClick={handleExport} disabled={exporting}>
+            {exporting ? '导出中...' : '导出 Excel'}
+          </button>
+        )}
         {canWrite && selectedProjectId && (
-          <button className="btn primary" onClick={openCreate}>+ 新建缺陷</button>
+          <>
+            <button className="btn" onClick={() => importInputRef.current?.click()} disabled={importing}>
+              {importing ? '导入中...' : '导入 Excel'}
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={{ display: 'none' }}
+              onChange={e => void handleImportFile(e.target.files?.[0] ?? null)}
+            />
+            <button className="btn primary" onClick={openCreate}>+ 新建缺陷</button>
+          </>
         )}
       </div>
 
@@ -232,50 +434,7 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
       {showCreate && canWrite && (
         <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '0.75rem', borderColor: 'var(--color-primary)', border: '1px solid var(--color-border-strong)' }}>
           <h3 style={{ marginBottom: '1rem' }}>新建缺陷</h3>
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>标题 *</label>
-                <input className="glass-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>负责人</label>
-                <input
-                  className="glass-input"
-                  list="bug-assignee-options"
-                  value={form.assigneeName}
-                  onChange={e => setForm(f => ({ ...f, assigneeName: e.target.value }))}
-                />
-                <datalist id="bug-assignee-options">
-                  {formNameOptions.map(n => <option key={n} value={n} />)}
-                </datalist>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>严重性</label>
-                <ThemedSelect value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value as BugSeverity }))}>
-                  {SEVERITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
-                </ThemedSelect>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>优先级</label>
-                <ThemedSelect value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as BugPriority }))}>
-                  {PRIORITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
-                </ThemedSelect>
-              </div>
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>描述</label>
-              <textarea className="glass-input" rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>复现步骤</label>
-              <textarea className="glass-input" rows={2} value={form.steps} onChange={e => setForm(f => ({ ...f, steps: e.target.value }))} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" className="btn primary">{loading ? '提交中...' : '提交'}</button>
-              <button type="button" className="btn" onClick={() => setShowCreate(false)}>取消</button>
-            </div>
-          </form>
+          {renderBugForm(loading ? '提交中...' : '提交', () => setShowCreate(false))}
         </div>
       )}
 
@@ -283,51 +442,24 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
       {editingBug && (
         <div className="glass-card" style={{ padding: '1.25rem', marginBottom: '0.75rem', borderColor: 'var(--color-primary)' }}>
           <h3 style={{ marginBottom: '1rem' }}>编辑缺陷 #{editingBug.id}</h3>
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>标题 *</label>
-                <input className="glass-input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required />
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>负责人</label>
-                <input
-                  className="glass-input"
-                  list="bug-assignee-options-edit"
-                  value={form.assigneeName}
-                  onChange={e => setForm(f => ({ ...f, assigneeName: e.target.value }))}
-                />
-                <datalist id="bug-assignee-options-edit">
-                  {formNameOptions.map(n => <option key={n} value={n} />)}
-                </datalist>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>严重性</label>
-                <ThemedSelect value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value as BugSeverity }))}>
-                  {SEVERITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
-                </ThemedSelect>
-              </div>
-              <div>
-                <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>优先级</label>
-                <ThemedSelect value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value as BugPriority }))}>
-                  {PRIORITY_OPTIONS.filter(o => o.value).map(o => <option key={o.value!} value={o.value}>{o.label}</option>)}
-                </ThemedSelect>
-              </div>
-            </div>
-            <div style={{ marginBottom: '0.75rem' }}>
-              <label style={{ fontSize: '0.8rem', opacity: 0.7, display: 'block', marginBottom: '0.25rem' }}>描述</label>
-              <textarea className="glass-input" rows={2} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button type="submit" className="btn primary">保存</button>
-              <button type="button" className="btn" onClick={() => setEditingBug(null)}>取消</button>
-            </div>
-          </form>
+          {renderBugForm('保存', () => setEditingBug(null))}
         </div>
       )}
 
       {error && <div className="card warn" style={{ marginBottom: '0.75rem', padding: '0.75rem' }}>{error}</div>}
       {message && <div className="card" style={{ marginBottom: '0.75rem', padding: '0.75rem', borderColor: 'var(--color-primary)' }}>{message}</div>}
+      {lastImportResult && lastImportResult.summary.failed > 0 && (
+        <div className="card warn" style={{ marginBottom: '0.75rem', padding: '0.75rem' }}>
+          <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>导入失败明细</div>
+          <div style={{ display: 'grid', gap: '0.35rem', fontSize: '0.85rem' }}>
+            {lastImportResult.results.filter(item => item.status === 'failed').map(item => (
+              <div key={`${item.row}-${item.id ?? item.title ?? item.message}`}>
+                第 {item.row} 行{item.id ? `，ID ${item.id}` : ''}{item.title ? `，「${item.title}」` : ''}：{item.message}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -349,18 +481,22 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
           description="当前项目还没有缺陷记录，可新建缺陷或切换筛选条件查看。"
         />
       ) : (
-        <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="glass-card" style={{ padding: 0, overflowX: 'auto' }}>
           <table className="table" style={{ margin: 0 }}>
             <thead>
               <tr>
                 <th>ID</th>
-                <th>标题</th>
-                <th>状态</th>
+                <th>问题描述</th>
+                <th>request_id</th>
+                <th>修复状态</th>
+                <th>指向人</th>
                 <th>严重性</th>
                 <th>优先级</th>
                 <th>负责人</th>
-                <th>报告人</th>
-                <th>创建时间</th>
+                <th>创建人</th>
+                <th>问题创建时间</th>
+                <th>最新修改日期</th>
+                <th>状态</th>
                 {canWrite && <th>操作</th>}
               </tr>
             </thead>
@@ -370,10 +506,30 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
                   <td style={{ color: 'var(--color-text-secondary)', fontSize: '0.8rem' }}>#{bug.id}</td>
                   <td>
                     <div style={{ fontWeight: 500 }}>{bug.title}</div>
+                    {bug.actualResult && (
+                      <div style={{ fontSize: '0.75rem', opacity: 0.55, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        实际结果: {bug.actualResult}
+                      </div>
+                    )}
                     {bug.testCase && (
                       <div style={{ fontSize: '0.75rem', opacity: 0.5 }}>关联用例: {bug.testCase.title}</div>
                     )}
                   </td>
+                  <td>{bug.requestId || '-'}</td>
+                  <td>{bug.fixStatus || '-'}</td>
+                  <td>{bug.targetPerson || '-'}</td>
+                  <td>
+                    <span style={{ color: SEVERITY_COLOR[bug.severity], fontWeight: 600, fontSize: '0.8rem' }}>
+                      {SEVERITY_LABELS[bug.severity]}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ opacity: 0.8 }}>{PRIORITY_LABELS[bug.priority]}</span>
+                  </td>
+                  <td>{bug.assigneeName || '-'}</td>
+                  <td>{bug.reporterName || '-'}</td>
+                  <td style={{ fontSize: '0.8rem', opacity: 0.7 }}>{bug.issueCreatedAt || new Date(bug.createdAt).toLocaleDateString('zh-CN')}</td>
+                  <td style={{ fontSize: '0.8rem', opacity: 0.7 }}>{bug.lastModifiedAt || new Date(bug.updatedAt).toLocaleDateString('zh-CN')}</td>
                   <td onClick={e => e.stopPropagation()}>
                     {canWrite ? (
                       <div onClick={e => e.stopPropagation()}>
@@ -391,17 +547,6 @@ export default function BugView({ selectedProjectId, canWrite, feishuUserNames }
                       <span style={{ color: STATUS_COLOR[bug.status], fontWeight: 600 }}>{STATUS_LABELS[bug.status]}</span>
                     )}
                   </td>
-                  <td>
-                    <span style={{ color: SEVERITY_COLOR[bug.severity], fontWeight: 600, fontSize: '0.8rem' }}>
-                      {SEVERITY_LABELS[bug.severity]}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{ opacity: 0.8 }}>{PRIORITY_LABELS[bug.priority]}</span>
-                  </td>
-                  <td>{bug.assigneeName || '-'}</td>
-                  <td>{bug.reporterName || '-'}</td>
-                  <td style={{ fontSize: '0.8rem', opacity: 0.6 }}>{new Date(bug.createdAt).toLocaleDateString('zh-CN')}</td>
                   {canWrite && (
                     <td onClick={e => e.stopPropagation()}>
                       <button

@@ -14,3 +14,9 @@ export class UpdateMemberRoleDto {
   @IsEnum(['owner', 'admin', 'member', 'viewer'])
   role!: 'owner' | 'admin' | 'member' | 'viewer';
 }
+
+export class UpdateMemberDepartmentDto {
+  @IsOptional()
+  @IsString()
+  departmentId?: string | null;
+}

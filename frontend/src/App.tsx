@@ -59,6 +59,7 @@ const AiView = lazy(() => import('./views/AiView'));
 const SettingsView = lazy(() => import('./views/SettingsView'));
 const OrgSettingsView = lazy(() => import('./views/OrgSettingsView'));
 const OrgMembersView = lazy(() => import('./views/OrgMembersView'));
+const OrgDepartmentMembersView = lazy(() => import('./views/OrgDepartmentMembersView'));
 const FeishuUsersView = lazy(() => import('./views/FeishuUsersView'));
 const PmAssistantView = lazy(() => import('./views/PmAssistantView'));
 const ProjectAccessView = lazy(() => import('./views/ProjectAccessView'));
@@ -77,32 +78,33 @@ const SmartFillView = lazy(() => import('./views/SmartFillView'));
 const CapabilitiesView = lazy(() => import('./views/CapabilitiesView'));
 const TaskCenterView = lazy(() => import('./views/TaskCenterView'));
 const ResourceMaintenanceView = lazy(() => import('./views/ResourceMaintenanceView'));
+const ClusterRiskMaintenanceView = lazy(() => import('./views/ClusterRiskMaintenanceView'));
 
 type FeishuScheduleRow = FeishuFormState & { recordId: string };
 type ThemeMode = 'light' | 'dark' | 'nebula' | 'forest' | 'sunset' | 'sakura' | 'metal';
 const VALID_THEMES: ThemeMode[] = ['light', 'dark', 'nebula', 'forest', 'sunset', 'sakura', 'metal'];
-const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'resource-maintenance', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'global', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments'];
+const WORKSPACE_VIEWS: ViewKey[] = ['dashboard', 'resource-maintenance', 'cluster-risk-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'costs', 'schedule', 'resources', 'risks', 'ai', 'notifications', 'feishu', 'pm-assistant', 'milestone-board', 'sprints', 'bugs', 'test-plans', 'efficiency', 'webhooks', 'api-keys', 'smart-fill', 'automation', 'task-center', 'capabilities', 'cost-report', 'departments', 'department-members'];
 const ADMIN_VIEWS: ViewKey[] = ['audit', 'settings', 'project-access', 'feishu-users', 'org-settings', 'org-members'];
 const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
   super_admin: { workspaceViews: ['*'], adminViews: ['*'], canAccessAdmin: true },
   project_manager: { workspaceViews: WORKSPACE_VIEWS, adminViews: [], canAccessAdmin: false },
   dept_head: {
-    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'feishu', 'wiki', 'notifications'],
+    workspaceViews: ['dashboard', 'resource-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'feishu', 'wiki', 'notifications'],
     adminViews: [],
     canAccessAdmin: false
   },
   pm: {
-    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
+    workspaceViews: ['dashboard', 'cluster-risk-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
     adminViews: [],
     canAccessAdmin: false
   },
   member: {
-    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
+    workspaceViews: ['dashboard', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
     adminViews: ['project-access', 'org-members', 'org-settings'],
     canAccessAdmin: true
   },
   viewer: {
-    workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
+    workspaceViews: ['dashboard', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
     adminViews: [],
     canAccessAdmin: false
   }
@@ -113,6 +115,26 @@ function normalizeViewScope(values: string[] | undefined, fallback: ViewKey[]): 
   const valid = new Set([...WORKSPACE_VIEWS, ...ADMIN_VIEWS]);
   const scoped = values.filter((item): item is ViewKey => valid.has(item as ViewKey));
   return scoped.length > 0 ? scoped : fallback;
+}
+
+function enforceWorkspaceVisibility(role: string, scope: ViewKey[] | '*', orgRole?: string | null): ViewKey[] | '*' {
+  if (scope === '*') return '*';
+  const visible = new Set(scope);
+  if (['dept_head', 'project_manager', 'super_admin'].includes(role)) visible.add('resource-maintenance');
+  if (['pm', 'project_manager', 'super_admin'].includes(role)) visible.add('cluster-risk-maintenance');
+  if (visible.has('dashboard')) visible.add('overdue-alerts');
+  if (orgRole === 'owner' || orgRole === 'admin') {
+    visible.add('departments');
+    visible.add('department-members');
+  }
+  if (role === 'pm') {
+    visible.delete('resource-maintenance');
+    visible.delete('costs');
+    visible.delete('cost-report');
+    visible.delete('risks');
+    visible.delete('efficiency');
+  }
+  return WORKSPACE_VIEWS.filter((view) => visible.has(view));
 }
 
 function PageFallback() {
@@ -344,11 +366,12 @@ function App() {
         setSelectedProjectIds((prev) => prev.filter((id) => projectList.some((item) => item.id === id)));
         setNotifications(unreadNotifications);
 
-        const effectiveProjectId = projectIdOverride
-          ?? selectedProjectId
-          ?? (projectList.find((p) => useWorkspaceStore.getState().selectedProjectId === p.id)?.id)
-          ?? projectList[0]?.id
-          ?? null;
+        const preferredProjectId = typeof projectIdOverride === 'undefined'
+          ? selectedProjectId
+          : projectIdOverride;
+        const effectiveProjectId = preferredProjectId != null && projectList.some((p) => p.id === preferredProjectId)
+          ? preferredProjectId
+          : projectList[0]?.id ?? null;
         if (effectiveProjectId !== selectedProjectId) {
           skipSelectedProjectRefreshRef.current = effectiveProjectId;
           setSelectedProjectId(effectiveProjectId);
@@ -450,6 +473,8 @@ function App() {
       const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/login', { username, password });
       localStorage.setItem(TOKEN_KEY, res.token);
       localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      // Clear any stale activeOrgId from a previous session before re-populating
+      useOrgStore.getState().clear();
       const { setActiveOrg, setOrgList } = useOrgStore.getState();
       if (res.orgList?.length) {
         setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
@@ -475,6 +500,8 @@ function App() {
       const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/register', { username, password, name });
       localStorage.setItem(TOKEN_KEY, res.token);
       localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+      // Clear any stale activeOrgId from a previous session before re-populating
+      useOrgStore.getState().clear();
       const { setActiveOrg, setOrgList } = useOrgStore.getState();
       if (res.orgList?.length) {
         setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
@@ -518,7 +545,7 @@ function App() {
     adminViews: [],
     canAccessAdmin: false
   };
-  const workspaceVisibleViews = isSuperAdmin ? '*' : normalizeViewScope(currentVisibilityRule.workspaceViews, WORKSPACE_VIEWS);
+  const workspaceVisibleViews = isSuperAdmin ? '*' : enforceWorkspaceVisibility(userRole, normalizeViewScope(currentVisibilityRule.workspaceViews, WORKSPACE_VIEWS), myOrgRole);
   const adminVisibleViews = isSuperAdmin ? '*' : normalizeViewScope(currentVisibilityRule.adminViews, []);
   const canAccessAuditLogs = isSuperAdmin || isProjectManager || userRole === 'pm';
   const canAccessSystemConfig = isSuperAdmin || isProjectManager || userRole === 'pm';
@@ -532,6 +559,9 @@ function App() {
     // Only clear selectedProjectId on genuine org switch (not initial load)
     if (prevActiveOrgIdRef.current !== null && prevActiveOrgIdRef.current !== activeOrgId) {
       setSelectedProjectId(null);
+      setSelectedProjectIds([]);
+      clearProjectScopedData();
+      void refreshAll(null);
     }
     prevActiveOrgIdRef.current = activeOrgId;
   }, [activeOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -606,7 +636,8 @@ function App() {
           endDate: String(form.get('endDate') || ''),
           feishuChatIds: String(form.get('feishuChatIds') || ''),
           feishuAppToken: String(form.get('feishuAppToken') || '') || undefined,
-          feishuTableId: String(form.get('feishuTableId') || '') || undefined
+          feishuTableId: String(form.get('feishuTableId') || '') || undefined,
+          feishuViewId: String(form.get('feishuViewId') || '') || undefined
         });
         createdId = created.id;
       });
@@ -731,12 +762,16 @@ function App() {
     }
   }
 
-  async function runWithRetry(label: string, action: () => Promise<void>) {
+  async function runWithRetry(label: string, action: () => Promise<void>, options?: { trackRetry?: boolean }) {
     try {
       await action();
-      setLastRetry(null);
+      if (options?.trackRetry !== false) {
+        setLastRetry(null);
+      }
     } catch (err) {
-      setLastRetry({ label, action });
+      if (options?.trackRetry !== false) {
+        setLastRetry({ label, action });
+      }
       throw err;
     }
   }
@@ -779,7 +814,8 @@ function App() {
           endDate: draft.endDate || null,
           feishuChatIds: draft.feishuChatIds || null,
           feishuAppToken: draft.feishuAppToken || null,
-          feishuTableId: draft.feishuTableId || null
+          feishuTableId: draft.feishuTableId || null,
+          feishuViewId: draft.feishuViewId || null
         });
       });
       setMessage(`项目「${draft.name}」已更新。`);
@@ -1257,6 +1293,11 @@ function App() {
     if (!selectedProjectId) return '';
     return projects.find((item) => item.id === selectedProjectId)?.alias?.trim() ?? '';
   }, [projects, selectedProjectId]);
+  const selectedProjectHasFeishuConfig = useMemo(() => {
+    if (!selectedProjectId) return false;
+    const project = projects.find((item) => item.id === selectedProjectId);
+    return Boolean(project?.feishuAppToken?.trim() && project?.feishuTableId?.trim());
+  }, [projects, selectedProjectId]);
 
   useEffect(() => {
     if (!canAccessAdminPlatform && platform === 'admin') {
@@ -1471,6 +1512,7 @@ function App() {
       || String(original.feishuChatIds ?? '') !== String(draft.feishuChatIds ?? '')
       || String(original.feishuAppToken ?? '') !== String(draft.feishuAppToken ?? '')
       || String(original.feishuTableId ?? '') !== String(draft.feishuTableId ?? '')
+      || String(original.feishuViewId ?? '') !== String(draft.feishuViewId ?? '')
     ),
     selector: (id, field) => `[data-project-edit="${id}-${String(field)}"]`
   });
@@ -1743,6 +1785,7 @@ function App() {
 
   async function loadScheduleRecords() {
     if (!token) return;
+    setLastRetry((prev) => prev?.label === '刷新进度同步记录' ? null : prev);
     if (!selectedProjectId) {
       setScheduleRecords([]);
       setScheduleError('请先选择项目后再加载进度计划。');
@@ -1758,7 +1801,7 @@ function App() {
           projectId: selectedProjectId
         });
         setScheduleRecords(res.items || []);
-      });
+      }, { trackRetry: false });
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setScheduleError(`获取进度同步记录失败。（${detail}）`);
@@ -2295,6 +2338,12 @@ function App() {
   }, [token, view, selectedProjectId]);
 
   useEffect(() => {
+    if (token && view === 'overdue-alerts') {
+      void loadScheduleRecords();
+    }
+  }, [token, view, selectedProjectId]);
+
+  useEffect(() => {
     if (token && view === 'resources') {
       void loadScheduleRecords();
     }
@@ -2415,12 +2464,16 @@ function App() {
                 view === 'costs' ? '成本池' :
                   view === 'schedule' ? '进度轴' :
                     view === 'resources' ? '资源阵列' :
-                      view === 'risks' ? '风险雷达' :
+                      view === 'resource-maintenance' ? '资源维护台' :
+                        view === 'cluster-risk-maintenance' ? '集群风险状态维护台' :
+                          view === 'overdue-alerts' ? '延期预警' :
+                          view === 'risks' ? '风险雷达' :
                         view === 'feishu' ? '飞书神经元' :
                           view === 'pm-assistant' ? 'PMO 大脑' :
                             view === 'ai' ? 'AI 驱动核心' :
                               view === 'audit' ? '审计轨迹' :
                                 view === 'feishu-users' ? '人员映射' :
+                                  view === 'department-members' ? '部门成员' :
                                   view === 'global' ? '全局检索' :
                                     view === 'project-access' ? '管理后台 · 项目授权' :
                                       view === 'milestone-board' ? '里程碑看板' :
@@ -2596,7 +2649,6 @@ function App() {
             description="正在同步项目、组织、通知和当前页面依赖的数据。"
           />
         )}
-        {message && <p>{message}</p>}
         {error && <p className="warn">{error}</p>}
         {lastRetry && (
           <div className="card app-retry-card">
@@ -2745,6 +2797,20 @@ function App() {
           <ResourceMaintenanceView />
         )}
 
+        {view === 'cluster-risk-maintenance' && (
+          <ClusterRiskMaintenanceView userRole={userRole} />
+        )}
+
+        {view === 'overdue-alerts' && (
+          <RiskAlertsView
+            rows={scheduleTasks}
+            thresholdDays={7}
+            progressThreshold={80}
+            loading={scheduleLoading}
+            error={scheduleError}
+          />
+        )}
+
         {view === 'milestone-board' && (
           <MilestoneBoardView
             projects={projects}
@@ -2790,16 +2856,13 @@ function App() {
           />
         )}
 
-        {view === 'dashboard' && scheduleTasks.length > 0 && (
-          <RiskAlertsView rows={scheduleTasks} thresholdDays={7} progressThreshold={80} />
-        )}
-
         {view === 'feishu' && (
           <FeishuView
             canWrite={canWrite}
             activeOrgName={activeOrgName}
             selectedProjectName={selectedProjectName}
             selectedProjectId={selectedProjectId}
+            selectedProjectHasFeishuConfig={selectedProjectHasFeishuConfig}
             feishuForm={feishuForm}
             feishuMessage={feishuMessage}
             feishuError={feishuError}
@@ -2958,6 +3021,10 @@ function App() {
           <OrgMembersView onError={setError} onMessage={setMessage} />
         )}
 
+        {view === 'department-members' && canManageAdmin && (
+          <OrgDepartmentMembersView onError={setError} onMessage={setMessage} />
+        )}
+
         {view === 'webhooks' && canWrite && (
           <WebhookView />
         )}
@@ -2997,7 +3064,7 @@ function App() {
           <CostReportView projects={projects} selectedProjectId={selectedProjectId} />
         )}
 
-        {view === 'departments' && canWrite && (
+        {view === 'departments' && canManageAdmin && (
           <DepartmentsView />
         )}
 

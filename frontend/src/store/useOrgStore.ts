@@ -15,10 +15,26 @@ interface OrgStore {
 }
 
 export const useOrgStore = create<OrgStore>((set) => ({
-  activeOrgId: localStorage.getItem('activeOrgId'),
+  // Don't seed activeOrgId from localStorage at boot — a stale value from a
+  // previous session/DB would otherwise flash as the active org (and trigger
+  // 404s on /organizations/:id) before setOrgList has a chance to validate it.
+  // The correct value is re-established by the login flow (which calls
+  // clear() then setOrgList+setActiveOrg), and by setOrgList's own validation
+  // branch for already-authenticated users who re-load the page.
+  activeOrgId: null,
   orgList: [],
 
   setActiveOrg: (orgId: string) => {
+    // Defensive: ignore empty/null/undefined so we never poison localStorage with a
+    // bogus value (e.g. 'default' written by an old token, or an orgId that no
+    // longer exists in the DB).
+    if (!orgId || typeof orgId !== 'string') return;
+    const current = useOrgStore.getState();
+    if (current.orgList.length > 0 && !current.orgList.find(o => o.id === orgId)) {
+      // orgId not in known list — log and refuse to persist
+      console.warn('[useOrgStore] setActiveOrg ignored: orgId not in orgList', orgId);
+      return;
+    }
     localStorage.setItem('activeOrgId', orgId);
     set({ activeOrgId: orgId });
   },

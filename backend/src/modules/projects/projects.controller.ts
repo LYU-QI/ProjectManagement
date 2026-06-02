@@ -33,6 +33,10 @@ class CreateProjectDto {
   @IsOptional()
   @IsString()
   feishuTableId?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuViewId?: string;
 }
 
 class UpdateProjectDto {
@@ -67,6 +71,10 @@ class UpdateProjectDto {
   @IsOptional()
   @IsString()
   feishuTableId?: string;
+
+  @IsOptional()
+  @IsString()
+  feishuViewId?: string;
 }
 
 @Controller('api/v1/projects')
@@ -74,17 +82,17 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  list(@Req() req: { user?: { sub?: number; role?: string } }) {
-    return this.projectsService.list(req.user);
+  list(@Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }) {
+    return this.projectsService.list(req.user, req.org?.id ?? null);
   }
 
   @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Post()
   create(
     @Body() body: CreateProjectDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
-    return this.projectsService.create(body, req.user);
+    return this.projectsService.create(body, req.user, req.org?.id ?? null);
   }
 
   @Roles('project_manager', 'member', 'pm', 'super_admin')
@@ -92,17 +100,17 @@ export class ProjectsController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateProjectDto,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
-    return this.projectsService.update(id, body, req.user);
+    return this.projectsService.update(id, body, req.user, req.org?.id ?? null);
   }
 
   @Roles('project_manager', 'member', 'pm', 'super_admin')
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
-    @Req() req: { user?: { sub?: number; role?: string } }
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
-    return this.projectsService.remove(id, req.user);
+    return this.projectsService.remove(id, req.user, req.org?.id ?? null);
   }
 }

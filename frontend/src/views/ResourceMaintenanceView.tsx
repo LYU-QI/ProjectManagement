@@ -1,11 +1,15 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   createResourceMaintenance,
+  DepartmentSyncPreview,
+  fillSystemDepartmentsFromFeishu,
   getResourceMaintenanceOptions,
   listResourceMaintenance,
+  previewDepartmentSync,
   ResourceMaintenanceKind,
   ResourceMaintenanceOptions,
   ResourceMaintenanceRow,
+  syncSystemDepartmentsToFeishu,
   updateResourceMaintenance
 } from '../api/resourceMaintenance';
 import AsyncStatePanel from '../components/AsyncStatePanel';
@@ -73,6 +77,7 @@ const emptyOptions: ResourceMaintenanceOptions = {
   levels: [],
   locations: [],
   statuses: ['在岗', '停用', '离职'],
+  systemDepartments: [],
   allocationTypes: ['项目投入', '售前支持', '研发支持', '测试支持'],
   availabilityTypes: ['请假', '出差', '培训', '节假日', '临时占用']
 };
@@ -143,7 +148,7 @@ function tabTitle(tab: Tab) {
 }
 
 const tableColumns: Record<Tab, string[]> = {
-  people: ['人员ID', '姓名', '角色', '部门', '职级', '地点', '日标准产能', '状态', '备注'],
+  people: ['人员ID', '姓名', '角色', '部门', '部门同步', '职级', '地点', '日标准产能', '状态', '备注'],
   allocations: ['分配ID', '人员ID', '姓名', '项目ID', '项目名称', '角色', '开始日期', '结束时间', '投入比例', '投入人天', '分配类型', '备注'],
   availability: ['记录ID', '人员ID', '姓名', '日期', '可用比例', '不可用类型', '原因', '备注']
 };
@@ -179,6 +184,8 @@ export default function ResourceMaintenanceView() {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [options, setOptions] = useState<ResourceMaintenanceOptions>(emptyOptions);
   const [keyword, setKeyword] = useState('');
+  const [departmentSync, setDepartmentSync] = useState<DepartmentSyncPreview | null>(null);
+  const [syncingDepartments, setSyncingDepartments] = useState(false);
 
   async function load(nextTab = tab) {
     setLoading(true);
@@ -202,14 +209,24 @@ export default function ResourceMaintenanceView() {
     }
   }
 
+  async function loadDepartmentSyncPreview() {
+    try {
+      setDepartmentSync(await previewDepartmentSync());
+    } catch {
+      setDepartmentSync(null);
+    }
+  }
+
   useEffect(() => {
     setForm(emptyForm);
     setKeyword('');
     void load(tab);
+    if (tab === 'people') void loadDepartmentSyncPreview();
   }, [tab]);
 
   useEffect(() => {
     void loadOptions();
+    void loadDepartmentSyncPreview();
   }, []);
 
   const visibleRows = useMemo(() => {
@@ -219,6 +236,15 @@ export default function ResourceMaintenanceView() {
   }, [keyword, rows]);
 
   const currentColumns = tableColumns[tab];
+  const departmentSyncByRecordId = useMemo(() => {
+    const map = new Map<string, DepartmentSyncPreview['items'][number]>();
+    for (const item of departmentSync?.items ?? []) map.set(item.recordId, item);
+    return map;
+  }, [departmentSync]);
+  const departmentOptions = useMemo(() => {
+    return Array.from(new Set([...(options.systemDepartments || []), ...options.departments].filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'));
+  }, [options.departments, options.systemDepartments]);
   const selectedProject = options.projects.find((item) => item.projectId === form.projectId);
   const selectedPerson = options.people.find((item) => item.personId === form.personId);
   const selectedProjectPeriod = selectedProject?.startDate && selectedProject?.endDate
@@ -282,6 +308,7 @@ export default function ResourceMaintenanceView() {
       setForm(emptyForm);
       await load(tab);
       await loadOptions();
+      await loadDepartmentSyncPreview();
     } catch (err) {
       setError(err instanceof Error ? err.message : '同步飞书失败');
     } finally {
@@ -289,15 +316,66 @@ export default function ResourceMaintenanceView() {
     }
   }
 
+  async function handleSyncSystemDepartmentsToFeishu() {
+    setSyncingDepartments(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await syncSystemDepartmentsToFeishu();
+      setMessage(`已同步系统部门到飞书：更新 ${result.summary.updated || 0} 人，待同步 ${result.summary.pending} 人，未匹配 ${result.summary.unmatched} 人`);
+      await load(tab);
+      await loadOptions();
+      await loadDepartmentSyncPreview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '同步系统部门到飞书失败');
+    } finally {
+      setSyncingDepartments(false);
+    }
+  }
+
+  async function handleFillSystemDepartmentsFromFeishu() {
+    setSyncingDepartments(true);
+    setError('');
+    setMessage('');
+    try {
+      const result = await fillSystemDepartmentsFromFeishu();
+      setMessage(`已从飞书补齐系统空部门：更新 ${result.summary.updated} 人，新建部门 ${result.summary.createdDepartments} 个，失败 ${result.summary.failed} 行`);
+      await load(tab);
+      await loadOptions();
+      await loadDepartmentSyncPreview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '从飞书补齐系统部门失败');
+    } finally {
+      setSyncingDepartments(false);
+    }
+  }
+
+  function syncStatusText(recordId: string) {
+    const item = departmentSyncByRecordId.get(recordId);
+    if (!item) return '-';
+    if (item.status === 'matched') return '已一致';
+    if (item.status === 'pending') return `待同步：${item.feishuDepartment || '未填'} → ${item.systemDepartment}`;
+    if (item.status === 'system_unassigned') return '系统未分配';
+    return '未匹配成员';
+  }
+
   return (
     <section className="resource-maintenance">
-      <div className="page-title-row">
-        <div>
-          <h2>资源维护台</h2>
-          <p className="muted">通过业务表单维护人员资源、项目分配和人员日历例外，提交后直接写回飞书。</p>
-        </div>
+      <div className="page-toolbar-row">
         <button className="btn" type="button" onClick={() => void load(tab)} disabled={loading}>刷新</button>
+        <button className="btn" type="button" onClick={() => void loadDepartmentSyncPreview()} disabled={loading || syncingDepartments}>刷新部门同步状态</button>
+        <button className="btn primary" type="button" onClick={() => void handleSyncSystemDepartmentsToFeishu()} disabled={syncingDepartments || (departmentSync?.summary.pending ?? 0) === 0}>
+          {syncingDepartments ? '同步中...' : '系统部门同步到飞书'}
+        </button>
+        <button className="btn" type="button" onClick={() => void handleFillSystemDepartmentsFromFeishu()} disabled={syncingDepartments}>
+          从飞书补齐系统空部门
+        </button>
       </div>
+      {departmentSync && (
+        <div className="resource-maintenance-hint" style={{ marginBottom: '0.75rem' }}>
+          部门同步：共 {departmentSync.summary.total} 人，已一致 {departmentSync.summary.matched}，待同步 {departmentSync.summary.pending}，系统未分配 {departmentSync.summary.systemUnassigned}，未匹配 {departmentSync.summary.unmatched}
+        </div>
+      )}
 
       <div className="dashboard-board-tabs">
         {(['people', 'allocations', 'availability'] as Tab[]).map((item) => (
@@ -314,7 +392,7 @@ export default function ResourceMaintenanceView() {
         {options.roles.map((item) => <option key={item} value={item} />)}
       </datalist>
       <datalist id="resource-department-options">
-        {options.departments.map((item) => <option key={item} value={item} />)}
+        {departmentOptions.map((item) => <option key={item} value={item} />)}
       </datalist>
       <datalist id="resource-level-options">
         {options.levels.map((item) => <option key={item} value={item} />)}
@@ -433,7 +511,7 @@ export default function ResourceMaintenanceView() {
                     <tr key={row.recordId}>
                       <td className="resource-maintenance-record-id">{row.recordId}</td>
                       {currentColumns.map((column) => (
-                        <td key={column}>{field(row, column) || '-'}</td>
+                        <td key={column}>{column === '部门同步' ? syncStatusText(row.recordId) : field(row, column) || '-'}</td>
                       ))}
                       <td><button className="btn" type="button" onClick={() => setForm(rowToForm(row, tab))}>编辑</button></td>
                     </tr>

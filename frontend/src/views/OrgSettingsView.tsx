@@ -27,7 +27,7 @@ const PLAN_OPTIONS = [
 
 export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewProps) {
   const { activeOrgId, orgList, setActiveOrg, setOrgList } = useOrgStore();
-  const [org, setOrg] = useState<{ id: string; slug: string; name: string; plan: string; maxMembers: number; memberCount: number } | null>(null);
+  const [org, setOrg] = useState<{ id: string; slug: string; name: string; plan: string; maxMembers: number; memberCount: number; projectCount?: number } | null>(null);
   const [editName, setEditName] = useState('');
   const [editPlan, setEditPlan] = useState('');
   const [editMaxMembers, setEditMaxMembers] = useState<number>(0);
@@ -43,9 +43,21 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
   // owner/admin/super_admin 可编辑组织名称；套餐和成员上限仅 super_admin 可改
   const canEditName = ['owner', 'admin'].includes(myOrgRole) || globalRole === 'super_admin';
   const canEditPlanAndQuota = globalRole === 'super_admin';
+  const hasProjects = (org?.projectCount ?? 0) > 0;
 
   useEffect(() => {
-    if (!activeOrgId) return;
+    if (!activeOrgId) {
+      setLoading(false);
+      return;
+    }
+    // Guard: a stale activeOrgId in store (e.g. from a previous session whose
+    // org has since been deleted) would 404 here. Sanitize before fetching.
+    if (orgList.length > 0 && !orgList.find(o => o.id === activeOrgId)) {
+      console.warn('[OrgSettingsView] activeOrgId not in orgList, resetting', activeOrgId);
+      setActiveOrg(orgList[0].id);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     getOrganization(activeOrgId)
       .then(data => {
@@ -54,9 +66,9 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
         setEditPlan(data.plan);
         setEditMaxMembers(data.maxMembers);
       })
-      .catch(() => onError('加载组织信息失败'))
+      .catch((err: unknown) => onError(`加载组织信息失败: ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => setLoading(false));
-  }, [activeOrgId]);
+  }, [activeOrgId, orgList, setActiveOrg]);
 
   function hasChanges() {
     if (!org) return false;
@@ -209,10 +221,15 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
         {(myOrgRole === 'owner' || globalRole === 'super_admin') && (
           <div className="glass-card" style={{ padding: '1.5rem', borderColor: 'rgba(239,68,68,0.3)' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#ef4444' }}>危险操作</h3>
+            {hasProjects && (
+              <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', color: 'var(--color-text-secondary)' }}>
+                当前组织下还有 {org.projectCount} 个项目。请先删除或迁移项目后，再删除组织。
+              </p>
+            )}
             {confirmDelete ? (
               <div>
                 <p style={{ fontSize: '0.85rem', marginBottom: '0.75rem', color: 'var(--color-text-secondary)' }}>
-                  确定删除组织「{org.name}」吗？此操作不可恢复，关联的项目和数据将被一并清除。
+                  确定删除组织「{org.name}」吗？此操作不可恢复，组织成员、部门、配置和自动化规则将被一并清除。
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
@@ -225,7 +242,7 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
                   <button
                     className="btn"
                     onClick={handleDelete}
-                    disabled={deleting}
+                    disabled={deleting || hasProjects}
                     style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none' }}
                   >
                     {deleting ? '删除中...' : '确认删除'}
@@ -236,6 +253,7 @@ export default function OrgSettingsView({ onError, onMessage }: OrgSettingsViewP
               <button
                 className="btn"
                 onClick={() => setConfirmDelete(true)}
+                disabled={hasProjects}
                 style={{ background: 'transparent', color: '#ef4444', border: '1px solid rgba(239,68,68,0.4)' }}
               >
                 删除组织

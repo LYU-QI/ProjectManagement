@@ -37,27 +37,27 @@ const DEFAULT_UI_VISIBILITY_RULES: UiVisibilityRules = {
         canAccessAdmin: true
     },
     project_manager: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'capabilities', 'webhooks', 'api-keys', 'feishu', 'wiki', 'notifications', 'departments'],
+        workspaceViews: ['dashboard', 'resource-maintenance', 'cluster-risk-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'capabilities', 'webhooks', 'api-keys', 'feishu', 'wiki', 'notifications', 'departments'],
         adminViews: [],
         canAccessAdmin: false
     },
     dept_head: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'resource-maintenance', 'feishu', 'wiki', 'notifications'],
+        workspaceViews: ['dashboard', 'resource-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'feishu', 'wiki', 'notifications'],
         adminViews: [],
         canAccessAdmin: false
     },
     pm: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'costs', 'cost-report', 'risks', 'efficiency', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
+        workspaceViews: ['dashboard', 'cluster-risk-maintenance', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'ai', 'pm-assistant', 'smart-fill', 'automation', 'task-center', 'feishu', 'wiki', 'notifications'],
         adminViews: [],
         canAccessAdmin: false
     },
     member: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
+        workspaceViews: ['dashboard', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'resources', 'sprints', 'bugs', 'test-plans', 'risks', 'efficiency', 'feishu', 'wiki', 'notifications'],
         adminViews: ['project-access', 'org-members', 'org-settings'],
         canAccessAdmin: true
     },
     viewer: {
-        workspaceViews: ['dashboard', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
+        workspaceViews: ['dashboard', 'overdue-alerts', 'global', 'requirements', 'work-items', 'schedule', 'milestone-board', 'risks', 'feishu', 'wiki', 'notifications'],
         adminViews: [],
         canAccessAdmin: false
     }

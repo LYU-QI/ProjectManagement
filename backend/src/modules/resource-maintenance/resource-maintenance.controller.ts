@@ -4,13 +4,28 @@ import { AuditableRequest } from '../../audit/audit.types';
 import { ResourceMaintenanceService } from './resource-maintenance.service';
 
 @Controller('api/v1/resource-maintenance')
-@Roles('super_admin', 'project_manager', 'dept_head', 'pm')
+@Roles('super_admin', 'project_manager', 'dept_head')
 export class ResourceMaintenanceController {
   constructor(private readonly service: ResourceMaintenanceService) {}
 
   @Get('options')
   options(@Req() req: AuditableRequest) {
     return this.service.options(this.actor(req));
+  }
+
+  @Get('department-sync/preview')
+  previewDepartmentSync(@Req() req: AuditableRequest) {
+    return this.service.previewDepartmentSync(this.actor(req));
+  }
+
+  @Post('department-sync/system-to-feishu')
+  syncSystemDepartmentsToFeishu(@Req() req: AuditableRequest) {
+    return this.service.syncSystemDepartmentsToFeishu(this.actor(req), req);
+  }
+
+  @Post('department-sync/feishu-to-system')
+  fillSystemDepartmentsFromFeishu(@Req() req: AuditableRequest) {
+    return this.service.fillSystemDepartmentsFromFeishu(this.actor(req), req);
   }
 
   @Get('people')

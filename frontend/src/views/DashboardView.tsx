@@ -54,6 +54,15 @@ type ResourceCalendarDisplayCell = {
     allocationPercent: number;
   }>;
 };
+type ResourceCalendarTooltipState = {
+  x: number;
+  y: number;
+  placement: 'top' | 'bottom';
+  personName: string;
+  label: string;
+  mode: ResourceCalendarColumn['mode'];
+  cell: ResourceCalendarDisplayCell;
+};
 
 type Props = {
   canWrite: boolean;
@@ -119,11 +128,27 @@ function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
 
 function roadmapDateLabel(item: DeliveryRoadmapItem): string {
   const date = item.targetDate ? item.targetDate.slice(5).replace('-', '/') : (item.targetQuarter || '未定');
-  return item.isTbd ? `${date} (TBD)` : date;
+  return item.isTbd ? `${date}（待定）` : date;
 }
 
 function roadmapIconColor(item: DeliveryRoadmapItem, roadmap: DeliveryRoadmapResponse | null): string {
   return roadmap?.legend.find((legend) => legend.iconStyle === item.iconStyle)?.color || '#64748b';
+}
+
+function roadmapDetailRows(item: DeliveryRoadmapItem): Array<[string, string]> {
+  const rows: Array<[string, string]> = [
+    ['计划交付', roadmapDateLabel(item)],
+    ['技术细节', item.techDetail],
+    ['交付状态', item.deliveryStatus],
+    ['车型负责人', item.vehicleOwner],
+    ['风险等级', item.riskLevel],
+    ['更新时间', item.updatedAt],
+    ['关键风险', item.keyRisk],
+    ['最新进展', item.latestProgress],
+    ['下一步动作', item.nextAction],
+    ['依赖项', item.dependencies]
+  ];
+  return rows.filter(([, value]) => Boolean(value?.trim()));
 }
 
 function resourceCellStatusLabel(status: ResourceCalendarCell['status']): string {
@@ -368,6 +393,7 @@ export default function DashboardView({
   const [resourceRangeFilter, setResourceRangeFilter] = useState<ResourceCalendarRangeFilter>('next4Weeks');
   const [resourceFullscreen, setResourceFullscreen] = useState(false);
   const [resourceCalendarRefreshing, setResourceCalendarRefreshing] = useState(false);
+  const [resourceTooltip, setResourceTooltip] = useState<ResourceCalendarTooltipState | null>(null);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
@@ -430,6 +456,8 @@ export default function DashboardView({
       const text = [
         item.projectName,
         item.projectId,
+        item.ownerOne,
+        item.pm,
         item.ownerPm,
         item.deliveryScope,
         item.weeklyProgress,
@@ -570,7 +598,7 @@ export default function DashboardView({
                   <strong>{item.projectName || '未命名项目'}</strong>
                   <span className={`cluster-risk-badge ${riskToneClass(item.riskLight)}`}>{item.riskLight}</span>
                 </div>
-                <span className="muted">{item.projectId || '未立项'} · {item.ownerPm || '未填 PM'}</span>
+                <span className="muted">{item.projectId || '未立项'} · {item.ownerOne || '未填1号位'} · {item.pm || item.ownerPm || '未填 PM'}</span>
                 <p>{excerpt(item.weeklyProgress || item.deliveryScope, 78)}</p>
                 <div className="cluster-card-tags">
                   <span>{keyDemoLabel(item.hasKeyDemo)}</span>
@@ -720,15 +748,30 @@ export default function DashboardView({
                             {lane.items.map((item) => {
                               const color = roadmapIconColor(item, deliveryRoadmap);
                               const xPercent = roadmapItemXPercent(item, fixedRoadmapQuarters);
+                              const detailRows = roadmapDetailRows(item);
                               if (xPercent === null) return null;
                               return (
-                                <article className="roadmap-node" key={item.id} style={{ left: `${xPercent}%`, color }}>
+                                <article className="roadmap-node" key={item.id} style={{ left: `${xPercent}%`, color }} tabIndex={0}>
                                   {item.hasFlag && <span className="roadmap-flag" />}
                                   <RoadmapCarIcon color={color} />
                                   <strong>{item.milestoneName || '未命名节点'}</strong>
                                   {item.techDetail && <span className="roadmap-tech">({item.techDetail})</span>}
                                   <span className="roadmap-node-dot" style={{ background: color }} />
                                   <em>{roadmapDateLabel(item)}</em>
+                                  <div className="roadmap-node-card">
+                                    <div className="roadmap-node-card-head">
+                                      <strong>{item.milestoneName || '未命名节点'}</strong>
+                                      {item.riskLevel && <span>{item.riskLevel}</span>}
+                                    </div>
+                                    <dl>
+                                      {detailRows.map(([label, value]) => (
+                                        <div key={label}>
+                                          <dt>{label}</dt>
+                                          <dd>{value}</dd>
+                                        </div>
+                                      ))}
+                                    </dl>
+                                  </div>
                                 </article>
                               );
                             })}
@@ -821,6 +864,27 @@ export default function DashboardView({
       conflictCount: filteredResourceConflicts.length
     };
   }, [filteredResourceCells, filteredResourceConflicts, filteredResourcePeople]);
+
+  function showResourceTooltip(target: HTMLElement, person: ResourceCalendarPerson, column: ResourceCalendarColumn, cell: ResourceCalendarDisplayCell) {
+    const rect = target.getBoundingClientRect();
+    const tooltipWidth = 280;
+    const margin = 16;
+    const x = Math.min(Math.max(rect.left + rect.width / 2, tooltipWidth / 2 + margin), window.innerWidth - tooltipWidth / 2 - margin);
+    const hasRoomAbove = rect.top > 220;
+    setResourceTooltip({
+      x,
+      y: hasRoomAbove ? rect.top - 12 : rect.bottom + 12,
+      placement: hasRoomAbove ? 'top' : 'bottom',
+      personName: person.name,
+      label: column.tooltipLabel,
+      mode: column.mode,
+      cell
+    });
+  }
+
+  function hideResourceTooltip() {
+    setResourceTooltip(null);
+  }
 
   const resourceBoard = (
     <section className={`resource-calendar-board ${resourceFullscreen ? 'resource-calendar-fullscreen' : ''}`}>
@@ -964,30 +1028,17 @@ export default function DashboardView({
                     const displayCell = summarizeResourceCells(dailyCells);
                     const status = displayCell.status;
                     return (
-                      <div className={`resource-day-cell ${status}`} key={`${person.personId}-${column.key}`} tabIndex={0}>
+                      <div
+                        className={`resource-day-cell ${status}`}
+                        key={`${person.personId}-${column.key}`}
+                        tabIndex={0}
+                        onMouseEnter={(e) => showResourceTooltip(e.currentTarget, person, column, displayCell)}
+                        onMouseLeave={hideResourceTooltip}
+                        onFocus={(e) => showResourceTooltip(e.currentTarget, person, column, displayCell)}
+                        onBlur={hideResourceTooltip}
+                      >
                         <strong>{displayCell.allocatedPercent}%</strong>
                         <span>{resourceCellStatusLabel(status)}</span>
-                        <div className="resource-day-tooltip" role="tooltip">
-                          <strong>{person.name} · {column.tooltipLabel}</strong>
-                          <span>状态：{resourceCellStatusLabel(status)}</span>
-                          <span>可用：{displayCell.availablePercent}%</span>
-                          <span>
-                            {column.mode === 'week' ? '周均分配' : '已分配'}：
-                            {displayCell.allocatedPercent}% / {displayCell.allocatedDays} 人天
-                          </span>
-                          {(displayCell.projects.length || 0) > 0 ? (
-                            <div>
-                              {displayCell.projects.map((project, index) => (
-                                <p key={`${project.projectId || project.projectName}-${index}`}>
-                                  {project.projectName || project.projectId || '未命名项目'}：{column.mode === 'week' ? '活跃日均 ' : ''}{project.allocationPercent}%
-                                  {project.role ? ` · ${project.role}` : ''}
-                                </p>
-                              ))}
-                            </div>
-                          ) : (
-                            <p>暂无项目分配</p>
-                          )}
-                        </div>
                       </div>
                     );
                   })}
@@ -1182,6 +1233,7 @@ export default function DashboardView({
               <th>群聊 ChatID</th>
               <th>飞书 App Token</th>
               <th>飞书 Table ID</th>
+              <th>飞书 View ID</th>
               {canWrite && <th>操作</th>}
             </tr>
           </thead>
@@ -1346,6 +1398,25 @@ export default function DashboardView({
                     )}
                   </td>
 
+                  <td
+                    className={isEditing && projectEdit.editingField === 'feishuViewId' ? 'editing' : ''}
+                    onDoubleClick={() => canWrite && projectEdit.startEdit(project, 'feishuViewId')}
+                  >
+                    {isEditing && projectEdit.editingField === 'feishuViewId' ? (
+                      <input
+                        data-project-edit={`${project.id}-feishuViewId`}
+                        value={rowDraft.feishuViewId ?? ''}
+                        onChange={(e) => projectEdit.updateDraft('feishuViewId', e.target.value)}
+                        onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
+                        onBlur={() => projectEdit.finalize(project)}
+                      />
+                    ) : (
+                      rowDraft.feishuViewId
+                        ? <span title={rowDraft.feishuViewId ?? ''}>已配置</span>
+                        : <span className="muted">-</span>
+                    )}
+                  </td>
+
                   {canWrite && (
                     <td className="req-inline-actions">
                       {isEditing && isDirty ? (
@@ -1395,12 +1466,46 @@ export default function DashboardView({
               <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
               <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
               <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
+              <input name="feishuViewId" placeholder="飞书多维表格 View ID（可选，用于同表不同视图）" />
             </form>
           </div>
         </div>,
         document.body
       )}
       </>
+      )}
+
+      {resourceTooltip && canUsePortal && createPortal(
+        <div
+          className={`resource-day-floating-tooltip ${resourceTooltip.placement}`}
+          style={{
+            left: resourceTooltip.x,
+            top: resourceTooltip.y,
+            transform: resourceTooltip.placement === 'top' ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
+          }}
+          role="tooltip"
+        >
+          <strong>{resourceTooltip.personName} · {resourceTooltip.label}</strong>
+          <span>状态：{resourceCellStatusLabel(resourceTooltip.cell.status)}</span>
+          <span>可用：{resourceTooltip.cell.availablePercent}%</span>
+          <span>
+            {resourceTooltip.mode === 'week' ? '周均分配' : '已分配'}：
+            {resourceTooltip.cell.allocatedPercent}% / {resourceTooltip.cell.allocatedDays} 人天
+          </span>
+          {(resourceTooltip.cell.projects.length || 0) > 0 ? (
+            <div>
+              {resourceTooltip.cell.projects.map((project, index) => (
+                <p key={`${project.projectId || project.projectName}-${index}`}>
+                  {project.projectName || project.projectId || '未命名项目'}：{resourceTooltip.mode === 'week' ? '活跃日均 ' : ''}{project.allocationPercent}%
+                  {project.role ? ` · ${project.role}` : ''}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p>暂无项目分配</p>
+          )}
+        </div>,
+        document.body
       )}
 
       {selectedClusterProject && canUsePortal && createPortal(
@@ -1412,12 +1517,14 @@ export default function DashboardView({
                   {selectedClusterProject.riskLight}
                 </span>
                 <h3>{selectedClusterProject.projectName || '未命名项目'}</h3>
-                <p className="muted">{selectedClusterProject.projectId || '未立项'} · {selectedClusterProject.ownerPm || '未填 PM'}</p>
+                <p className="muted">{selectedClusterProject.projectId || '未立项'} · {selectedClusterProject.ownerOne || '未填1号位'} · {selectedClusterProject.pm || selectedClusterProject.ownerPm || '未填 PM'}</p>
               </div>
               <button className="btn" type="button" onClick={() => setSelectedClusterProject(null)}>关闭</button>
             </div>
             {[
               ['交付范围', selectedClusterProject.deliveryScope],
+              ['项目1号位', selectedClusterProject.ownerOne],
+              ['PM', selectedClusterProject.pm || selectedClusterProject.ownerPm],
               ['近期重点演示', keyDemoLabel(selectedClusterProject.hasKeyDemo)],
               ['周进展（PM）', selectedClusterProject.weeklyProgress],
               ['Daily 风险求助（PM）', selectedClusterProject.dailyRiskHelp],

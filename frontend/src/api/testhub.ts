@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from './client';
+import { API_BASE, TOKEN_KEY, apiDelete, apiGet, apiPatch, apiPost, apiPostForm } from './client';
 
 // --- Bug ---
 export type BugStatus = 'open' | 'in_progress' | 'resolved' | 'closed' | 'rejected';
@@ -13,6 +13,15 @@ export interface Bug {
   title: string;
   description?: string | null;
   steps?: string | null;
+  clientContext?: string | null;
+  memoryContext?: string | null;
+  expectedResult?: string | null;
+  actualResult?: string | null;
+  targetPerson?: string | null;
+  requestId?: string | null;
+  fixStatus?: string | null;
+  issueCreatedAt?: string | null;
+  lastModifiedAt?: string | null;
   severity: BugSeverity;
   priority: BugPriority;
   status: BugStatus;
@@ -35,11 +44,38 @@ export interface BugListResponse {
   pageSize: number;
 }
 
+export interface BugImportResult {
+  summary: {
+    total: number;
+    success: number;
+    failed: number;
+    skipped: number;
+    created: number;
+    updated: number;
+  };
+  results: Array<{
+    row: number;
+    id?: number;
+    title?: string;
+    status: 'success' | 'failed' | 'skipped';
+    message: string;
+  }>;
+}
+
 export interface CreateBugPayload {
   projectId: number;
   title: string;
   description?: string;
   steps?: string;
+  clientContext?: string;
+  memoryContext?: string;
+  expectedResult?: string;
+  actualResult?: string;
+  targetPerson?: string;
+  requestId?: string;
+  fixStatus?: string;
+  issueCreatedAt?: string;
+  lastModifiedAt?: string;
   severity?: BugSeverity;
   priority?: BugPriority;
   testCaseId?: number;
@@ -51,6 +87,15 @@ export interface UpdateBugPayload {
   title?: string;
   description?: string | null;
   steps?: string | null;
+  clientContext?: string | null;
+  memoryContext?: string | null;
+  expectedResult?: string | null;
+  actualResult?: string | null;
+  targetPerson?: string | null;
+  requestId?: string | null;
+  fixStatus?: string | null;
+  issueCreatedAt?: string | null;
+  lastModifiedAt?: string | null;
   severity?: BugSeverity;
   priority?: BugPriority;
   status?: BugStatus;
@@ -95,6 +140,55 @@ export async function updateBug(id: number, payload: UpdateBugPayload): Promise<
 
 export async function deleteBug(id: number): Promise<void> {
   await apiDelete(`/bugs/${id}`);
+}
+
+export async function importBugs(projectId: number, file: File): Promise<BugImportResult> {
+  const body = new FormData();
+  body.append('file', file);
+  return apiPostForm<BugImportResult>(`/bugs/import?projectId=${projectId}`, body);
+}
+
+export async function exportBugs(query: {
+  projectId?: number;
+  status?: BugStatus;
+  severity?: BugSeverity;
+  priority?: BugPriority;
+  assigneeId?: number;
+  search?: string;
+}): Promise<void> {
+  const qs = new URLSearchParams();
+  if (query.projectId != null) qs.set('projectId', String(query.projectId));
+  if (query.status) qs.set('status', query.status);
+  if (query.severity) qs.set('severity', query.severity);
+  if (query.priority) qs.set('priority', query.priority);
+  if (query.assigneeId != null) qs.set('assigneeId', String(query.assigneeId));
+  if (query.search) qs.set('search', query.search);
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const activeOrgId = localStorage.getItem('activeOrgId');
+  if (activeOrgId) headers['X-Org-Id'] = activeOrgId;
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const res = await fetch(`${API_BASE}/bugs/export${suffix}`, { headers });
+  if (!res.ok) {
+    let message = '';
+    try {
+      const body = await res.json();
+      message = typeof body?.message === 'string' ? body.message : '';
+    } catch {
+      message = '';
+    }
+    throw new Error(`GET /bugs/export failed${message ? `: ${message}` : ''}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `缺陷列表-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // --- Test Case ---

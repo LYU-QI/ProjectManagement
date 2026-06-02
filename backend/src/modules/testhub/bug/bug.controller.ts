@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, ParseIntPipe, Patch, Post, Query, Req, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { Roles } from '../../../modules/auth/roles.decorator';
 import { CreateBugDto, UpdateBugDto } from './dto/bug.dto';
 import { BugService } from './bug.service';
@@ -21,6 +23,34 @@ export class BugController {
     @Req() req?: { user?: AuthActor }
   ) {
     return this.service.list(req?.user, { projectId, status, severity, priority, assigneeId, search, page, pageSize });
+  }
+
+  @Get('export')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportExcel(
+    @Query('projectId', new ParseIntPipe({ optional: true })) projectId: number | undefined,
+    @Query('status') status: string | undefined,
+    @Query('severity') severity: string | undefined,
+    @Query('priority') priority: string | undefined,
+    @Query('assigneeId', new ParseIntPipe({ optional: true })) assigneeId: number | undefined,
+    @Query('search') search: string | undefined,
+    @Res() res: Response,
+    @Req() req?: { user?: AuthActor }
+  ) {
+    const buffer = await this.service.exportExcel(req?.user, { projectId, status, severity, priority, assigneeId, search });
+    res.setHeader('Content-Disposition', 'attachment; filename="bugs.xlsx"');
+    res.end(buffer);
+  }
+
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
+  importExcel(
+    @Query('projectId', ParseIntPipe) projectId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req?: { user?: AuthActor }
+  ) {
+    return this.service.importExcel(req?.user, projectId, file);
   }
 
   @Get(':id')

@@ -144,13 +144,15 @@ const PERMISSION_DEFINITIONS: Array<{
 
 const WORKSPACE_SCOPE_OPTIONS: Array<{ id: ViewKey; label: string; group: string }> = [
   { id: 'dashboard', label: '总览', group: '总览' },
+  { id: 'resource-maintenance', label: '资源维护台', group: '总览' },
+  { id: 'cluster-risk-maintenance', label: '集群风险状态维护台', group: '总览' },
+  { id: 'overdue-alerts', label: '延期预警', group: '总览' },
   { id: 'global', label: '全局检索', group: '总览' },
   { id: 'requirements', label: '项目与需求', group: '项目管理' },
   { id: 'work-items', label: '待办 / 问题池', group: '项目管理' },
   { id: 'schedule', label: '进度计划', group: '项目管理' },
   { id: 'milestone-board', label: '里程碑看板', group: '项目管理' },
   { id: 'resources', label: '资源视图', group: '项目管理' },
-  { id: 'resource-maintenance', label: '资源维护台', group: '项目管理' },
   { id: 'sprints', label: '迭代管理', group: '项目管理' },
   { id: 'bugs', label: '缺陷管理', group: '项目管理' },
   { id: 'test-plans', label: '测试管理', group: '项目管理' },
@@ -169,7 +171,8 @@ const WORKSPACE_SCOPE_OPTIONS: Array<{ id: ViewKey; label: string; group: string
   { id: 'feishu', label: '飞书集成', group: '协作' },
   { id: 'wiki', label: '知识库', group: '协作' },
   { id: 'notifications', label: '通知', group: '协作' },
-  { id: 'departments', label: '部门管理', group: '组织' }
+  { id: 'departments', label: '部门管理', group: '组织管理' },
+  { id: 'department-members', label: '部门成员', group: '组织管理' }
 ];
 
 const ADMIN_SCOPE_OPTIONS: Array<{ id: ViewKey; label: string; group: string }> = [

@@ -16,6 +16,7 @@ type Props = {
   activeOrgName?: string | null;
   selectedProjectName: string;
   selectedProjectId: number | null;
+  selectedProjectHasFeishuConfig: boolean;
   feishuForm: FeishuFormState;
   feishuMessage: string;
   feishuError: string;
@@ -76,6 +77,7 @@ export default function FeishuView({
   activeOrgName,
   selectedProjectName,
   selectedProjectId,
+  selectedProjectHasFeishuConfig,
   feishuForm,
   feishuMessage,
   feishuError,
@@ -173,7 +175,8 @@ export default function FeishuView({
   const [compactTable, setCompactTable] = usePersistentBoolean('ui:feishu:compactTable', false);
   const [submitFormOpen, setSubmitFormOpen] = usePersistentBoolean('ui:feishu:submitFormOpen', true);
   const visibleFields = FEISHU_FIELDS.filter((field) => visibleColumns.includes(field.key));
-  const usingProjectScopedTable = selectedProjectId != null;
+  const hasSelectedProject = selectedProjectId != null;
+  const usingProjectScopedTable = hasSelectedProject && selectedProjectHasFeishuConfig;
   const showIncomingRecovery = recoveryContext?.from === 'task-center' && recoveryContext.source === 'feishu';
   const showRecoveryBanner = pageRecoveryContext?.from === 'task-center' && pageRecoveryContext.source === 'feishu';
 
@@ -202,10 +205,15 @@ export default function FeishuView({
         orgName={activeOrgName}
         projectName={selectedProjectName}
         projectId={selectedProjectId}
-        scopeLabel={usingProjectScopedTable ? '项目级作用域' : '组织级作用域'}
-        sourceLabel={usingProjectScopedTable ? '项目绑定飞书多维表' : '全局飞书多维表'}
-        note={usingProjectScopedTable ? '当前列表已经按项目绑定的数据表读取，页面内不再把“所属项目”作为切表逻辑。' : '当前读取的是组织级全局飞书表，页面筛选只影响列表，不改变数据源。'}
+        scopeLabel={usingProjectScopedTable ? '项目级作用域' : hasSelectedProject ? '项目未绑定飞书表' : '组织级作用域'}
+        sourceLabel={usingProjectScopedTable ? '项目绑定飞书多维表' : hasSelectedProject ? '未配置项目级飞书多维表' : '全局飞书多维表'}
+        note={usingProjectScopedTable ? '当前列表已经按项目绑定的数据表或视图读取，页面内不再把“所属项目”作为切表逻辑。' : hasSelectedProject ? '当前项目没有配置飞书 App Token / Table ID，系统不会回退读取全局飞书表。View ID 可选，用于同一张表内按视图隔离。' : '当前读取的是组织级全局飞书表，页面筛选只影响列表，不改变数据源。'}
       />
+      {hasSelectedProject && !selectedProjectHasFeishuConfig && (
+        <div className="card warn" style={{ marginBottom: '1rem', padding: '0.9rem 1rem' }}>
+          项目「{selectedProjectName}」还没有绑定飞书多维表。请到项目管理中维护该项目的 Feishu App Token 和 Table ID 后再刷新飞书记录；如果多个项目共用同一张表，可继续填写 View ID。
+        </div>
+      )}
       {showRecoveryBanner && (
         <div className="task-center-recovery-banner">
           <div>
@@ -225,7 +233,7 @@ export default function FeishuView({
         <h3>飞书多维表格</h3>
         <p className="muted">
           当前读取数据源：
-          {usingProjectScopedTable ? ` 项目「${selectedProjectName}」绑定的飞书多维表` : ' 全局飞书多维表'}
+          {usingProjectScopedTable ? ` 项目「${selectedProjectName}」绑定的飞书多维表/视图` : hasSelectedProject ? ` 项目「${selectedProjectName}」未绑定飞书多维表` : ' 全局飞书多维表'}
         </p>
         {usingProjectScopedTable && (
           <p className="muted">

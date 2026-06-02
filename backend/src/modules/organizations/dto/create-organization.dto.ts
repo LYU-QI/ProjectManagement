@@ -2,7 +2,6 @@ import { IsString, IsOptional, IsEnum, IsNumber, Min } from 'class-validator';
 
 export class CreateOrganizationDto {
   @IsString()
-  @IsString()
   slug!: string;
 
   @IsString()

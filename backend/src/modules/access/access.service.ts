@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 
 export type AuthActor = {
   sub?: number;
+  name?: string;
   role?: string;
   organizationId?: string | null;
   orgRole?: string | null;

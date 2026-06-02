@@ -32,9 +32,12 @@ export interface DashboardOverview {
 export type ClusterRiskLight = '红灯' | '黄灯' | '绿灯' | '未填';
 
 export interface ClusterRiskBoardItem {
+  recordId: string;
   index: string;
   projectName: string;
   projectId: string;
+  ownerOne: string;
+  pm: string;
   ownerPm: string;
   riskLight: ClusterRiskLight;
   deliveryScope: string;
@@ -84,6 +87,14 @@ export interface DeliveryRoadmapItem {
   techDetail: string;
   iconStyle: string;
   hasFlag: boolean;
+  deliveryStatus: string;
+  vehicleOwner: string;
+  riskLevel: string;
+  keyRisk: string;
+  latestProgress: string;
+  nextAction: string;
+  dependencies: string;
+  updatedAt: string;
   laneId: string;
   xPercent: number;
 }
@@ -332,6 +343,7 @@ export interface ProjectItem {
   feishuChatIds?: string | null;
   feishuAppToken?: string | null;
   feishuTableId?: string | null;
+  feishuViewId?: string | null;
 }
 
 export interface CostEntryItem {

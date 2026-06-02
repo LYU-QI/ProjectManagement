@@ -458,6 +458,7 @@ export default function RequirementsView({
                 <th>群聊 ChatID</th>
                 <th>飞书 App Token</th>
                 <th>飞书 Table ID</th>
+                <th>飞书 View ID</th>
                 {canWrite && <th>操作</th>}
               </tr>
             </thead>
@@ -510,7 +511,7 @@ export default function RequirementsView({
                         rowDraft.alias || '-'
                       )}
                     </td>
-                    {(['startDate', 'endDate', 'feishuChatIds', 'feishuAppToken', 'feishuTableId'] as Array<keyof ProjectItem>).map((field) => (
+                    {(['startDate', 'endDate', 'feishuChatIds', 'feishuAppToken', 'feishuTableId', 'feishuViewId'] as Array<keyof ProjectItem>).map((field) => (
                       <td
                         key={`${project.id}-${String(field)}`}
                         className={isEditing && projectEdit.editingField === field ? 'editing' : ''}
@@ -525,7 +526,7 @@ export default function RequirementsView({
                             onKeyDown={(e) => onInlineKeyDown(e, () => onSaveProject(project), projectEdit.cancel)}
                             onBlur={() => projectEdit.finalize(project)}
                           />
-                        ) : field === 'feishuAppToken' || field === 'feishuTableId' ? (
+                        ) : field === 'feishuAppToken' || field === 'feishuTableId' || field === 'feishuViewId' ? (
                           rowDraft[field] ? <span title={String(rowDraft[field] ?? '')}>已配置</span> : <span className="muted">-</span>
                         ) : (
                           String(rowDraft[field] || '-')
@@ -831,6 +832,7 @@ export default function RequirementsView({
               <input name="feishuChatIds" placeholder="飞书群 ChatID（逗号分隔）" />
               <input name="feishuAppToken" placeholder="飞书多维表格 App Token（可选）" />
               <input name="feishuTableId" placeholder="飞书多维表格 Table ID（可选）" />
+              <input name="feishuViewId" placeholder="飞书多维表格 View ID（可选，用于同表不同视图）" />
             </form>
           </div>
         </div>

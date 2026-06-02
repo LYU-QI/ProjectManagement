@@ -16,6 +16,28 @@ type Actor = {
   orgRole?: string | null;
 };
 
+type DepartmentSyncStatus = 'matched' | 'pending' | 'system_unassigned' | 'unmatched';
+
+type DepartmentSyncPreviewItem = {
+  recordId: string;
+  personId: string;
+  name: string;
+  feishuDepartment: string;
+  systemDepartment: string;
+  status: DepartmentSyncStatus;
+  message: string;
+};
+
+type DepartmentSyncSummary = {
+  total: number;
+  matched: number;
+  pending: number;
+  systemUnassigned: number;
+  unmatched: number;
+  updated?: number;
+  createdDepartments?: number;
+};
+
 const FIELD_ALIASES = {
   people: {
     personId: '人员ID',
@@ -108,6 +130,7 @@ export class ResourceMaintenanceService {
         endDate: this.dateString(project.endDate)
       })),
       departments: this.uniqueFields(rows, ['部门']),
+      systemDepartments: await this.systemDepartmentOptions(actor?.organizationId ?? undefined),
       roles: this.uniqueFields(rows, ['角色']),
       levels: this.uniqueFields(rows, ['职级']),
       locations: this.uniqueFields(rows, ['地点']),
@@ -160,6 +183,109 @@ export class ResourceMaintenanceService {
   async updateAvailability(actor: Actor | undefined, recordId: string, input: Record<string, unknown>, req?: AuditableRequest) {
     this.assertCanMaintain(actor);
     return this.update('availability', actor, recordId, this.availabilityFields(input), req);
+  }
+
+  async previewDepartmentSync(actor?: Actor) {
+    this.assertCanMaintain(actor);
+    return this.buildDepartmentSyncPreview(actor);
+  }
+
+  async syncSystemDepartmentsToFeishu(actor?: Actor, req?: AuditableRequest) {
+    this.assertCanMaintain(actor);
+    const config = await this.getTableConfig('people', actor?.organizationId ?? undefined);
+    const preview = await this.buildDepartmentSyncPreview(actor);
+    const targets = preview.items.filter((item) => item.status === 'pending' && item.systemDepartment);
+    const results: Array<{ recordId: string; personId: string; name: string; status: 'success' | 'failed'; message: string }> = [];
+
+    for (const item of targets) {
+      try {
+        await this.feishuService.updateRecord(item.recordId, this.pickFields('people', { department: item.systemDepartment }), {
+          appToken: config.appToken,
+          tableId: config.tableId
+        });
+        results.push({ recordId: item.recordId, personId: item.personId, name: item.name, status: 'success', message: '已同步到飞书' });
+      } catch (err) {
+        results.push({
+          recordId: item.recordId,
+          personId: item.personId,
+          name: item.name,
+          status: 'failed',
+          message: err instanceof Error ? err.message : '飞书更新失败'
+        });
+      }
+    }
+
+    await this.invalidateResourceCalendarCache(actor);
+    const summary = {
+      ...preview.summary,
+      updated: results.filter((item) => item.status === 'success').length
+    };
+    this.setAudit(req, 'department_sync.system_to_feishu', undefined, { summary, results: results.slice(0, 100) });
+    return { summary, results, preview };
+  }
+
+  async fillSystemDepartmentsFromFeishu(actor?: Actor, req?: AuditableRequest) {
+    this.assertCanMaintain(actor);
+    const organizationId = actor?.organizationId;
+    if (!organizationId) throw new BadRequestException('缺少当前组织上下文');
+
+    const people = await this.list('people', actor);
+    const members = await this.prisma.orgMember.findMany({
+      where: { organizationId },
+      include: { user: { select: { id: true, name: true, username: true } } }
+    });
+    const memberByName = new Map(members.map((member) => [this.normalizeKey(member.user.name), member]));
+    let createdDepartments = 0;
+    const results: Array<{ personId: string; name: string; department: string; status: 'success' | 'failed' | 'skipped'; message: string }> = [];
+
+    for (const row of people.items) {
+      const personId = this.fieldText(row.fields, FIELD_ALIASES.people.personId);
+      const name = this.fieldText(row.fields, FIELD_ALIASES.people.name);
+      const department = this.fieldText(row.fields, FIELD_ALIASES.people.department);
+      if (!name || !department) {
+        results.push({ personId, name, department, status: 'skipped', message: '缺少姓名或部门' });
+        continue;
+      }
+      const member = memberByName.get(this.normalizeKey(name));
+      if (!member) {
+        results.push({ personId, name, department, status: 'failed', message: '飞书姓名未匹配到系统姓名' });
+        continue;
+      }
+      if (member.departmentId) {
+        results.push({ personId, name, department, status: 'skipped', message: '系统成员已有部门，未覆盖' });
+        continue;
+      }
+      try {
+        const before = await this.prisma.department.count({ where: { organizationId } });
+        const departmentId = await this.ensureDepartmentPath(organizationId, department);
+        const after = await this.prisma.department.count({ where: { organizationId } });
+        createdDepartments += Math.max(0, after - before);
+        await this.prisma.orgMember.update({
+          where: { userId_organizationId: { userId: member.userId, organizationId } },
+          data: { departmentId }
+        });
+        results.push({ personId, name, department, status: 'success', message: '已补齐系统部门' });
+      } catch (err) {
+        results.push({
+          personId,
+          name,
+          department,
+          status: 'failed',
+          message: err instanceof Error ? err.message : '补齐系统部门失败'
+        });
+      }
+    }
+
+    await this.invalidateResourceCalendarCache(actor);
+    const summary = {
+      total: people.items.length,
+      updated: results.filter((item) => item.status === 'success').length,
+      failed: results.filter((item) => item.status === 'failed').length,
+      skipped: results.filter((item) => item.status === 'skipped').length,
+      createdDepartments
+    };
+    this.setAudit(req, 'department_sync.feishu_to_system', undefined, { summary, results: results.slice(0, 100) });
+    return { summary, results };
   }
 
   private async list(kind: ResourceTableKind, actor?: Actor) {
@@ -334,6 +460,182 @@ export class ResourceMaintenanceService {
     return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh-CN'));
   }
 
+  private normalizeKey(value: unknown) {
+    return this.text(value).toLowerCase();
+  }
+
+  private normalizeDepartmentPath(value: unknown) {
+    return this.text(value).replace(/\\/g, '/').replace(/＞|>/g, '/').replace(/\s*\/\s*/g, ' / ');
+  }
+
+  private async systemDepartmentOptions(organizationId?: string) {
+    if (!organizationId) return [];
+    const departments = await this.prisma.department.findMany({
+      where: { organizationId },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, parentId: true }
+    });
+    return this.flattenDepartmentPaths(departments).map((item) => item.path);
+  }
+
+  private flattenDepartmentPaths(departments: Array<{ id: string; name: string; parentId: string | null }>) {
+    const byParent = new Map<string | null, Array<{ id: string; name: string; parentId: string | null }>>();
+    for (const department of departments) {
+      const siblings = byParent.get(department.parentId) ?? [];
+      siblings.push(department);
+      byParent.set(department.parentId, siblings);
+    }
+    for (const siblings of byParent.values()) {
+      siblings.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    }
+    const output: Array<{ id: string; path: string }> = [];
+    const visit = (parentId: string | null, prefix: string) => {
+      for (const department of byParent.get(parentId) ?? []) {
+        const path = prefix ? `${prefix} / ${department.name}` : department.name;
+        output.push({ id: department.id, path });
+        visit(department.id, path);
+      }
+    };
+    visit(null, '');
+    return output;
+  }
+
+  private async systemMemberDepartmentMap(organizationId?: string | null) {
+    if (!organizationId) return new Map<string, { departmentId: string | null; departmentPath: string; userId: number; name: string; duplicate: boolean }>();
+    const [members, departments] = await Promise.all([
+      this.prisma.orgMember.findMany({
+        where: { organizationId },
+        include: { user: { select: { id: true, name: true, username: true } } }
+      }),
+      this.prisma.department.findMany({
+        where: { organizationId },
+        select: { id: true, name: true, parentId: true }
+      })
+    ]);
+    const pathById = new Map(this.flattenDepartmentPaths(departments).map((item) => [item.id, item.path]));
+    const grouped = new Map<string, Array<{ departmentId: string | null; departmentPath: string; userId: number; name: string }>>();
+    for (const member of members) {
+      const userName = this.normalizeKey(member.user.name);
+      if (!userName) continue;
+      const list = grouped.get(userName) ?? [];
+      list.push({
+        userId: member.userId,
+        name: member.user.name,
+        departmentId: member.departmentId,
+        departmentPath: member.departmentId ? pathById.get(member.departmentId) ?? '' : ''
+      });
+      grouped.set(userName, list);
+    }
+    const map = new Map<string, { departmentId: string | null; departmentPath: string; userId: number; name: string; duplicate: boolean }>();
+    for (const [name, list] of grouped) {
+      if (list.length > 1) {
+        map.set(name, { ...list[0], duplicate: true });
+      } else {
+        map.set(name, { ...list[0], duplicate: false });
+      }
+    }
+    return map;
+  }
+
+  private async buildDepartmentSyncPreview(actor?: Actor): Promise<{ summary: DepartmentSyncSummary; items: DepartmentSyncPreviewItem[] }> {
+    const [people, memberMap] = await Promise.all([
+      this.list('people', actor),
+      this.systemMemberDepartmentMap(actor?.organizationId)
+    ]);
+    const items: DepartmentSyncPreviewItem[] = people.items.map((row) => {
+      const personId = this.fieldText(row.fields, FIELD_ALIASES.people.personId);
+      const name = this.fieldText(row.fields, FIELD_ALIASES.people.name);
+      const feishuDepartment = this.normalizeDepartmentPath(this.fieldText(row.fields, FIELD_ALIASES.people.department));
+      const member = memberMap.get(this.normalizeKey(name));
+      if (!member) {
+        return {
+          recordId: row.recordId,
+          personId,
+          name,
+          feishuDepartment,
+          systemDepartment: '',
+          status: 'unmatched',
+          message: '飞书姓名未匹配到系统姓名'
+        };
+      }
+      if (member.duplicate) {
+        return {
+          recordId: row.recordId,
+          personId,
+          name,
+          feishuDepartment,
+          systemDepartment: '',
+          status: 'unmatched',
+          message: '系统中存在同名成员，请先消除重名或改用更明确的匹配规则'
+        };
+      }
+      const systemDepartment = this.normalizeDepartmentPath(member.departmentPath);
+      if (!systemDepartment) {
+        return {
+          recordId: row.recordId,
+          personId,
+          name,
+          feishuDepartment,
+          systemDepartment,
+          status: 'system_unassigned',
+          message: '系统成员未分配部门，未覆盖飞书'
+        };
+      }
+      if (this.normalizeDepartmentPath(feishuDepartment) === systemDepartment) {
+        return {
+          recordId: row.recordId,
+          personId,
+          name,
+          feishuDepartment,
+          systemDepartment,
+          status: 'matched',
+          message: '部门一致'
+        };
+      }
+      return {
+        recordId: row.recordId,
+        personId,
+        name,
+        feishuDepartment,
+        systemDepartment,
+        status: 'pending',
+        message: '系统部门将覆盖飞书部门'
+      };
+    });
+    const summary: DepartmentSyncSummary = {
+      total: items.length,
+      matched: items.filter((item) => item.status === 'matched').length,
+      pending: items.filter((item) => item.status === 'pending').length,
+      systemUnassigned: items.filter((item) => item.status === 'system_unassigned').length,
+      unmatched: items.filter((item) => item.status === 'unmatched').length
+    };
+    return { summary, items };
+  }
+
+  private async ensureDepartmentPath(organizationId: string, rawPath: string) {
+    const parts = this.normalizeDepartmentPath(rawPath).split('/').map((item) => item.trim()).filter(Boolean);
+    if (parts.length === 0) throw new BadRequestException('部门不能为空');
+    let parentId: string | null = null;
+    let currentId = '';
+    for (const part of parts) {
+      const existing = await this.prisma.department.findFirst({
+        where: { organizationId, parentId, name: part },
+        select: { id: true }
+      });
+      if (existing) {
+        currentId = existing.id;
+      } else {
+        const created = await this.prisma.department.create({
+          data: { organizationId, parentId, name: part, sortOrder: 0 },
+          select: { id: true }
+        });
+        currentId = created.id;
+      }
+      parentId = currentId;
+    }
+    return currentId;
+  }
+
   private generatedId(prefix: string, partA: string, partB: string, dateMs: number) {
     const date = new Date(dateMs).toISOString().slice(0, 10).replace(/-/g, '');
     const random = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -387,7 +689,6 @@ export class ResourceMaintenanceService {
 
   private assertCanMaintain(actor?: Actor) {
     if (['super_admin', 'project_manager', 'dept_head'].includes(actor?.role ?? '')) return;
-    if (['owner', 'admin'].includes(actor?.orgRole ?? '')) return;
     throw new ForbiddenException('无权访问资源维护台');
   }
 

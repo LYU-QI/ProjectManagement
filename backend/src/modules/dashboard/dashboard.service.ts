@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { BugStatus, RequirementStatus, TaskStatus, WorkItemStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
@@ -9,9 +9,12 @@ import { FeishuService } from '../feishu/feishu.service';
 type ClusterRiskLight = '红灯' | '黄灯' | '绿灯' | '未填';
 
 type ClusterRiskBoardItem = {
+  recordId: string;
   index: string;
   projectName: string;
   projectId: string;
+  ownerOne: string;
+  pm: string;
   ownerPm: string;
   riskLight: ClusterRiskLight;
   deliveryScope: string;
@@ -63,6 +66,14 @@ type DeliveryRoadmapItem = {
   techDetail: string;
   iconStyle: string;
   hasFlag: boolean;
+  deliveryStatus: string;
+  vehicleOwner: string;
+  riskLevel: string;
+  keyRisk: string;
+  latestProgress: string;
+  nextAction: string;
+  dependencies: string;
+  updatedAt: string;
   laneId: string;
   xPercent: number;
 };
@@ -187,10 +198,13 @@ type ResourceCalendarResponse = {
 };
 
 const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo', string> = {
+  recordId: 'record_id',
   index: '序号',
-  projectName: '重点项目',
-  projectId: '项目ID（未立项不填）',
-  ownerPm: '项目1号位和PM',
+  projectName: '项目名称|重点项目|项目|名称',
+  projectId: '项目ID（未立项不填）|项目ID|项目编号',
+  ownerOne: '项目1号位|1号位|项目负责人',
+  pm: 'PM|项目经理',
+  ownerPm: '项目1号位和PM|PM|项目经理|负责人',
   riskLight: '风险情况',
   deliveryScope: '交付范围',
   keyDemo: '近期重点演示',
@@ -211,7 +225,15 @@ const DELIVERY_ROADMAP_FIELD_MAP: Record<string, string> = {
   milestoneName: 'milestone_name|里程碑名称',
   techDetail: 'tech_detail|技术细节',
   iconStyle: 'icon_style|图标样式',
-  hasFlag: 'has_flag|是否关键'
+  hasFlag: 'has_flag|是否关键',
+  deliveryStatus: '交付状态|delivery_status',
+  vehicleOwner: '车型负责人|负责人|vehicle_owner',
+  riskLevel: '风险等级|risk_level',
+  keyRisk: '关键风险|key_risk',
+  latestProgress: '最新进展|latest_progress',
+  nextAction: '下一步动作|next_action',
+  dependencies: '依赖项|dependencies',
+  updatedAt: '更新时间|updated_at'
 };
 
 const ROADMAP_ICON_META: Record<string, DeliveryRoadmapLegendItem> = {
@@ -369,7 +391,7 @@ export class DashboardService {
   }
 
   async clusterRiskBoard(actor?: AuthActor & { organizationId?: string }, force = false): Promise<ClusterRiskBoardResponse> {
-    const cacheKey = `dashboard:cluster-risk-board:${actor?.organizationId ?? 'global'}`;
+    const cacheKey = this.clusterRiskBoardCacheKey(actor);
     if (!force) {
       const cached = await this.redisService.get<ClusterRiskBoardResponse>(cacheKey);
       if (cached) return cached;
@@ -395,15 +417,75 @@ export class DashboardService {
         opts: { appToken, tableId }
       });
       const items = (data.items || [])
-        .map((record) => this.normalizeClusterRecord((record as { fields?: Record<string, unknown> })?.fields || {}, fieldMap))
-        .filter((item) => item.projectName || item.projectId || item.index)
+        .map((record) => this.normalizeClusterRecord(record as { record_id?: string; fields?: Record<string, unknown> }, fieldMap))
+        .filter((item) => item.projectName || item.projectId || item.index);
+      const visibleItems = await this.filterClusterRiskItemsForActor(items, actor);
+      visibleItems
         .sort((a, b) => this.riskSortWeight(a.riskLight) - this.riskSortWeight(b.riskLight));
-      const response = this.buildClusterRiskBoardResponse('feishu', items);
+      const response = this.buildClusterRiskBoardResponse('feishu', visibleItems);
       await this.redisService.set(cacheKey, response, this.cacheTtl);
       return response;
     } catch (err: any) {
       return this.emptyClusterRiskBoard('error', err?.message || '集群风险状态大看板数据加载失败。');
     }
+  }
+
+  async updateClusterRiskBoardItem(
+    recordId: string,
+    body: Record<string, unknown>,
+    actor?: AuthActor & { organizationId?: string }
+  ) {
+    if (!['super_admin', 'project_manager', 'pm'].includes(actor?.role ?? '')) {
+      throw new ForbiddenException('无权维护集群风险状态');
+    }
+    if (!recordId.trim()) throw new BadRequestException('缺少飞书记录ID');
+
+    const appToken = await this.getClusterConfig('CLUSTER_RISK_BOARD_APP_TOKEN', actor?.organizationId);
+    const tableId = await this.getClusterConfig('CLUSTER_RISK_BOARD_TABLE_ID', actor?.organizationId);
+    const fieldMapRaw = await this.getClusterConfig('CLUSTER_RISK_BOARD_FIELD_MAP', actor?.organizationId);
+    if (!appToken || !tableId) {
+      throw new BadRequestException('缺少 CLUSTER_RISK_BOARD_APP_TOKEN 或 CLUSTER_RISK_BOARD_TABLE_ID');
+    }
+
+    const fieldMap = this.parseClusterFieldMap(fieldMapRaw);
+    const current = await this.feishuService.getRecord(recordId, { appToken, tableId });
+    const currentItem = this.normalizeClusterRecord({ record_id: recordId, fields: current?.fields || {} }, fieldMap);
+    await this.assertCanUpdateClusterProject(currentItem, actor);
+
+    const tableFields = await this.feishuService.getTableFieldNames(appToken, tableId);
+    const fields = this.buildClusterUpdateFields(body, fieldMap, tableFields, actor?.role);
+    if (Object.keys(fields).length === 0) {
+      throw new BadRequestException('没有可更新的字段');
+    }
+    await this.feishuService.updateRawRecord(recordId, fields, { appToken, tableId });
+    await this.clearClusterRiskBoardCache(actor);
+    return { ok: true };
+  }
+
+  async createClusterRiskBoardItem(
+    body: Record<string, unknown>,
+    actor?: AuthActor & { organizationId?: string }
+  ) {
+    if (!['super_admin', 'project_manager'].includes(actor?.role ?? '')) {
+      throw new ForbiddenException('无权新增集群风险项目');
+    }
+
+    const appToken = await this.getClusterConfig('CLUSTER_RISK_BOARD_APP_TOKEN', actor?.organizationId);
+    const tableId = await this.getClusterConfig('CLUSTER_RISK_BOARD_TABLE_ID', actor?.organizationId);
+    const fieldMapRaw = await this.getClusterConfig('CLUSTER_RISK_BOARD_FIELD_MAP', actor?.organizationId);
+    if (!appToken || !tableId) {
+      throw new BadRequestException('缺少 CLUSTER_RISK_BOARD_APP_TOKEN 或 CLUSTER_RISK_BOARD_TABLE_ID');
+    }
+
+    const fieldMap = this.parseClusterFieldMap(fieldMapRaw);
+    const [nextIndex, tableFields] = await Promise.all([
+      this.nextClusterIndex(appToken, tableId, fieldMap),
+      this.feishuService.getTableFieldNames(appToken, tableId)
+    ]);
+    const fields = this.buildClusterCreateFields(body, fieldMap, nextIndex, tableFields);
+    const result = await this.feishuService.createRawRecord(fields, { appToken, tableId }) as Record<string, unknown>;
+    await this.clearClusterRiskBoardCache(actor);
+    return { ok: true, recordId: result?.record_id };
   }
 
   async deliveryRoadmap(actor?: AuthActor & { organizationId?: string }, force = false): Promise<DeliveryRoadmapResponse> {
@@ -494,7 +576,7 @@ export class DashboardService {
           : Promise.resolve({ items: [] })
       ]);
 
-      const people = (peopleData.items || []).flatMap((record, index) => {
+      const feishuPeople = (peopleData.items || []).flatMap((record, index) => {
         const row = record as { record_id?: string; recordId?: string; id?: string; fields?: Record<string, unknown> };
         const person = this.normalizeResourcePerson(row.fields || {}, fieldMap, row.record_id || row.recordId || row.id || `person-${index + 1}`);
         return person.name || person.personId ? [person] : [];
@@ -510,6 +592,7 @@ export class DashboardService {
         return (item.personId || item.name) && item.date ? [item] : [];
       });
 
+      const people = await this.applySystemDepartmentsToResourcePeople(feishuPeople, actor?.organizationId);
       const response = this.buildResourceCalendarResponse(people, allocations, availability);
       await this.redisService.set(cacheKey, response, this.cacheTtl);
       return response;
@@ -789,14 +872,21 @@ export class DashboardService {
     };
   }
 
-  private normalizeClusterRecord(fields: Record<string, unknown>, fieldMap: Record<string, string>): ClusterRiskBoardItem {
+  private normalizeClusterRecord(record: { record_id?: string; fields?: Record<string, unknown> }, fieldMap: Record<string, string>): ClusterRiskBoardItem {
+    const fields = record.fields || {};
     const get = (key: keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo') => this.fieldValue(fields, fieldMap[key] || CLUSTER_FIELD_MAP[key]);
     const qualityLevel = get('qualityLevel') || this.findBlankHeaderValue(fields) || this.inferQualityLevel(get('qualityGap'));
+    const ownerOne = get('ownerOne');
+    const pm = get('pm');
+    const legacyOwnerPm = get('ownerPm');
     return {
+      recordId: record.record_id || '',
       index: get('index'),
       projectName: get('projectName'),
       projectId: get('projectId'),
-      ownerPm: get('ownerPm'),
+      ownerOne,
+      pm,
+      ownerPm: legacyOwnerPm || [ownerOne, pm].filter(Boolean).join(' / '),
       riskLight: this.normalizeRiskLight(get('riskLight')),
       deliveryScope: get('deliveryScope'),
       hasKeyDemo: this.normalizeYesNo(get('keyDemo')),
@@ -806,6 +896,183 @@ export class DashboardService {
       qualityGap: get('qualityGap'),
       qualityLevel
     };
+  }
+
+  private buildClusterUpdateFields(body: Record<string, unknown>, fieldMap: Record<string, string>, tableFields?: Set<string>, actorRole?: string) {
+    const allowed: Array<[string, keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'>]> = [
+      ['projectId', 'projectId'],
+      ['ownerOne', 'ownerOne'],
+      ['riskLight', 'riskLight'],
+      ['weeklyProgress', 'weeklyProgress'],
+      ['dailyRiskHelp', 'dailyRiskHelp'],
+      ['riskResolution', 'riskResolution'],
+      ['deliveryScope', 'deliveryScope'],
+      ['qualityGap', 'qualityGap'],
+      ['qualityLevel', 'qualityLevel']
+    ];
+    if (actorRole !== 'pm') {
+      allowed.unshift(['pm', 'pm']);
+      allowed.unshift(['projectName', 'projectName']);
+    }
+    const fields: Record<string, unknown> = {};
+    for (const [bodyKey, fieldKey] of allowed) {
+      if (Object.prototype.hasOwnProperty.call(body, bodyKey)) {
+        const configuredField = fieldMap[fieldKey] || CLUSTER_FIELD_MAP[fieldKey];
+        const targetField = tableFields ? this.pickWritableClusterField(tableFields, configuredField) : configuredField;
+        if (targetField) fields[targetField] = String(body[bodyKey] ?? '').trim();
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'hasKeyDemo')) {
+      const value = body.hasKeyDemo;
+      const configuredField = fieldMap.keyDemo || CLUSTER_FIELD_MAP.keyDemo;
+      const targetField = tableFields ? this.pickWritableClusterField(tableFields, configuredField) : configuredField;
+      if (targetField) fields[targetField] = value === null ? '' : value ? '是' : '否';
+    }
+    return fields;
+  }
+
+  private buildClusterCreateFields(body: Record<string, unknown>, fieldMap: Record<string, string>, nextIndex: string, tableFields: Set<string>) {
+    const projectName = String(body.projectName ?? '').trim();
+    const pm = String(body.pm ?? body.ownerPm ?? '').trim();
+    if (!projectName) throw new BadRequestException('项目名称不能为空');
+    if (!pm) throw new BadRequestException('PM不能为空');
+
+    const fields = this.buildClusterUpdateFields(body, fieldMap, tableFields);
+    const projectNameField = this.pickWritableClusterField(tableFields, fieldMap.projectName || CLUSTER_FIELD_MAP.projectName, ['项目名称', '重点项目', '项目', '名称']);
+    if (!projectNameField) {
+      throw new BadRequestException('集群风险表缺少可写的项目名称字段，请在 CLUSTER_RISK_BOARD_FIELD_MAP 中配置 projectName 对应字段。');
+    }
+    const indexField = this.pickWritableClusterField(tableFields, fieldMap.index || CLUSTER_FIELD_MAP.index, ['序号', '编号', '排序']);
+    const baseFields: Record<string, unknown> = {
+      [projectNameField]: projectName
+    };
+    if (indexField) baseFields[indexField] = nextIndex;
+    const optionalFields: Array<[string, keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'>]> = [
+      ['projectId', 'projectId'],
+      ['ownerOne', 'ownerOne'],
+      ['pm', 'pm']
+    ];
+    for (const [bodyKey, fieldKey] of optionalFields) {
+      const value = String(body[bodyKey] ?? '').trim();
+      const targetField = this.pickWritableClusterField(tableFields, fieldMap[fieldKey] || CLUSTER_FIELD_MAP[fieldKey]);
+      if (value && targetField) baseFields[targetField] = value;
+    }
+    const riskLightField = this.pickWritableClusterField(tableFields, fieldMap.riskLight || CLUSTER_FIELD_MAP.riskLight);
+    if (riskLightField && !fields[riskLightField]) {
+      fields[riskLightField] = '未填';
+    }
+    return { ...baseFields, ...fields };
+  }
+
+  private pickWritableClusterField(tableFields: Set<string>, preferred: string, fallbacks: string[] = []) {
+    const candidates = [
+      ...String(preferred || '').split(/[|,，]/),
+      ...fallbacks
+    ].map((item) => item.trim()).filter(Boolean);
+    const fields = Array.from(tableFields.values());
+    for (const candidate of candidates) {
+      const exact = fields.find((field) => field === candidate);
+      if (exact) return exact;
+      const normalizedCandidate = this.normalizeFieldHeader(candidate);
+      const normalized = fields.find((field) => this.normalizeFieldHeader(field) === normalizedCandidate);
+      if (normalized) return normalized;
+    }
+    return '';
+  }
+
+  private async nextClusterIndex(appToken: string, tableId: string, fieldMap: Record<string, string>) {
+    const data = await this.feishuService.listRecords({
+      pageSize: 500,
+      opts: { appToken, tableId }
+    });
+    const indexField = fieldMap.index || CLUSTER_FIELD_MAP.index;
+    const maxIndex = (data.items || []).reduce((max, record: any) => {
+      const raw = this.fieldValue(record?.fields || {}, indexField);
+      const match = raw.match(/\d+/);
+      if (!match) return max;
+      const value = Number(match[0]);
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, 0);
+    return String(maxIndex + 1);
+  }
+
+  private async assertCanUpdateClusterProject(item: ClusterRiskBoardItem, actor?: AuthActor & { organizationId?: string }) {
+    if (await this.canAccessClusterProject(item, actor)) return;
+    throw new ForbiddenException('只能维护自己负责的项目状态');
+  }
+
+  private async filterClusterRiskItemsForActor(items: ClusterRiskBoardItem[], actor?: AuthActor & { organizationId?: string }) {
+    if (actor?.role === 'super_admin' || actor?.role === 'project_manager') return items;
+    const visible: ClusterRiskBoardItem[] = [];
+    for (const item of items) {
+      if (await this.canAccessClusterProject(item, actor)) visible.push(item);
+    }
+    return visible;
+  }
+
+  private async canAccessClusterProject(item: ClusterRiskBoardItem, actor?: AuthActor & { organizationId?: string }) {
+    if (actor?.role === 'super_admin' || actor?.role === 'project_manager') return true;
+    const accessibleProjectIds = await this.accessService.getAccessibleProjectIds(actor);
+    if (accessibleProjectIds === null) return true;
+    const numericProjectId = Number(item.projectId);
+    if (Number.isInteger(numericProjectId) && accessibleProjectIds.includes(numericProjectId)) return true;
+    const projectName = item.projectName.trim();
+    if (projectName) {
+      const project = await this.prisma.project.findFirst({
+        where: {
+          organizationId: actor?.organizationId || undefined,
+          OR: [
+            { name: projectName },
+            { alias: projectName }
+          ]
+        },
+        select: { id: true }
+      });
+      if (project && accessibleProjectIds.includes(project.id)) return true;
+    }
+    return this.isDelegatedClusterPm(item.pm || item.ownerPm, actor);
+  }
+
+  private clusterRiskBoardCacheKey(actor?: AuthActor & { organizationId?: string }) {
+    const orgId = actor?.organizationId ?? 'global';
+    if (actor?.role === 'super_admin' || actor?.role === 'project_manager') {
+      return `dashboard:cluster-risk-board:${orgId}:all`;
+    }
+    return `dashboard:cluster-risk-board:${orgId}:user:${actor?.sub ?? 'anonymous'}:${actor?.role ?? 'unknown'}`;
+  }
+
+  private async clearClusterRiskBoardCache(actor?: AuthActor & { organizationId?: string }) {
+    await this.redisService.delPattern(`dashboard:cluster-risk-board:${actor?.organizationId ?? 'global'}:*`);
+  }
+
+  private async isDelegatedClusterPm(ownerPm: string, actor?: AuthActor) {
+    const delegatedNames = this.splitClusterPmNames(ownerPm);
+    if (!delegatedNames.size) return false;
+
+    const actorNames = new Set<string>();
+    if (actor?.name?.trim()) actorNames.add(this.normalizeClusterPmName(actor.name));
+    if (actor?.sub) {
+      const user = await this.prisma.user.findUnique({
+        where: { id: actor.sub },
+        select: { name: true, username: true }
+      });
+      if (user?.name) actorNames.add(this.normalizeClusterPmName(user.name));
+      if (user?.username) actorNames.add(this.normalizeClusterPmName(user.username));
+    }
+    return Array.from(actorNames).some((name) => Boolean(name) && delegatedNames.has(name));
+  }
+
+  private splitClusterPmNames(value: string) {
+    return new Set(
+      String(value || '')
+        .split(/[\s,，、/／;；|｜&+()（）【】\[\]<>《》]+/)
+        .map((item) => this.normalizeClusterPmName(item))
+        .filter(Boolean)
+    );
+  }
+
+  private normalizeClusterPmName(value: string) {
+    return String(value || '').trim().toLowerCase();
   }
 
   private parseClusterFieldMap(raw?: string | null): Record<string, string> {
@@ -881,6 +1148,14 @@ export class DashboardService {
       techDetail: get('techDetail'),
       iconStyle: get('iconStyle') || 'unknown',
       hasFlag: this.normalizeBoolean(get('hasFlag')),
+      deliveryStatus: get('deliveryStatus'),
+      vehicleOwner: get('vehicleOwner'),
+      riskLevel: get('riskLevel'),
+      keyRisk: get('keyRisk'),
+      latestProgress: get('latestProgress'),
+      nextAction: get('nextAction'),
+      dependencies: get('dependencies'),
+      updatedAt: this.normalizeDateText(get('updatedAt')) || get('updatedAt'),
       laneId: `${categoryL1}::${categoryL2}`
     };
   }
@@ -962,6 +1237,66 @@ export class DashboardService {
       });
     }
     return Array.from(map.values());
+  }
+
+  private async applySystemDepartmentsToResourcePeople(people: ResourcePerson[], organizationId?: string | null): Promise<ResourcePerson[]> {
+    if (!organizationId || people.length === 0) return people;
+    const [members, departments] = await Promise.all([
+      this.prisma.orgMember.findMany({
+        where: { organizationId },
+        include: { user: { select: { name: true } } }
+      }),
+      this.prisma.department.findMany({
+        where: { organizationId },
+        select: { id: true, name: true, parentId: true }
+      })
+    ]);
+    const departmentPathById = new Map(this.flattenDepartmentPaths(departments).map((item) => [item.id, item.path]));
+    const departmentCandidatesByName = new Map<string, string[]>();
+    for (const member of members) {
+      const userName = this.normalizeResourceLookup(member.user.name);
+      const departmentPath = member.departmentId ? departmentPathById.get(member.departmentId) : '';
+      if (!userName || !departmentPath) continue;
+      const list = departmentCandidatesByName.get(userName) ?? [];
+      list.push(departmentPath);
+      departmentCandidatesByName.set(userName, list);
+    }
+    const systemDepartmentByName = new Map<string, string>();
+    for (const [name, departments] of departmentCandidatesByName) {
+      if (departments.length === 1) {
+        systemDepartmentByName.set(name, departments[0]);
+      }
+    }
+    return people.map((person) => {
+      const systemDepartment = systemDepartmentByName.get(this.normalizeResourceLookup(person.name));
+      return systemDepartment ? { ...person, department: systemDepartment } : person;
+    });
+  }
+
+  private flattenDepartmentPaths(departments: Array<{ id: string; name: string; parentId: string | null }>) {
+    const byParent = new Map<string | null, Array<{ id: string; name: string; parentId: string | null }>>();
+    for (const department of departments) {
+      const siblings = byParent.get(department.parentId) ?? [];
+      siblings.push(department);
+      byParent.set(department.parentId, siblings);
+    }
+    for (const siblings of byParent.values()) {
+      siblings.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
+    }
+    const output: Array<{ id: string; path: string }> = [];
+    const visit = (parentId: string | null, prefix: string) => {
+      for (const department of byParent.get(parentId) ?? []) {
+        const path = prefix ? `${prefix} / ${department.name}` : department.name;
+        output.push({ id: department.id, path });
+        visit(department.id, path);
+      }
+    };
+    visit(null, '');
+    return output;
+  }
+
+  private normalizeResourceLookup(value: unknown) {
+    return String(value ?? '').trim().toLowerCase();
   }
 
   private resourcePersonKey(value: Pick<ResourcePerson | ResourceAllocation | ResourceAvailability, 'personId' | 'name'>): string {

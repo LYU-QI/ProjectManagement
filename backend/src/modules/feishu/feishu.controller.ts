@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { FeishuService } from './feishu.service';
 import { ListRecordsQueryDto } from './feishu.dto';
 import { Roles } from '../auth/roles.decorator';
@@ -49,14 +49,23 @@ export class FeishuController {
   private async resolveFeishuConfig(projectId?: string) {
     if (!projectId) return {};
     const id = Number(projectId);
-    if (!Number.isFinite(id)) return {};
+    if (!Number.isFinite(id)) {
+      throw new BadRequestException('项目 ID 无效，无法读取项目级飞书多维表。');
+    }
     const project = await this.prisma.project.findUnique({
       where: { id },
-      select: { feishuAppToken: true, feishuTableId: true }
+      select: { name: true, feishuAppToken: true, feishuTableId: true, feishuViewId: true }
     });
+    if (!project) {
+      throw new BadRequestException('项目不存在，无法读取项目级飞书多维表。');
+    }
+    if (!project.feishuAppToken || !project.feishuTableId) {
+      throw new BadRequestException(`项目「${project.name}」未配置飞书多维表 App Token / Table ID，请先在项目管理中维护项目级飞书配置。`);
+    }
     return {
-      appToken: project?.feishuAppToken || undefined,
-      tableId: project?.feishuTableId || undefined
+      appToken: project.feishuAppToken,
+      tableId: project.feishuTableId,
+      viewId: project.feishuViewId || undefined
     };
   }
 
@@ -71,7 +80,7 @@ export class FeishuController {
     return this.feishuService.listRecords({
       pageSize: query.pageSize ? Number(query.pageSize) : undefined,
       pageToken: query.pageToken,
-      viewId: query.viewId,
+      viewId: query.viewId || opts.viewId,
       filter: query.filter,
       sort: query.sort,
       fieldNames: query.fieldNames,
