@@ -19,10 +19,13 @@ export type ResourceMaintenanceOptions = {
     name: string;
     role: string;
     department: string;
+    skillTags?: string;
     level: string;
     location: string;
     dailyCapacity: string;
     status: string;
+    isKeyResource?: string;
+    resourceStatus?: string;
   }>;
   projects: Array<{
     projectId: string;
@@ -37,6 +40,10 @@ export type ResourceMaintenanceOptions = {
   levels: string[];
   locations: string[];
   statuses: string[];
+  skillTags?: string[];
+  resourceStatuses?: string[];
+  keyResourceOptions?: string[];
+  allocationConfirmStatuses?: string[];
   allocationTypes: string[];
   availabilityTypes: string[];
 };

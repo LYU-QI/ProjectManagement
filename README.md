@@ -9,6 +9,7 @@
 - `backend/` 后端服务（默认 3000）
 - `frontend/` 前端应用（默认 5173）
 - `docs/api.md` 接口速查
+- `docs/deployment.md` 云端部署指南
 - `docs/permission-architecture.md` 多项目权限架构方案
 - `docs/permission-dev-plan.md` 权限控制开发计划
 - `spec.md` 技术规格说明书

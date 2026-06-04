@@ -140,19 +140,29 @@ export default function FeishuView({
   const columnHintMap: Partial<Record<keyof FeishuFormState, string>> = {
     任务ID: '唯一任务标识',
     任务名称: '任务标题展示',
+    任务类型: '事项类型分层',
     状态: '任务状态筛选',
     优先级: '优先级分层',
     负责人: '责任人展示',
+    协作人: '参与人展示',
     开始时间: '计划开始时间',
     截止时间: '计划截止时间',
+    承诺时间: '对外承诺时间',
+    完成时间: '实际完成时间',
     进度: '进度百分比',
     所属项目: '项目归属',
     是否阻塞: '阻塞状态',
     阻塞原因: '阻塞说明',
     风险等级: '风险分级',
+    风险原因: '风险原因说明',
+    下一步动作: '闭环动作',
+    动作截止时间: '动作闭环时间',
     '依赖/前置条件': '进度计划前置依赖说明',
-    里程碑: '关键节点标识'
+    里程碑: '关键节点标识',
+    更新时间: '数据更新时间',
+    更新人: '最近更新人'
   };
+  const dateFieldKeys = new Set<keyof FeishuFormState>(['开始时间', '截止时间', '承诺时间', '完成时间', '动作截止时间', '更新时间']);
 
   const toggleAllColumns = (checked: boolean) => {
     if (checked) {
@@ -512,7 +522,7 @@ export default function FeishuView({
                         const name = isEditing ? String(value ?? '') : originalForm.负责人;
                         return name || '-';
                       }
-                      if (field.key === '开始时间' || field.key === '截止时间') {
+                      if (dateFieldKeys.has(field.key)) {
                         return formatDateValue(value) || '-';
                       }
                       if (field.key === '进度') {

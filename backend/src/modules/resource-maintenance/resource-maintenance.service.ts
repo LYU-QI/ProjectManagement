@@ -44,10 +44,13 @@ const FIELD_ALIASES = {
     name: '姓名',
     role: '角色',
     department: '部门',
+    skillTags: '技能标签',
     level: '职级',
     location: '地点',
     dailyCapacity: '日标准产能',
     status: '状态',
+    isKeyResource: '是否关键资源',
+    resourceStatus: '资源状态',
     remark: '备注'
   },
   allocations: {
@@ -62,6 +65,7 @@ const FIELD_ALIASES = {
     allocationPercent: '投入比例',
     allocationDays: '投入人天',
     allocationType: '分配类型',
+    allocationConfirmStatus: '分配确认状态',
     remark: '备注'
   },
   availability: {
@@ -115,10 +119,13 @@ export class ResourceMaintenanceService {
             name,
             role: this.fieldText(fields, '角色'),
             department: this.fieldText(fields, '部门'),
+            skillTags: this.fieldText(fields, '技能标签'),
             level: this.fieldText(fields, '职级'),
             location: this.fieldText(fields, '地点'),
             dailyCapacity: this.fieldText(fields, '日标准产能') || '1',
-            status: this.fieldText(fields, '状态')
+            status: this.fieldText(fields, '状态'),
+            isKeyResource: this.fieldText(fields, '是否关键资源'),
+            resourceStatus: this.fieldText(fields, '资源状态')
           };
         })
         .filter(Boolean),
@@ -135,6 +142,10 @@ export class ResourceMaintenanceService {
       levels: this.uniqueFields(rows, ['职级']),
       locations: this.uniqueFields(rows, ['地点']),
       statuses: this.uniqueFields(rows, ['状态'], ['在岗', '停用', '离职']),
+      skillTags: this.uniqueFields(rows, ['技能标签']),
+      resourceStatuses: this.uniqueFields(rows, ['资源状态'], ['可用', '部分可用', '不可用']),
+      keyResourceOptions: this.uniqueFields(rows, ['是否关键资源'], ['是', '否']),
+      allocationConfirmStatuses: this.uniqueFields(rows, ['分配确认状态'], ['草稿', '已确认', '待调整']),
       allocationTypes: this.uniqueFields(rows, ['分配类型'], ['项目投入', '售前支持', '研发支持', '测试支持']),
       availabilityTypes: this.uniqueFields(rows, ['不可用类型'], ['请假', '出差', '培训', '节假日', '临时占用'])
     };
@@ -359,10 +370,13 @@ export class ResourceMaintenanceService {
       name,
       role: this.requiredText(input.role, '角色'),
       department: this.requiredText(input.department, '部门'),
+      skillTags: this.text(input.skillTags),
       level: this.text(input.level),
       location: this.text(input.location),
       dailyCapacity: String(this.positiveNumber(input.dailyCapacity, '日标准产能', 1)),
       status: this.text(input.status) || '在岗',
+      isKeyResource: this.text(input.isKeyResource),
+      resourceStatus: this.text(input.resourceStatus),
       remark: this.text(input.remark)
     });
   }
@@ -391,6 +405,7 @@ export class ResourceMaintenanceService {
       allocationPercent,
       allocationDays: String(allocationDays),
       allocationType: this.text(input.allocationType),
+      allocationConfirmStatus: this.text(input.allocationConfirmStatus),
       remark: this.text(input.remark)
     });
   }

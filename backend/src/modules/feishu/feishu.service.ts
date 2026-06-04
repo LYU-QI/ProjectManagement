@@ -318,6 +318,14 @@ export class FeishuService {
     const assigneeKey = this.resolveFieldName('负责人');
     const startKey = this.resolveFieldName('开始时间');
     const endKey = this.resolveFieldName('截止时间');
+    const dateKeys = [
+      startKey,
+      endKey,
+      this.resolveFieldName('承诺时间'),
+      this.resolveFieldName('完成时间'),
+      this.resolveFieldName('动作截止时间'),
+      this.resolveFieldName('更新时间')
+    ];
     const progressKey = this.resolveFieldName('进度');
 
     const normalized: Record<string, unknown> = { ...withMultiSelect };
@@ -333,11 +341,10 @@ export class FeishuService {
         normalized[assigneeKey] = normalizedAssignee;
       }
     }
-    if (!partial || hasField(startKey)) {
-      normalized[startKey] = this.normalizeDate(withMultiSelect[startKey]);
-    }
-    if (!partial || hasField(endKey)) {
-      normalized[endKey] = this.normalizeDate(withMultiSelect[endKey]);
+    for (const dateKey of dateKeys) {
+      if (!partial || hasField(dateKey)) {
+        normalized[dateKey] = this.normalizeDate(withMultiSelect[dateKey]);
+      }
     }
     if (!partial || hasField(progressKey)) {
       normalized[progressKey] = this.normalizeProgress(withMultiSelect[progressKey]);
@@ -658,6 +665,9 @@ export class FeishuService {
         const filtered: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(normalized)) {
           if (existingFields.has(key)) filtered[key] = value;
+        }
+        if (Object.keys(filtered).length === 0) {
+          return { ok: true, skipped: true, message: '没有可写入该飞书表格的字段。' };
         }
         return this.request(
           `/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}${userIdType}`,
