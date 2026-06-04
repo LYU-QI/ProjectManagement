@@ -61,6 +61,22 @@ interface ChatActor {
   organizationId?: string | null;
 }
 
+interface WebSearchResult {
+  title: string;
+  url: string;
+  content: string;
+  score?: number;
+  publishedDate?: string;
+}
+
+interface WebSearchContext {
+  enabled: boolean;
+  query: string;
+  answer?: string;
+  results: WebSearchResult[];
+  error?: string;
+}
+
 @Injectable()
 export class AiService {
   constructor(
@@ -541,6 +557,130 @@ ${detailBlocks}`
       .replace(/<think>[\s\S]*$/gi, '')
       .replace(/<thinking>[\s\S]*$/gi, '')
       .trim();
+  }
+
+  private isWebSearchIntent(message: string): boolean {
+    const normalized = message.toLowerCase();
+    const keywords = [
+      '联网',
+      '搜索',
+      '查一下',
+      '查下',
+      '搜一下',
+      '最新',
+      '实时',
+      '新闻',
+      '资讯',
+      '今天有哪些',
+      '今天有什么',
+      '现在',
+      'recent',
+      'latest',
+      'news',
+      'search',
+      'web'
+    ];
+    return keywords.some((keyword) => normalized.includes(keyword));
+  }
+
+  private async buildWebSearchContext(message: string): Promise<WebSearchContext | null> {
+    if (!this.isWebSearchIntent(message)) return null;
+
+    const apiKey = this.configService.getRawValue('TAVILY_API_KEY');
+    if (!apiKey) {
+      return {
+        enabled: false,
+        query: message,
+        results: [],
+        error: 'TAVILY_API_KEY 未配置'
+      };
+    }
+
+    const isNewsQuery = /新闻|资讯|news/i.test(message);
+    try {
+      const response = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          query: message,
+          topic: isNewsQuery ? 'news' : 'general',
+          search_depth: 'advanced',
+          include_answer: true,
+          include_raw_content: false,
+          max_results: 6
+        })
+      });
+
+      if (!response.ok) {
+        const detail = await response.text().catch(() => '');
+        return {
+          enabled: true,
+          query: message,
+          results: [],
+          error: `Tavily 搜索失败：${response.status}${detail ? ` ${detail.slice(0, 160)}` : ''}`
+        };
+      }
+
+      const data = await response.json() as {
+        answer?: string;
+        results?: {
+          title?: string;
+          url?: string;
+          content?: string;
+          score?: number;
+          published_date?: string;
+        }[];
+      };
+      const results = (data.results || [])
+        .filter((item) => item.title || item.url || item.content)
+        .map((item) => ({
+          title: item.title || '未命名结果',
+          url: item.url || '',
+          content: item.content || '',
+          score: item.score,
+          publishedDate: item.published_date
+        }));
+
+      return {
+        enabled: true,
+        query: message,
+        answer: data.answer,
+        results
+      };
+    } catch (err) {
+      return {
+        enabled: true,
+        query: message,
+        results: [],
+        error: err instanceof Error ? err.message : String(err)
+      };
+    }
+  }
+
+  private formatWebSearchContext(context: WebSearchContext | null): string {
+    if (!context) return '';
+    if (!context.enabled) {
+      return `\n联网搜索状态：未启用。原因：${context.error || '未配置 Tavily'}。\n`;
+    }
+    if (context.error) {
+      return `\n联网搜索状态：已尝试但失败。查询：${context.query}。错误：${context.error}。\n`;
+    }
+    const resultLines = context.results.length > 0
+      ? context.results.map((item, index) => {
+        const published = item.publishedDate ? ` | 发布时间=${item.publishedDate}` : '';
+        return `${index + 1}. 标题=${item.title}${published}\n   URL=${item.url || '-'}\n   摘要=${item.content || '-'}`;
+      }).join('\n')
+      : '无搜索结果';
+    return `
+联网搜索结果（Tavily）：
+查询：${context.query}
+搜索摘要：${context.answer || '-'}
+结果：
+${resultLines}
+`;
   }
 
   private isOperationIntent(message: string): boolean {
@@ -1340,6 +1480,9 @@ ${detailBlocks}`
       };
     }
 
+    const webSearchContext = await this.buildWebSearchContext(input.message);
+    const webSearchText = this.formatWebSearchContext(webSearchContext);
+
     // 获取实时项目上下文数据 (RAG)
     const allProjects = await this.prisma.project.findMany({
       select: { id: true, name: true, alias: true, budget: true, startDate: true, endDate: true }
@@ -1369,11 +1512,12 @@ ${detailBlocks}`
 当前账号暂无可访问项目，且当前页面未提供项目上下文。
 
 你可以正常回答通用问题、闲聊、解释系统使用方式、回答日期时间类问题。
-如果用户询问实时新闻、实时价格、实时政策等需要联网检索的内容，请说明你当前没有实时联网检索能力，只能基于已有知识给出一般性背景、判断框架或建议用户查看权威来源。
+如果用户询问实时新闻、实时价格、实时政策等需要联网检索的内容，请优先使用下面的联网搜索结果；如果搜索失败或未配置，再说明当前无法完成实时检索。
 如果用户询问项目进度、风险、成本、需求、任务、飞书记录等项目数据，或要求创建/修改项目相关数据，请明确说明当前没有可访问项目数据，需要先选择项目或联系管理员分配项目权限。
 不要编造任何项目数据。
 
-当前时间锚点：今天是 ${localDate}，当前本地时间 ${localDateTime}。`;
+当前时间锚点：今天是 ${localDate}，当前本地时间 ${localDateTime}。
+${webSearchText}`;
       const messages: ChatCompletionMessage[] = [{ role: 'system', content: systemPrompt }];
       if (input.history && input.history.length > 0) {
         messages.push(...input.history.slice(-10).map((item) => ({
@@ -1387,7 +1531,8 @@ ${detailBlocks}`
         accessibleProjectCount: 0,
         scope: 'general_chat_without_project_context',
         localDate,
-        localDateTime
+        localDateTime,
+        webSearch: webSearchContext
       })];
 
       try {
@@ -1624,7 +1769,8 @@ ${detailBlocks}`
         detailScope,
         localDate,
         localDateTime,
-        isoDate
+        isoDate,
+        webSearch: webSearchContext
       })
     ];
     const toolCalls: Array<Record<string, unknown>> = [];
@@ -1691,12 +1837,13 @@ ${feishuTaskDetailLines}
     const systemPrompt = `你是 Astraea AI Assistant，集成在 AstraeaFlow 项目管理系统中的通用 AI 助手，同时具备项目管理分析能力。
 你的目标是先判断用户问题类型：
 1. 如果是闲聊、日期时间、通用知识、写作、解释概念、技术咨询等非项目问题，正常回答，不要因为系统集成在项目管理平台中而拒绝。
-2. 如果是实时新闻、实时价格、实时政策等需要联网检索的内容，请说明你当前没有实时联网检索能力，只能基于已有知识给出一般性背景、判断框架或建议用户查看权威来源。
+2. 如果是实时新闻、实时价格、实时政策等需要联网检索的内容，请优先使用下面的联网搜索结果；如果搜索失败或未配置，再说明当前无法完成实时检索。
 3. 如果是项目进度、风险、成本、需求、任务、飞书记录等项目数据问题，才使用下方项目上下文作答。
 4. 如果用户要求创建、修改、删除项目数据，只能在明确识别到授权范围和操作目标时执行；否则先说明缺少的信息。
 请保持回复简洁、专业且具有行动导向。
 
 ${dataContext}
+${webSearchText}
 
 注意：
 - 如果当前页面已选中项目，那么用户提到“当前项目”“本项目”“这个项目”时，默认指当前页面选中项目；只有当用户明确点名其他项目时，才切换解释范围。
