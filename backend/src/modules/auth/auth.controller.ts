@@ -24,6 +24,18 @@ class RegisterDto {
   name!: string;
 }
 
+class InitialPasswordChangeDto {
+  @IsNotEmpty()
+  username!: string;
+
+  @IsNotEmpty()
+  currentPassword!: string;
+
+  @IsNotEmpty()
+  @MinLength(6)
+  nextPassword!: string;
+}
+
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -39,5 +51,10 @@ export class AuthController {
   async register(@Body() body: RegisterDto) {
     return this.authService.register(body.username, body.password, body.name);
   }
-}
 
+  @Public()
+  @Post('initial-password')
+  async changeInitialPassword(@Body() body: InitialPasswordChangeDto) {
+    return this.authService.changeInitialPassword(body.username, body.currentPassword, body.nextPassword);
+  }
+}

@@ -270,6 +270,7 @@ model User {
   name          String
   username      String?             @unique
   password      String?
+  mustChangePassword Boolean        @default(false)
   role          UserRole
   feishuOpenId  String?
   feishuUnionId String?

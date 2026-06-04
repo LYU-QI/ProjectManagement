@@ -229,6 +229,11 @@ function App() {
     }
   });
   const [registerMode, setRegisterMode] = useState(false);
+  const [initialPasswordChange, setInitialPasswordChange] = useState<{
+    username: string;
+    currentPassword: string;
+    name?: string;
+  } | null>(null);
   const {
     view,
     setView,
@@ -470,21 +475,70 @@ function App() {
     const username = String(form.get('username') || '');
     const password = String(form.get('password') || '');
     try {
-      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/login', { username, password });
-      localStorage.setItem(TOKEN_KEY, res.token);
-      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-      // Clear any stale activeOrgId from a previous session before re-populating
-      useOrgStore.getState().clear();
-      const { setActiveOrg, setOrgList } = useOrgStore.getState();
-      if (res.orgList?.length) {
-        setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
-        setActiveOrg(res.organizationId);
+      const res = await apiPost<
+        | { token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }
+        | { mustChangePassword: true; user: AuthUser & { username?: string | null } }
+      >('/auth/login', { username, password });
+      if (!('token' in res)) {
+        setInitialPasswordChange({
+          username: String(res.user.username || username).trim(),
+          currentPassword: password,
+          name: res.user.name
+        });
+        setMessage('首次登录需要重新设置密码。');
+        formEl?.reset();
+        return;
       }
-      setToken(res.token);
-      setUser(res.user);
+      completeLogin(res);
       formEl?.reset();
     } catch {
       setError('登录失败，请检查账号密码。');
+    }
+  }
+
+  function completeLogin(res: { token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }) {
+    localStorage.setItem(TOKEN_KEY, res.token);
+    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+    // Clear any stale activeOrgId from a previous session before re-populating
+    useOrgStore.getState().clear();
+    const { setActiveOrg, setOrgList } = useOrgStore.getState();
+    if (res.orgList?.length) {
+      setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
+      setActiveOrg(res.organizationId);
+    }
+    setInitialPasswordChange(null);
+    setRegisterMode(false);
+    setToken(res.token);
+    setUser(res.user);
+  }
+
+  async function submitInitialPasswordChange(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!initialPasswordChange) return;
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
+    const nextPassword = String(form.get('nextPassword') || '');
+    const confirmPassword = String(form.get('confirmPassword') || '');
+    setMessage('');
+    setError('');
+    if (nextPassword !== confirmPassword) {
+      setError('两次输入的新密码不一致。');
+      return;
+    }
+    if (nextPassword === initialPasswordChange.currentPassword) {
+      setError('新密码不能与临时密码相同。');
+      return;
+    }
+    try {
+      const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/initial-password', {
+        username: initialPasswordChange.username,
+        currentPassword: initialPasswordChange.currentPassword,
+        nextPassword
+      });
+      completeLogin(res);
+      formEl?.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '密码修改失败');
     }
   }
 
@@ -498,19 +552,8 @@ function App() {
     const name = String(form.get('name') || '');
     try {
       const res = await apiPost<{ token: string; user: AuthUser; organizationId: string; orgList: Array<{ orgId: string; orgName: string; orgRole: string }> }>('/auth/register', { username, password, name });
-      localStorage.setItem(TOKEN_KEY, res.token);
-      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-      // Clear any stale activeOrgId from a previous session before re-populating
-      useOrgStore.getState().clear();
-      const { setActiveOrg, setOrgList } = useOrgStore.getState();
-      if (res.orgList?.length) {
-        setOrgList(res.orgList.map(o => ({ id: o.orgId, name: o.orgName, orgRole: o.orgRole as 'owner' | 'admin' | 'member' | 'viewer' })));
-        setActiveOrg(res.organizationId);
-      }
-      setToken(res.token);
-      setUser(res.user);
+      completeLogin(res);
       formEl?.reset();
-      setRegisterMode(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : '注册失败');
     }
@@ -2383,49 +2426,101 @@ function App() {
   if (!token) {
     return (
       <div className="login-screen">
-        <div className="login-card">
-          <h2>Astraea <span>Flow</span></h2>
-          <div className="app-login-subtitle">统一指挥中心</div>
-          {registerMode ? (
-            <form className="form app-login-form" onSubmit={submitRegister}>
-              <div>
-                <label className="app-login-label">用户名</label>
-                <input name="username" placeholder="选择一个用户名" required minLength={3} />
-              </div>
-              <div>
-                <label className="app-login-label">密码</label>
-                <input name="password" type="password" placeholder="至少6位" required minLength={6} />
-              </div>
-              <div>
-                <label className="app-login-label">显示名称</label>
-                <input name="name" placeholder="你的姓名" required />
-              </div>
-              <button className="btn btn-primary app-login-submit" type="submit">
-                创建账号
-              </button>
-              <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(false)}>
-                已有账号？登录
-              </button>
-            </form>
-          ) : (
-            <form className="form app-login-form" onSubmit={submitLogin}>
-              <div>
-                <label className="app-login-label">账号</label>
-                <input name="username" placeholder="请输入账号" required />
-              </div>
-              <div>
-                <label className="app-login-label">密码</label>
-                <input name="password" type="password" placeholder="***" required />
-              </div>
-              <button className="btn btn-primary app-login-submit" type="submit">
-                登录系统
-              </button>
-              <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(true)}>
-                创建新账号
-              </button>
-            </form>
-          )}
-          {error && <p className="warn app-login-error">[错误]：{error}</p>}
+        <div className={`login-card ${initialPasswordChange ? 'is-password-change' : registerMode ? 'is-register' : 'is-login'}`}>
+          <section className="app-login-hero" aria-label="ProjectLVQI">
+            <div>
+              <div className="app-login-kicker">PROJECTLVQI</div>
+              <h2>ProjectLVQI</h2>
+              <p>项目管理控制台</p>
+            </div>
+            <div className="app-login-display" aria-hidden="true">
+              <span className="app-login-display-line is-top" />
+              <span className="app-login-display-line is-middle" />
+              <span className="app-login-display-line is-bottom" />
+              <span className="app-login-display-node is-primary" />
+              <span className="app-login-display-node is-secondary" />
+              <span className="app-login-display-node is-tertiary" />
+            </div>
+            <div className="app-login-status-grid" aria-hidden="true">
+              <div><span>组织</span><strong>READY</strong></div>
+              <div><span>项目</span><strong>ONLINE</strong></div>
+              <div><span>交付</span><strong>SYNC</strong></div>
+            </div>
+          </section>
+
+          <section className="app-login-panel">
+            <div className="app-login-heading">
+              <span>{initialPasswordChange ? 'PASSWORD RESET' : registerMode ? 'CREATE ACCOUNT' : 'SECURE ACCESS'}</span>
+              <h3>{initialPasswordChange ? '设置新密码' : registerMode ? '创建新账号' : '登录系统'}</h3>
+              <p>{initialPasswordChange ? '首次登录需要替换管理员设置的临时密码。' : '请输入账号和密码进入工作台。'}</p>
+            </div>
+            {initialPasswordChange ? (
+              <form className="form app-login-form" onSubmit={submitInitialPasswordChange}>
+                <div className="app-login-notice">
+                  <strong>{initialPasswordChange.name || initialPasswordChange.username}</strong>
+                  <span>完成后自动进入系统。</span>
+                </div>
+                <div>
+                  <label className="app-login-label">新密码</label>
+                  <input name="nextPassword" type="password" placeholder="至少6位，不能与临时密码相同" required minLength={6} />
+                </div>
+                <div>
+                  <label className="app-login-label">确认新密码</label>
+                  <input name="confirmPassword" type="password" placeholder="再次输入新密码" required minLength={6} />
+                </div>
+                <button className="btn btn-primary app-login-submit" type="submit">
+                  保存新密码并登录
+                </button>
+                <button className="btn app-login-switch" type="button" onClick={() => {
+                  setInitialPasswordChange(null);
+                  setMessage('');
+                  setError('');
+                }}>
+                  返回登录
+                </button>
+              </form>
+            ) : registerMode ? (
+              <form className="form app-login-form" onSubmit={submitRegister}>
+                <div>
+                  <label className="app-login-label">用户名</label>
+                  <input name="username" placeholder="选择一个用户名" required minLength={3} />
+                </div>
+                <div>
+                  <label className="app-login-label">密码</label>
+                  <input name="password" type="password" placeholder="至少6位" required minLength={6} />
+                </div>
+                <div>
+                  <label className="app-login-label">显示名称</label>
+                  <input name="name" placeholder="你的姓名" required />
+                </div>
+                <button className="btn btn-primary app-login-submit" type="submit">
+                  创建账号
+                </button>
+                <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(false)}>
+                  已有账号？登录
+                </button>
+              </form>
+            ) : (
+              <form className="form app-login-form" onSubmit={submitLogin}>
+                <div>
+                  <label className="app-login-label">账号</label>
+                  <input name="username" placeholder="请输入账号" required />
+                </div>
+                <div>
+                  <label className="app-login-label">密码</label>
+                  <input name="password" type="password" placeholder="***" required />
+                </div>
+                <button className="btn btn-primary app-login-submit" type="submit">
+                  登录系统
+                </button>
+                <button className="btn app-login-switch" type="button" onClick={() => setRegisterMode(true)}>
+                  创建新账号
+                </button>
+              </form>
+            )}
+            {message && <p className="app-login-message">{message}</p>}
+            {error && <p className="warn app-login-error">[错误]：{error}</p>}
+          </section>
         </div>
       </div>
     );

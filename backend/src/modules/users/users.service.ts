@@ -81,6 +81,7 @@ export class UsersService {
         username,
         name,
         password: input.password,
+        mustChangePassword: true,
         role: input.role
       },
       select: {
@@ -154,7 +155,7 @@ export class UsersService {
 
     await this.prisma.user.update({
       where: { id },
-      data: { password: nextPassword }
+      data: { password: nextPassword, mustChangePassword: true }
     });
     const result = { id, username: target.username, ok: true };
     this.setAuditMeta(req, {

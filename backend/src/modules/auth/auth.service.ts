@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../database/prisma.service';
 
@@ -22,7 +22,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.create({
-      data: { username, password, name, role: 'member' }
+      data: { username, password, name, role: 'member', mustChangePassword: false }
     });
 
     // New users join the default organization (created by seed/admin)
@@ -63,6 +63,18 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.mustChangePassword) {
+      return {
+        mustChangePassword: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          role: user.role,
+          username: user.username
+        }
+      };
+    }
+
     const memberships = await this.prisma.orgMember.findMany({
       where: { userId: user.id },
       include: { organization: true }
@@ -92,5 +104,35 @@ export class AuthService {
       organizationId: defaultOrg.orgId,
       orgList
     };
+  }
+
+  async changeInitialPassword(username: string, currentPassword: string, nextPassword: string) {
+    const normalizedUsername = username.trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({
+      where: { username: normalizedUsername }
+    });
+    if (!user || !user.password || user.password !== currentPassword) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (!user.mustChangePassword) {
+      throw new BadRequestException('当前账号不需要首次修改密码');
+    }
+    const trimmedNext = nextPassword.trim();
+    if (trimmedNext.length < 6) {
+      throw new BadRequestException('新密码至少需要 6 位');
+    }
+    if (trimmedNext === user.password) {
+      throw new BadRequestException('新密码不能与临时密码相同');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: trimmedNext,
+        mustChangePassword: false
+      }
+    });
+
+    return this.login(normalizedUsername, trimmedNext);
   }
 }
