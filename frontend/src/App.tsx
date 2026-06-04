@@ -1112,6 +1112,7 @@ function App() {
     }
     const form = new FormData(formEl);
     const payloadForm: FeishuFormState = {
+      ...FEISHU_DEFAULT_FORM,
       任务ID: String(form.get('taskId') || '').trim(),
       任务名称: String(form.get('title') || '').trim(),
       状态: String(form.get('status') || '待办').trim(),
@@ -1143,6 +1144,7 @@ function App() {
     }
     const form = new FormData(formEl);
     const payloadForm: FeishuFormState = {
+      ...FEISHU_DEFAULT_FORM,
       任务ID: String(form.get('milestoneId') || '').trim(),
       任务名称: String(form.get('name') || '').trim(),
       状态: String(form.get('status') || '待办').trim(),
@@ -1727,18 +1729,27 @@ function App() {
     return {
       任务ID: String(fields['任务ID'] ?? ''),
       任务名称: String(fields['任务名称'] ?? ''),
+      任务类型: String(fields['任务类型'] ?? ''),
       状态: String(fields['状态'] ?? '待办'),
       优先级: String(fields['优先级'] ?? '中'),
       负责人: extractAssigneeName(fields['负责人']),
+      协作人: String(fields['协作人'] ?? ''),
       开始时间: normalizeDateInput(fields['开始时间']),
       截止时间: normalizeDateInput(fields['截止时间']),
+      承诺时间: normalizeDateInput(fields['承诺时间']),
+      完成时间: normalizeDateInput(fields['完成时间']),
       进度: normalizeProgress(fields['进度']),
       所属项目: String(fields['所属项目'] ?? ''),
       是否阻塞: String(fields['是否阻塞'] ?? '否'),
       阻塞原因: String(fields['阻塞原因'] ?? ''),
       风险等级: String(fields['风险等级'] ?? '中'),
+      风险原因: String(fields['风险原因'] ?? ''),
+      下一步动作: String(fields['下一步动作'] ?? ''),
+      动作截止时间: normalizeDateInput(fields['动作截止时间']),
       '依赖/前置条件': String(readFeishuField(fields, ['依赖/前置条件', '依赖/前置', '依赖 / 前置条件', '依赖 / 前置', '依赖前置条件', '依赖前置', '前置条件', '任务依赖']) ?? ''),
-      里程碑: String(fields['里程碑'] ?? '否')
+      里程碑: String(fields['里程碑'] ?? '否'),
+      更新时间: normalizeDateInput(fields['更新时间']),
+      更新人: String(fields['更新人'] ?? '')
     };
   }
 
@@ -1753,21 +1764,26 @@ function App() {
     const payload: Record<string, unknown> = {
       任务ID: form.任务ID.trim(),
       任务名称: form.任务名称.trim(),
+      任务类型: form.任务类型.trim(),
       状态: form.状态.trim(),
       优先级: form.优先级.trim(),
       负责人: form.负责人.trim(),
+      协作人: form.协作人.trim(),
       所属项目: form.所属项目.trim(),
       是否阻塞: form.是否阻塞.trim(),
       阻塞原因: form.阻塞原因.trim(),
       风险等级: form.风险等级.trim(),
+      风险原因: form.风险原因.trim(),
+      下一步动作: form.下一步动作.trim(),
       '依赖/前置': form['依赖/前置条件'].trim(),
-      里程碑: form.里程碑.trim()
+      里程碑: form.里程碑.trim(),
+      更新人: form.更新人.trim()
     };
 
-    const start = form.开始时间 ? new Date(form.开始时间).getTime() : null;
-    const end = form.截止时间 ? new Date(form.截止时间).getTime() : null;
-    payload['开始时间'] = Number.isFinite(start) ? start : null;
-    payload['截止时间'] = Number.isFinite(end) ? end : null;
+    FEISHU_DATE_FIELDS.forEach((field) => {
+      const time = form[field] ? new Date(form[field]).getTime() : null;
+      payload[field] = Number.isFinite(time) ? time : null;
+    });
 
     const progress = Number(form.进度);
     payload['进度'] = Number.isFinite(progress) ? progress : null;
@@ -2238,7 +2254,7 @@ function App() {
     return String(value);
   }
 
-  const FEISHU_DATE_FIELDS: Array<keyof FeishuFormState> = ['开始时间', '截止时间'];
+  const FEISHU_DATE_FIELDS: Array<keyof FeishuFormState> = ['开始时间', '截止时间', '承诺时间', '完成时间', '动作截止时间', '更新时间'];
 
   function formatDateValue(value: unknown) {
     if (value === null || value === undefined || value === '') return null;

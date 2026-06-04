@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useMemo, useState } from 'react';
+import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   ClusterRiskBoardItem,
@@ -113,6 +113,47 @@ function excerpt(value: string, max = 96): string {
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
+type ClusterDetailField = {
+  label: string;
+  value: string;
+  tone?: 'default' | 'danger' | 'action';
+  wide?: boolean;
+};
+
+type ClusterDetailGroup = {
+  id: string;
+  label: string;
+  fields: ClusterDetailField[];
+};
+
+function cleanDetailValue(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function clusterDetailField(label: string, value: unknown, options: Omit<ClusterDetailField, 'label' | 'value'> = {}): ClusterDetailField | null {
+  const text = cleanDetailValue(value);
+  if (!text) return null;
+  return { label, value: text, ...options };
+}
+
+function ClusterDetailValue({ field }: { field: ClusterDetailField }) {
+  const isLong = field.value.length > 180 || field.value.includes('\n');
+  if (isLong) {
+    return (
+      <details className="cluster-detail-long" open={field.value.length <= 260}>
+        <summary>{field.label}</summary>
+        <p>{field.value}</p>
+      </details>
+    );
+  }
+  return (
+    <div className={`cluster-detail-data ${field.wide ? 'wide' : ''} ${field.tone || ''}`}>
+      <span>{field.label}</span>
+      <strong>{field.value}</strong>
+    </div>
+  );
+}
+
 function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
   return {
     totalProjects: items.length,
@@ -127,7 +168,8 @@ function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
 }
 
 function roadmapDateLabel(item: DeliveryRoadmapItem): string {
-  const date = item.targetDate ? item.targetDate.slice(5).replace('-', '/') : (item.targetQuarter || '未定');
+  const primaryDate = item.plannedDeliveryDate || item.targetDate;
+  const date = primaryDate ? primaryDate.slice(5).replace('-', '/') : (item.targetQuarter || '未定');
   return item.isTbd ? `${date}（待定）` : date;
 }
 
@@ -137,7 +179,11 @@ function roadmapIconColor(item: DeliveryRoadmapItem, roadmap: DeliveryRoadmapRes
 
 function roadmapDetailRows(item: DeliveryRoadmapItem): Array<[string, string]> {
   const rows: Array<[string, string]> = [
+    ['车型/版本', item.vehicleVersionName],
+    ['里程碑类型', item.milestoneType],
     ['计划交付', roadmapDateLabel(item)],
+    ['承诺交付', item.committedDeliveryDate],
+    ['实际完成', item.actualDeliveryDate],
     ['技术细节', item.techDetail],
     ['交付状态', item.deliveryStatus],
     ['车型负责人', item.vehicleOwner],
@@ -396,6 +442,81 @@ export default function DashboardView({
   const [resourceTooltip, setResourceTooltip] = useState<ResourceCalendarTooltipState | null>(null);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
 
+  useEffect(() => {
+    if (!selectedClusterProject || typeof window === 'undefined') return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedClusterProject(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedClusterProject]);
+
+  const clusterDetail = useMemo(() => {
+    if (!selectedClusterProject) return null;
+    const project = selectedClusterProject;
+    const needsEscalation = cleanDetailValue(project.needsEscalation);
+    const escalationRequest = cleanDetailValue(project.escalationRequest);
+    const actionMeta = [project.actionOwner, project.actionDueDate].map(cleanDetailValue).filter(Boolean).join(' · ');
+    const focusCards = [
+      clusterDetailField('关键风险摘要', project.keyRiskSummary || project.dailyRiskHelp || project.riskResolution, { tone: 'danger', wide: true }),
+      clusterDetailField('下一步动作', [project.nextAction, actionMeta].filter(Boolean).join('\n'), { tone: 'action', wide: true }),
+      needsEscalation || escalationRequest
+        ? clusterDetailField('需管理层支持', [needsEscalation, escalationRequest].filter(Boolean).join('\n'), { tone: 'danger', wide: true })
+        : null
+    ].filter((item): item is ClusterDetailField => Boolean(item));
+    const groups: ClusterDetailGroup[] = [
+      {
+        id: 'risk',
+        label: '风险与支持',
+        fields: [
+          clusterDetailField('风险情况', project.riskLight),
+          clusterDetailField('风险趋势', project.riskTrend),
+          clusterDetailField('主要风险类型', project.riskCategory),
+          clusterDetailField('关键风险摘要', project.keyRiskSummary, { tone: 'danger', wide: true }),
+          clusterDetailField('风险影响范围', project.riskImpact, { wide: true }),
+          clusterDetailField('是否需管理层支持', project.needsEscalation),
+          clusterDetailField('需支持事项', project.escalationRequest, { tone: 'danger', wide: true })
+        ].filter((item): item is ClusterDetailField => Boolean(item))
+      },
+      {
+        id: 'progress',
+        label: '进展与动作',
+        fields: [
+          clusterDetailField('周进展（PM）', project.weeklyProgress, { wide: true }),
+          clusterDetailField('Daily 风险求助（PM）', project.dailyRiskHelp, { tone: 'danger', wide: true }),
+          clusterDetailField('风险解决情况', project.riskResolution, { wide: true }),
+          clusterDetailField('下一步动作', project.nextAction, { tone: 'action', wide: true }),
+          clusterDetailField('动作负责人', project.actionOwner),
+          clusterDetailField('动作截止时间', project.actionDueDate)
+        ].filter((item): item is ClusterDetailField => Boolean(item))
+      },
+      {
+        id: 'delivery',
+        label: '交付与质量',
+        fields: [
+          clusterDetailField('交付范围', project.deliveryScope, { wide: true }),
+          clusterDetailField('近期重点演示', keyDemoLabel(project.hasKeyDemo)),
+          clusterDetailField('质量状态与 GAP', project.qualityGap, { wide: true }),
+          clusterDetailField('质量等级', project.qualityLevel)
+        ].filter((item): item is ClusterDetailField => Boolean(item))
+      },
+      {
+        id: 'meta',
+        label: '责任与更新',
+        fields: [
+          clusterDetailField('项目1号位', project.ownerOne),
+          clusterDetailField('PM', project.pm || project.ownerPm),
+          clusterDetailField('更新时间', project.updatedAt),
+          clusterDetailField('更新人', project.updatedBy)
+        ].filter((item): item is ClusterDetailField => Boolean(item))
+      }
+    ];
+    return {
+      focusCards,
+      groups
+    };
+  }, [selectedClusterProject]);
+
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
     await Promise.resolve(onSubmitProject(e));
     setShowCreateModal(false);
@@ -598,9 +719,13 @@ export default function DashboardView({
                   <strong>{item.projectName || '未命名项目'}</strong>
                   <span className={`cluster-risk-badge ${riskToneClass(item.riskLight)}`}>{item.riskLight}</span>
                 </div>
-                <span className="muted">{item.projectId || '未立项'} · {item.ownerOne || '未填1号位'} · {item.pm || item.ownerPm || '未填 PM'}</span>
-                <p>{excerpt(item.weeklyProgress || item.deliveryScope, 78)}</p>
+                <span className="muted">{item.projectId || '未立项'} · {item.projectStage || '未填阶段'} · {item.deliveryStatus || '未填交付状态'}</span>
+                <span className="muted">{item.ownerOne || '未填1号位'} · {item.pm || item.ownerPm || '未填 PM'}</span>
+                <p>{excerpt(item.keyRiskSummary || item.nextAction || item.weeklyProgress || item.deliveryScope, 78)}</p>
                 <div className="cluster-card-tags">
+                  {item.riskTrend && <span>{item.riskTrend}</span>}
+                  {item.riskCategory && <span>{item.riskCategory}</span>}
+                  {item.needsEscalation && <span className="danger">需支持：{item.needsEscalation}</span>}
                   <span>{keyDemoLabel(item.hasKeyDemo)}</span>
                   {item.dailyRiskHelp && <span className="danger">Daily 求助</span>}
                   {item.qualityLevel && <span>质量 {item.qualityLevel}</span>}
@@ -754,13 +879,13 @@ export default function DashboardView({
                                 <article className="roadmap-node" key={item.id} style={{ left: `${xPercent}%`, color }} tabIndex={0}>
                                   {item.hasFlag && <span className="roadmap-flag" />}
                                   <RoadmapCarIcon color={color} />
-                                  <strong>{item.milestoneName || '未命名节点'}</strong>
+                                  <strong>{item.vehicleVersionName || item.milestoneName || '未命名节点'}</strong>
                                   {item.techDetail && <span className="roadmap-tech">({item.techDetail})</span>}
                                   <span className="roadmap-node-dot" style={{ background: color }} />
                                   <em>{roadmapDateLabel(item)}</em>
                                   <div className="roadmap-node-card">
                                     <div className="roadmap-node-card-head">
-                                      <strong>{item.milestoneName || '未命名节点'}</strong>
+                                      <strong>{item.vehicleVersionName || item.milestoneName || '未命名节点'}</strong>
                                       {item.riskLevel && <span>{item.riskLevel}</span>}
                                     </div>
                                     <dl>
@@ -1019,6 +1144,9 @@ export default function DashboardView({
                   <div className="resource-person-cell resource-grid-sticky" key={`${person.personId}-person`}>
                     <strong>{person.name}</strong>
                     <span>{person.department} / {person.role}</span>
+                    {(person.skillTags || person.isKeyResource || person.resourceStatus) && (
+                      <span>{[person.skillTags, person.isKeyResource, person.resourceStatus].filter(Boolean).join(' / ')}</span>
+                    )}
                   </div>
                   {resourceDisplayColumns.map((column) => {
                     const dailyCells = column.dates.flatMap((date) => {
@@ -1508,33 +1636,66 @@ export default function DashboardView({
         document.body
       )}
 
-      {selectedClusterProject && canUsePortal && createPortal(
+      {selectedClusterProject && clusterDetail && canUsePortal && createPortal(
         <div className="cluster-detail-backdrop" onClick={() => setSelectedClusterProject(null)}>
           <aside className="cluster-detail-drawer" onClick={(e) => e.stopPropagation()}>
             <div className="cluster-detail-head">
               <div>
-                <span className={`cluster-risk-badge ${riskToneClass(selectedClusterProject.riskLight)}`}>
-                  {selectedClusterProject.riskLight}
-                </span>
+                <div className="cluster-detail-badges">
+                  <span className={`cluster-risk-badge ${riskToneClass(selectedClusterProject.riskLight)}`}>
+                    {selectedClusterProject.riskLight}
+                  </span>
+                  {selectedClusterProject.riskTrend && <span>{selectedClusterProject.riskTrend}</span>}
+                  {selectedClusterProject.riskCategory && <span>{selectedClusterProject.riskCategory}</span>}
+                  {selectedClusterProject.needsEscalation && <span className="danger">需支持：{selectedClusterProject.needsEscalation}</span>}
+                </div>
                 <h3>{selectedClusterProject.projectName || '未命名项目'}</h3>
-                <p className="muted">{selectedClusterProject.projectId || '未立项'} · {selectedClusterProject.ownerOne || '未填1号位'} · {selectedClusterProject.pm || selectedClusterProject.ownerPm || '未填 PM'}</p>
+                <p className="muted">{selectedClusterProject.projectId || '未立项'} · {selectedClusterProject.projectStage || '未填阶段'} · {selectedClusterProject.deliveryStatus || '未填交付状态'}</p>
+                <p className="muted">{selectedClusterProject.ownerOne || '未填1号位'} · {selectedClusterProject.pm || selectedClusterProject.ownerPm || '未填 PM'}</p>
               </div>
               <button className="btn" type="button" onClick={() => setSelectedClusterProject(null)}>关闭</button>
             </div>
-            {[
-              ['交付范围', selectedClusterProject.deliveryScope],
-              ['项目1号位', selectedClusterProject.ownerOne],
-              ['PM', selectedClusterProject.pm || selectedClusterProject.ownerPm],
-              ['近期重点演示', keyDemoLabel(selectedClusterProject.hasKeyDemo)],
-              ['周进展（PM）', selectedClusterProject.weeklyProgress],
-              ['Daily 风险求助（PM）', selectedClusterProject.dailyRiskHelp],
-              ['风险解决情况', selectedClusterProject.riskResolution],
-              ['质量状态与 GAP', selectedClusterProject.qualityGap],
-              ['质量等级', selectedClusterProject.qualityLevel]
-            ].map(([label, value]) => (
-              <section className="cluster-detail-field" key={label}>
-                <h4>{label}</h4>
-                <p>{value || '-'}</p>
+            <section className="cluster-detail-focus" id="cluster-detail-focus">
+              <div className="cluster-detail-section-head">
+                <span>Management focus</span>
+                <h4>管理层关注</h4>
+              </div>
+              {clusterDetail.focusCards.length > 0 ? (
+                <div className="cluster-detail-focus-grid">
+                  {clusterDetail.focusCards.map((field) => (
+                    <article className={`cluster-detail-focus-card ${field.tone || ''}`} key={field.label}>
+                      <span>{field.label}</span>
+                      <p>{field.value}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="cluster-detail-empty">暂无管理层关注信息。</p>
+              )}
+            </section>
+
+            <nav className="cluster-detail-nav" aria-label="集群风险详情分段导航">
+              <a href="#cluster-detail-focus">关注</a>
+              {clusterDetail.groups.map((group) => (
+                <a key={group.id} href={`#cluster-detail-${group.id}`}>{group.label.replace('与', '')}</a>
+              ))}
+            </nav>
+
+            {clusterDetail.groups.map((group) => (
+              <section className="cluster-detail-section" id={`cluster-detail-${group.id}`} key={group.id}>
+                <div className="cluster-detail-section-head">
+                  <span>{group.id}</span>
+                  <h4>{group.label}</h4>
+                </div>
+                {group.fields.length > 0 ? (
+                  <div className="cluster-detail-data-grid">
+                    {group.fields.map((field) => (
+                      <ClusterDetailValue key={field.label} field={field} />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="cluster-detail-empty">暂无更多信息。</p>
+                )}
               </section>
             ))}
           </aside>

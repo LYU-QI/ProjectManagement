@@ -1,18 +1,27 @@
 export type FeishuFormState = {
   任务ID: string;
   任务名称: string;
+  任务类型: string;
   状态: string;
   优先级: string;
   负责人: string;
+  协作人: string;
   开始时间: string;
   截止时间: string;
+  承诺时间: string;
+  完成时间: string;
   进度: string;
   所属项目: string;
   是否阻塞: string;
   阻塞原因: string;
   风险等级: string;
+  风险原因: string;
+  下一步动作: string;
+  动作截止时间: string;
   '依赖/前置条件': string;
   里程碑: string;
+  更新时间: string;
+  更新人: string;
 };
 
 export interface DashboardOverview {
@@ -36,17 +45,30 @@ export interface ClusterRiskBoardItem {
   index: string;
   projectName: string;
   projectId: string;
+  projectStage: string;
+  deliveryStatus: string;
   ownerOne: string;
   pm: string;
   ownerPm: string;
   riskLight: ClusterRiskLight;
+  riskTrend: string;
+  riskCategory: string;
+  keyRiskSummary: string;
+  riskImpact: string;
   deliveryScope: string;
   hasKeyDemo: boolean | null;
   weeklyProgress: string;
   dailyRiskHelp: string;
   riskResolution: string;
+  nextAction: string;
+  actionOwner: string;
+  actionDueDate: string;
+  needsEscalation: string;
+  escalationRequest: string;
   qualityGap: string;
   qualityLevel: string;
+  updatedAt: string;
+  updatedBy: string;
 }
 
 export interface ClusterRiskBoardResponse {
@@ -83,6 +105,11 @@ export interface DeliveryRoadmapItem {
   targetDate: string;
   targetQuarter: string;
   isTbd: boolean;
+  vehicleVersionName: string;
+  milestoneType: string;
+  plannedDeliveryDate: string;
+  committedDeliveryDate: string;
+  actualDeliveryDate: string;
   milestoneName: string;
   techDetail: string;
   iconStyle: string;
@@ -136,10 +163,13 @@ export interface ResourceCalendarPerson {
   name: string;
   department: string;
   role: string;
+  skillTags: string;
   level: string;
   location: string;
   dailyCapacity: number;
   status: string;
+  isKeyResource: string;
+  resourceStatus: string;
   remark: string;
 }
 
@@ -155,6 +185,7 @@ export interface ResourceCalendarAllocation {
   allocationPercent: number;
   allocationDays: number;
   allocationType: string;
+  allocationConfirmStatus: string;
   remark: string;
 }
 

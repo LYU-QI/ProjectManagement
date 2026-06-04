@@ -13,17 +13,30 @@ type ClusterRiskBoardItem = {
   index: string;
   projectName: string;
   projectId: string;
+  projectStage: string;
+  deliveryStatus: string;
   ownerOne: string;
   pm: string;
   ownerPm: string;
   riskLight: ClusterRiskLight;
+  riskTrend: string;
+  riskCategory: string;
+  keyRiskSummary: string;
+  riskImpact: string;
   deliveryScope: string;
   hasKeyDemo: boolean | null;
   weeklyProgress: string;
   dailyRiskHelp: string;
   riskResolution: string;
+  nextAction: string;
+  actionOwner: string;
+  actionDueDate: string;
+  needsEscalation: string;
+  escalationRequest: string;
   qualityGap: string;
   qualityLevel: string;
+  updatedAt: string;
+  updatedBy: string;
 };
 
 type ClusterRiskBoardResponse = {
@@ -62,6 +75,11 @@ type DeliveryRoadmapItem = {
   targetDate: string;
   targetQuarter: string;
   isTbd: boolean;
+  vehicleVersionName: string;
+  milestoneType: string;
+  plannedDeliveryDate: string;
+  committedDeliveryDate: string;
+  actualDeliveryDate: string;
   milestoneName: string;
   techDetail: string;
   iconStyle: string;
@@ -116,10 +134,13 @@ type ResourcePerson = {
   name: string;
   department: string;
   role: string;
+  skillTags: string;
   level: string;
   location: string;
   dailyCapacity: number;
   status: string;
+  isKeyResource: string;
+  resourceStatus: string;
   remark: string;
 };
 
@@ -135,6 +156,7 @@ type ResourceAllocation = {
   allocationPercent: number;
   allocationDays: number;
   allocationType: string;
+  allocationConfirmStatus: string;
   remark: string;
 };
 
@@ -202,17 +224,30 @@ const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> |
   index: '序号',
   projectName: '项目名称|重点项目|项目|名称',
   projectId: '项目ID（未立项不填）|项目ID|项目编号',
+  projectStage: '项目阶段|阶段',
+  deliveryStatus: '交付状态|项目交付状态',
   ownerOne: '项目1号位|1号位|项目负责人',
   pm: 'PM|项目经理',
   ownerPm: '项目1号位和PM|PM|项目经理|负责人',
   riskLight: '风险情况',
+  riskTrend: '风险趋势',
+  riskCategory: '主要风险类型|风险类型',
+  keyRiskSummary: '关键风险摘要|风险摘要',
+  riskImpact: '风险影响范围|影响范围',
   deliveryScope: '交付范围',
   keyDemo: '近期重点演示',
   weeklyProgress: '周进展（PM）',
   dailyRiskHelp: 'Daily风险求助（PM）',
   riskResolution: '风险解决情况',
+  nextAction: '下一步动作',
+  actionOwner: '动作负责人|下一步动作负责人',
+  actionDueDate: '动作截止时间|下一步动作截止时间',
+  needsEscalation: '是否需管理层支持|是否需要管理层支持',
+  escalationRequest: '需支持事项|管理层支持事项',
   qualityGap: '质量状态与GAP-叶芳',
-  qualityLevel: '质量等级'
+  qualityLevel: '质量等级',
+  updatedAt: '更新时间|更新日期',
+  updatedBy: '更新人'
 };
 
 const DELIVERY_ROADMAP_FIELD_MAP: Record<string, string> = {
@@ -222,6 +257,11 @@ const DELIVERY_ROADMAP_FIELD_MAP: Record<string, string> = {
   targetDate: 'target_date|精确日期',
   targetQuarter: 'target_quarter|所属季度',
   isTbd: 'is_tbd|是否待定',
+  vehicleVersionName: '车型/版本名称|车型版本名称|版本名称',
+  milestoneType: '里程碑类型|节点类型',
+  plannedDeliveryDate: '计划交付日期|计划日期',
+  committedDeliveryDate: '承诺交付日期|承诺日期',
+  actualDeliveryDate: '实际完成日期|实际交付日期|完成日期',
   milestoneName: 'milestone_name|里程碑名称',
   techDetail: 'tech_detail|技术细节',
   iconStyle: 'icon_style|图标样式',
@@ -248,10 +288,13 @@ const RESOURCE_CALENDAR_FIELD_MAP: Record<string, string> = {
   name: 'name|姓名',
   department: 'department|部门',
   role: 'role|角色',
+  skillTags: '技能标签|技能',
   level: 'level|职级',
   location: 'location|地点',
   dailyCapacity: 'daily_capacity|日标准产能',
   personStatus: 'status|状态',
+  isKeyResource: '是否关键资源|关键资源',
+  resourceStatus: '资源状态',
   personRemark: 'remark|备注',
   allocationId: 'allocation_id|分配ID',
   projectId: 'project_id|项目ID',
@@ -261,6 +304,7 @@ const RESOURCE_CALENDAR_FIELD_MAP: Record<string, string> = {
   allocationPercent: 'allocation_percent|投入比例',
   allocationDays: 'allocation_days|投入人天',
   allocationType: 'allocation_type|分配类型',
+  allocationConfirmStatus: '分配确认状态|确认状态',
   allocationRemark: 'remark|备注',
   availabilityId: 'availability_id|记录ID',
   date: 'date|日期',
@@ -884,17 +928,30 @@ export class DashboardService {
       index: get('index'),
       projectName: get('projectName'),
       projectId: get('projectId'),
+      projectStage: get('projectStage'),
+      deliveryStatus: get('deliveryStatus'),
       ownerOne,
       pm,
       ownerPm: legacyOwnerPm || [ownerOne, pm].filter(Boolean).join(' / '),
       riskLight: this.normalizeRiskLight(get('riskLight')),
+      riskTrend: get('riskTrend'),
+      riskCategory: get('riskCategory'),
+      keyRiskSummary: get('keyRiskSummary'),
+      riskImpact: get('riskImpact'),
       deliveryScope: get('deliveryScope'),
       hasKeyDemo: this.normalizeYesNo(get('keyDemo')),
       weeklyProgress: get('weeklyProgress'),
       dailyRiskHelp: get('dailyRiskHelp'),
       riskResolution: get('riskResolution'),
+      nextAction: get('nextAction'),
+      actionOwner: get('actionOwner'),
+      actionDueDate: this.normalizeDateText(get('actionDueDate')) || get('actionDueDate'),
+      needsEscalation: get('needsEscalation'),
+      escalationRequest: get('escalationRequest'),
       qualityGap: get('qualityGap'),
-      qualityLevel
+      qualityLevel,
+      updatedAt: this.normalizeDateText(get('updatedAt')) || get('updatedAt'),
+      updatedBy: get('updatedBy')
     };
   }
 
@@ -907,8 +964,21 @@ export class DashboardService {
       ['dailyRiskHelp', 'dailyRiskHelp'],
       ['riskResolution', 'riskResolution'],
       ['deliveryScope', 'deliveryScope'],
+      ['projectStage', 'projectStage'],
+      ['deliveryStatus', 'deliveryStatus'],
+      ['riskTrend', 'riskTrend'],
+      ['riskCategory', 'riskCategory'],
+      ['keyRiskSummary', 'keyRiskSummary'],
+      ['riskImpact', 'riskImpact'],
+      ['nextAction', 'nextAction'],
+      ['actionOwner', 'actionOwner'],
+      ['actionDueDate', 'actionDueDate'],
+      ['needsEscalation', 'needsEscalation'],
+      ['escalationRequest', 'escalationRequest'],
       ['qualityGap', 'qualityGap'],
-      ['qualityLevel', 'qualityLevel']
+      ['qualityLevel', 'qualityLevel'],
+      ['updatedAt', 'updatedAt'],
+      ['updatedBy', 'updatedBy']
     ];
     if (actorRole !== 'pm') {
       allowed.unshift(['pm', 'pm']);
@@ -1131,7 +1201,8 @@ export class DashboardService {
 
   private normalizeDeliveryRoadmapRecord(fields: Record<string, unknown>, fieldMap: Record<string, string>, recordId: string): Omit<DeliveryRoadmapItem, 'xPercent'> {
     const get = (key: keyof typeof DELIVERY_ROADMAP_FIELD_MAP) => this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]);
-    const targetDate = this.normalizeDateText(get('targetDate'));
+    const plannedDeliveryDate = this.normalizeDateText(get('plannedDeliveryDate')) || get('plannedDeliveryDate');
+    const targetDate = this.normalizeDateText(get('targetDate')) || plannedDeliveryDate;
     const targetQuarter = this.normalizeQuarterText(get('targetQuarter')) || this.quarterKeyFromDate(targetDate);
     const categoryL1 = get('categoryL1') || '未分组';
     const categoryL2 = get('categoryL2') || categoryL1;
@@ -1144,6 +1215,11 @@ export class DashboardService {
       targetDate,
       targetQuarter,
       isTbd: this.normalizeBoolean(get('isTbd')),
+      vehicleVersionName: get('vehicleVersionName'),
+      milestoneType: get('milestoneType'),
+      plannedDeliveryDate,
+      committedDeliveryDate: this.normalizeDateText(get('committedDeliveryDate')) || get('committedDeliveryDate'),
+      actualDeliveryDate: this.normalizeDateText(get('actualDeliveryDate')) || get('actualDeliveryDate'),
       milestoneName: get('milestoneName'),
       techDetail: get('techDetail'),
       iconStyle: get('iconStyle') || 'unknown',
@@ -1161,7 +1237,7 @@ export class DashboardService {
   }
 
   private hasDeliveryRoadmapRow(fields: Record<string, unknown>, fieldMap: Record<string, string>): boolean {
-    const keys: Array<keyof typeof DELIVERY_ROADMAP_FIELD_MAP> = ['categoryL1', 'categoryL2', 'ySortOrder', 'targetDate', 'targetQuarter', 'milestoneName'];
+    const keys: Array<keyof typeof DELIVERY_ROADMAP_FIELD_MAP> = ['categoryL1', 'categoryL2', 'ySortOrder', 'targetDate', 'plannedDeliveryDate', 'targetQuarter', 'milestoneName', 'vehicleVersionName'];
     return keys.some((key) => Boolean(this.fieldValue(fields, fieldMap[key] || DELIVERY_ROADMAP_FIELD_MAP[key]).trim()));
   }
 
@@ -1174,10 +1250,13 @@ export class DashboardService {
       name: get('name') || personId,
       department: get('department') || '未分组',
       role: get('role') || '未配置角色',
+      skillTags: get('skillTags'),
       level: get('level'),
       location: get('location'),
       dailyCapacity: this.normalizePositiveNumber(get('dailyCapacity'), 1),
       status: get('personStatus') || '在职',
+      isKeyResource: get('isKeyResource'),
+      resourceStatus: get('resourceStatus'),
       remark: get('personRemark')
     };
   }
@@ -1197,6 +1276,7 @@ export class DashboardService {
       allocationPercent: percent,
       allocationDays: this.normalizePositiveNumber(get('allocationDays'), 0),
       allocationType: get('allocationType'),
+      allocationConfirmStatus: get('allocationConfirmStatus'),
       remark: get('allocationRemark')
     };
   }
@@ -1229,10 +1309,13 @@ export class DashboardService {
         name: allocation.name || allocation.personId,
         department: '未分组',
         role: allocation.role || '未配置角色',
+        skillTags: '',
         level: '',
         location: '',
         dailyCapacity: 1,
         status: '从分配表推断',
+        isKeyResource: '',
+        resourceStatus: '',
         remark: ''
       });
     }

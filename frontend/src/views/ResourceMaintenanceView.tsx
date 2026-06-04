@@ -22,10 +22,13 @@ type FormState = {
   name: string;
   role: string;
   department: string;
+  skillTags: string;
   level: string;
   location: string;
   dailyCapacity: string;
   status: string;
+  isKeyResource: string;
+  resourceStatus: string;
   remark: string;
   allocationId: string;
   projectId: string;
@@ -35,6 +38,7 @@ type FormState = {
   allocationPercent: string;
   allocationDays: string;
   allocationType: string;
+  allocationConfirmStatus: string;
   availabilityId: string;
   date: string;
   availablePercent: string;
@@ -48,10 +52,13 @@ const emptyForm: FormState = {
   name: '',
   role: '',
   department: '',
+  skillTags: '',
   level: '',
   location: '',
   dailyCapacity: '1',
   status: '在岗',
+  isKeyResource: '',
+  resourceStatus: '',
   remark: '',
   allocationId: '',
   projectId: '',
@@ -61,6 +68,7 @@ const emptyForm: FormState = {
   allocationPercent: '',
   allocationDays: '',
   allocationType: '',
+  allocationConfirmStatus: '',
   availabilityId: '',
   date: '',
   availablePercent: '50',
@@ -77,6 +85,10 @@ const emptyOptions: ResourceMaintenanceOptions = {
   levels: [],
   locations: [],
   statuses: ['在岗', '停用', '离职'],
+  skillTags: [],
+  resourceStatuses: ['可用', '部分可用', '不可用'],
+  keyResourceOptions: ['是', '否'],
+  allocationConfirmStatuses: ['草稿', '已确认', '待调整'],
   systemDepartments: [],
   allocationTypes: ['项目投入', '售前支持', '研发支持', '测试支持'],
   availabilityTypes: ['请假', '出差', '培训', '节假日', '临时占用']
@@ -104,10 +116,13 @@ function rowToForm(row: ResourceMaintenanceRow, tab: Tab): FormState {
       name: field(row, '姓名'),
       role: field(row, '角色'),
       department: field(row, '部门'),
+      skillTags: field(row, '技能标签'),
       level: field(row, '职级'),
       location: field(row, '地点'),
       dailyCapacity: field(row, '日标准产能') || '1',
       status: field(row, '状态') || '在岗',
+      isKeyResource: field(row, '是否关键资源'),
+      resourceStatus: field(row, '资源状态'),
       remark: field(row, '备注')
     };
   }
@@ -125,6 +140,7 @@ function rowToForm(row: ResourceMaintenanceRow, tab: Tab): FormState {
       allocationPercent: field(row, '投入比例') || '50',
       allocationDays: field(row, '投入人天'),
       allocationType: field(row, '分配类型'),
+      allocationConfirmStatus: field(row, '分配确认状态'),
       remark: field(row, '备注')
     };
   }
@@ -148,8 +164,8 @@ function tabTitle(tab: Tab) {
 }
 
 const tableColumns: Record<Tab, string[]> = {
-  people: ['人员ID', '姓名', '角色', '部门', '部门同步', '职级', '地点', '日标准产能', '状态', '备注'],
-  allocations: ['分配ID', '人员ID', '姓名', '项目ID', '项目名称', '角色', '开始日期', '结束时间', '投入比例', '投入人天', '分配类型', '备注'],
+  people: ['人员ID', '姓名', '角色', '部门', '部门同步', '技能标签', '职级', '地点', '日标准产能', '状态', '是否关键资源', '资源状态', '备注'],
+  allocations: ['分配ID', '人员ID', '姓名', '项目ID', '项目名称', '角色', '开始日期', '结束时间', '投入比例', '投入人天', '分配类型', '分配确认状态', '备注'],
   availability: ['记录ID', '人员ID', '姓名', '日期', '可用比例', '不可用类型', '原因', '备注']
 };
 
@@ -403,8 +419,20 @@ export default function ResourceMaintenanceView() {
       <datalist id="resource-status-options">
         {options.statuses.map((item) => <option key={item} value={item} />)}
       </datalist>
+      <datalist id="resource-skill-options">
+        {(options.skillTags || []).map((item) => <option key={item} value={item} />)}
+      </datalist>
+      <datalist id="resource-key-resource-options">
+        {(options.keyResourceOptions || []).map((item) => <option key={item} value={item} />)}
+      </datalist>
+      <datalist id="resource-resource-status-options">
+        {(options.resourceStatuses || []).map((item) => <option key={item} value={item} />)}
+      </datalist>
       <datalist id="resource-allocation-type-options">
         {options.allocationTypes.map((item) => <option key={item} value={item} />)}
+      </datalist>
+      <datalist id="resource-allocation-confirm-status-options">
+        {(options.allocationConfirmStatuses || []).map((item) => <option key={item} value={item} />)}
       </datalist>
       <datalist id="resource-availability-type-options">
         {options.availabilityTypes.map((item) => <option key={item} value={item} />)}
@@ -419,10 +447,13 @@ export default function ResourceMaintenanceView() {
               <input placeholder="姓名 *" value={form.name} onChange={(e) => setField('name', e.target.value)} />
               <input list="resource-role-options" placeholder="角色 *（可选可填）" value={form.role} onChange={(e) => setField('role', e.target.value)} />
               <input list="resource-department-options" placeholder="部门 *（可选可填）" value={form.department} onChange={(e) => setField('department', e.target.value)} />
+              <input list="resource-skill-options" placeholder="技能标签（可选，多项用逗号分隔）" value={form.skillTags} onChange={(e) => setField('skillTags', e.target.value)} />
               <input list="resource-level-options" placeholder="职级（可选可填）" value={form.level} onChange={(e) => setField('level', e.target.value)} />
               <input list="resource-location-options" placeholder="地点（可选可填）" value={form.location} onChange={(e) => setField('location', e.target.value)} />
               <input placeholder="日标准产能" value={form.dailyCapacity} onChange={(e) => setField('dailyCapacity', e.target.value)} />
               <input list="resource-status-options" placeholder="状态（可选可填）" value={form.status} onChange={(e) => setField('status', e.target.value)} />
+              <input list="resource-key-resource-options" placeholder="是否关键资源（是/否）" value={form.isKeyResource} onChange={(e) => setField('isKeyResource', e.target.value)} />
+              <input list="resource-resource-status-options" placeholder="资源状态（可用/部分可用/不可用）" value={form.resourceStatus} onChange={(e) => setField('resourceStatus', e.target.value)} />
             </>
           )}
           {tab === 'allocations' && (
@@ -462,6 +493,7 @@ export default function ResourceMaintenanceView() {
               <input placeholder="投入人天" value={form.allocationDays} onChange={(e) => setField('allocationDays', e.target.value)} />
               <p className="resource-maintenance-hint">填写投入人天后，会按“投入人天 ÷ 人员投入天数 ÷ 日标准产能”自动反算投入比例。</p>
               <input list="resource-allocation-type-options" placeholder="分配类型（可选可填）" value={form.allocationType} onChange={(e) => setField('allocationType', e.target.value)} />
+              <input list="resource-allocation-confirm-status-options" placeholder="分配确认状态（可选可填）" value={form.allocationConfirmStatus} onChange={(e) => setField('allocationConfirmStatus', e.target.value)} />
             </>
           )}
           {tab === 'availability' && (
