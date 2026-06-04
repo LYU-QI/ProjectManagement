@@ -1975,7 +1975,7 @@ select option {
 
 .cluster-board-filters {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 180px 200px;
+  grid-template-columns: minmax(260px, 1fr) 180px 190px 200px;
   margin-bottom: 14px;
 }
 
@@ -1996,12 +1996,18 @@ select option {
 
 .cluster-project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, 360px);
   gap: 12px;
 }
 
 .cluster-project-card {
-  min-height: 178px;
+  width: 360px;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  overflow: hidden;
   cursor: pointer;
   border: 1px solid var(--color-border);
   border-left-width: 5px;
@@ -2033,6 +2039,23 @@ select option {
 
 .cluster-project-title-row .cluster-risk-badge {
   flex: 0 0 auto;
+}
+
+.cluster-project-pm-tag {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-width: 42%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, var(--color-border));
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--color-text-muted);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg-muted));
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cluster-project-card p {
@@ -2107,6 +2130,139 @@ select option {
 .cluster-card-tags .danger {
   color: var(--color-danger);
   background: var(--color-danger-soft);
+}
+
+.cluster-risk-group-list {
+  display: grid;
+  gap: 16px;
+}
+
+.cluster-risk-group {
+  border: 1px solid var(--color-border);
+  border-left-width: 5px;
+  border-radius: 18px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--color-bg-surface) 72%, transparent);
+}
+
+.cluster-risk-group.red {
+  border-left-color: #dc2626;
+}
+
+.cluster-risk-group.yellow {
+  border-left-color: #f2b705;
+}
+
+.cluster-risk-group.green {
+  border-left-color: #059669;
+}
+
+.cluster-risk-group.empty {
+  border-left-color: var(--color-text-muted);
+}
+
+.cluster-risk-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.cluster-risk-group-head > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cluster-risk-group-count,
+.cluster-group-empty {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cluster-group-empty {
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+}
+
+.cluster-card-meta {
+  display: grid;
+  grid-template-columns: 1fr;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cluster-card-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-card-delivery-summary {
+  height: 76px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 12px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--color-bg-muted) 68%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cluster-card-delivery-summary span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cluster-card-delivery-summary p {
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cluster-urgency-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cluster-urgency-badge.low {
+  color: var(--color-text-muted);
+  background: var(--color-bg-muted);
+}
+
+.cluster-urgency-badge.medium {
+  color: #8a5a00;
+  background: #fff4bf;
+}
+
+.cluster-urgency-badge.high {
+  color: #b45309;
+  background: #ffedd5;
+}
+
+.cluster-urgency-badge.critical {
+  color: #b91c1c;
+  background: #fee2e2;
+  border-color: color-mix(in srgb, #dc2626 36%, var(--color-border));
 }
 
 .cluster-focus-panel h3 {
@@ -2191,15 +2347,19 @@ select option {
   inset: 0;
   z-index: 5000;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
   background: rgba(2, 8, 23, 0.48);
+  backdrop-filter: blur(10px);
 }
 
-.cluster-detail-drawer {
-  width: min(760px, 92vw);
-  height: 100%;
+.cluster-detail-modal {
+  width: min(1100px, calc(100vw - 64px));
+  max-height: calc(100vh - 64px);
   overflow-y: auto;
-  border-left: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-lg);
 }
@@ -2367,8 +2527,14 @@ select option {
 }
 
 @media (max-width: 720px) {
-  .cluster-detail-drawer {
+  .cluster-detail-backdrop {
+    padding: 0;
+  }
+
+  .cluster-detail-modal {
     width: 100vw;
+    max-height: 100vh;
+    border-radius: 0;
   }
 
   .cluster-detail-head,

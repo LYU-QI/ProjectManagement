@@ -59,6 +59,7 @@ export interface ClusterRiskBoardItem {
   hasKeyDemo: boolean | null;
   weeklyProgress: string;
   dailyRiskHelp: string;
+  urgentStaffingGap: string;
   riskResolution: string;
   nextAction: string;
   actionOwner: string;

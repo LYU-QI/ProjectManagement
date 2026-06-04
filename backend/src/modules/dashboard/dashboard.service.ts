@@ -27,6 +27,7 @@ type ClusterRiskBoardItem = {
   hasKeyDemo: boolean | null;
   weeklyProgress: string;
   dailyRiskHelp: string;
+  urgentStaffingGap: string;
   riskResolution: string;
   nextAction: string;
   actionOwner: string;
@@ -238,6 +239,7 @@ const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> |
   keyDemo: '近期重点演示',
   weeklyProgress: '周进展（PM）',
   dailyRiskHelp: 'Daily风险求助（PM）',
+  urgentStaffingGap: '最紧急的缺人情况|最紧急缺人情况|缺人情况|最紧急的缺人情况（PM视角）',
   riskResolution: '风险解决情况',
   nextAction: '下一步动作',
   actionOwner: '动作负责人|下一步动作负责人',
@@ -942,6 +944,7 @@ export class DashboardService {
       hasKeyDemo: this.normalizeYesNo(get('keyDemo')),
       weeklyProgress: get('weeklyProgress'),
       dailyRiskHelp: get('dailyRiskHelp'),
+      urgentStaffingGap: get('urgentStaffingGap'),
       riskResolution: get('riskResolution'),
       nextAction: get('nextAction'),
       actionOwner: get('actionOwner'),
