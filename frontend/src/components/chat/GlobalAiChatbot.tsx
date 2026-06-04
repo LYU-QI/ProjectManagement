@@ -11,6 +11,15 @@ interface GlobalAiChatbotProps {
   onViewChange: (view: ViewKey) => void;
 }
 
+function stripModelThinking(content: string): string {
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '')
+    .replace(/<thinking>[\s\S]*$/gi, '')
+    .trim();
+}
+
 export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) {
   const FAB_SIZE = 56;
   const PANEL_WIDTH = 460;
@@ -202,9 +211,13 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
 
     try {
       // 只携带最近 10 条历史以保持上下文并节省 tokens
-      const history = messages.slice(-10);
+      const history = messages.slice(-10).map((item) => (
+        item.role === 'assistant'
+          ? { ...item, content: stripModelThinking(item.content) }
+          : item
+      ));
       const res = await chatWithAi(text, history, selectedProjectId);
-      setMessages(prev => [...prev, { role: 'assistant', content: res.content }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: stripModelThinking(res.content) }]);
     } catch (err) {
       setMessages(prev => [...prev, { role: 'assistant', content: `抱歉，我遇到了点问题：${err instanceof Error ? err.message : '未知错误'}` }]);
     } finally {
@@ -269,7 +282,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
                   <div className="chatbot-title">Astraea AI Assistant</div>
                   <div className="chatbot-subtitle">
                     <span className="chatbot-status-dot" />
-                    项目问答、导航、分析入口
+                    通用问答、项目分析、导航入口
                   </div>
                 </div>
               </div>
@@ -326,7 +339,7 @@ export default function GlobalAiChatbot({ onViewChange }: GlobalAiChatbotProps) 
                     <div className="chat-markdown markdown-body">
                       <Suspense fallback={<div className="chatbot-markdown-loading">正在渲染回复...</div>}>
                         <GfmMarkdown>
-                          {m.content || '-'}
+                          {stripModelThinking(m.content) || '-'}
                         </GfmMarkdown>
                       </Suspense>
                     </div>

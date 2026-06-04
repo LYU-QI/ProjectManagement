@@ -531,7 +531,16 @@ ${detailBlocks}`
       throw new Error('AI 模型返回了空内容');
     }
 
-    return content;
+    return this.stripModelThinking(content);
+  }
+
+  private stripModelThinking(content: string): string {
+    return content
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<think>[\s\S]*$/gi, '')
+      .replace(/<thinking>[\s\S]*$/gi, '')
+      .trim();
   }
 
   private isOperationIntent(message: string): boolean {
@@ -1340,6 +1349,84 @@ ${detailBlocks}`
       ? allProjects
       : allProjects.filter((project) => accessibleIds.includes(project.id));
     if (projects.length === 0) {
+      const now = new Date();
+      const localDate = new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        weekday: 'long'
+      }).format(now);
+      const localDateTime = new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(now);
+      const systemPrompt = `你是 Astraea AI Assistant，集成在 ProjectLVQI 项目管理系统中的通用 AI 助手。
+当前账号暂无可访问项目，且当前页面未提供项目上下文。
+
+你可以正常回答通用问题、闲聊、解释系统使用方式、回答日期时间类问题。
+如果用户询问实时新闻、实时价格、实时政策等需要联网检索的内容，请说明你当前没有实时联网检索能力，只能基于已有知识给出一般性背景、判断框架或建议用户查看权威来源。
+如果用户询问项目进度、风险、成本、需求、任务、飞书记录等项目数据，或要求创建/修改项目相关数据，请明确说明当前没有可访问项目数据，需要先选择项目或联系管理员分配项目权限。
+不要编造任何项目数据。
+
+当前时间锚点：今天是 ${localDate}，当前本地时间 ${localDateTime}。`;
+      const messages: ChatCompletionMessage[] = [{ role: 'system', content: systemPrompt }];
+      if (input.history && input.history.length > 0) {
+        messages.push(...input.history.slice(-10).map((item) => ({
+          role: item.role,
+          content: item.content
+        })));
+      }
+      messages.push({ role: 'user', content: input.message });
+      const trace = [this.buildTraceStep('access_check', {
+        ok: true,
+        accessibleProjectCount: 0,
+        scope: 'general_chat_without_project_context',
+        localDate,
+        localDateTime
+      })];
+
+      try {
+        const content = await this.callAiModelWithMessages(aiApiUrl, aiApiKey, aiModel, messages, {
+          maxTokens: 1200,
+          temperature: 0.6
+        });
+        await this.createChatAuditLog({
+          actor,
+          mode: 'qa',
+          message: input.message,
+          history: input.history,
+          scopedProjectIds: [],
+          scopedProjectNames: [],
+          detailScope: '无可访问项目，仅通用聊天',
+          resultContent: content,
+          trace,
+          toolCalls: []
+        });
+        return { content };
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err);
+        await this.createChatAuditLog({
+          actor,
+          mode: 'error',
+          message: input.message,
+          history: input.history,
+          scopedProjectIds: [],
+          scopedProjectNames: [],
+          detailScope: '无可访问项目，仅通用聊天',
+          error,
+          trace: [...trace, this.buildTraceStep('model_error', { error })],
+          toolCalls: []
+        });
+        throw err;
+      }
+    }
+
+    if (input.projectId && !projects.some((project) => project.id === input.projectId)) {
       await this.createChatAuditLog({
         actor,
         mode: 'error',
@@ -1347,12 +1434,12 @@ ${detailBlocks}`
         history: input.history,
         scopedProjectIds: [],
         scopedProjectNames: [],
-        detailScope: '当前用户无可访问项目',
-        error: 'no_accessible_project',
-        trace: [this.buildTraceStep('access_check', { ok: false, reason: 'no_accessible_project' })],
+        detailScope: `当前用户无权访问项目 ${input.projectId}`,
+        error: 'selected_project_not_accessible',
+        trace: [this.buildTraceStep('access_check', { ok: false, reason: 'selected_project_not_accessible', projectId: input.projectId })],
         toolCalls: []
       });
-      return { content: '当前账号暂无可访问项目，请联系管理员分配项目权限。' };
+      return { content: '当前选择的项目不在您的可访问范围内。您可以继续问我通用问题；如果需要项目问答或分析，请先选择有权限的项目，或联系管理员分配项目权限。' };
     }
 
     const currentProject = input.projectId
@@ -1601,14 +1688,19 @@ ${worklogDetailLines}
 ${feishuTaskDetailLines}
 `;
 
-    const systemPrompt = `你是一个专业的项目管理助理 Astraea，集成在 AstraeaFlow 项目管理系统中。
-你的目标是协助用户高效管理项目、需求、成本和进度。
+    const systemPrompt = `你是 Astraea AI Assistant，集成在 AstraeaFlow 项目管理系统中的通用 AI 助手，同时具备项目管理分析能力。
+你的目标是先判断用户问题类型：
+1. 如果是闲聊、日期时间、通用知识、写作、解释概念、技术咨询等非项目问题，正常回答，不要因为系统集成在项目管理平台中而拒绝。
+2. 如果是实时新闻、实时价格、实时政策等需要联网检索的内容，请说明你当前没有实时联网检索能力，只能基于已有知识给出一般性背景、判断框架或建议用户查看权威来源。
+3. 如果是项目进度、风险、成本、需求、任务、飞书记录等项目数据问题，才使用下方项目上下文作答。
+4. 如果用户要求创建、修改、删除项目数据，只能在明确识别到授权范围和操作目标时执行；否则先说明缺少的信息。
 请保持回复简洁、专业且具有行动导向。
 
 ${dataContext}
 
 注意：
 - 如果当前页面已选中项目，那么用户提到“当前项目”“本项目”“这个项目”时，默认指当前页面选中项目；只有当用户明确点名其他项目时，才切换解释范围。
+- 不要把所有问题都强行解释成项目管理问题；非项目问题不需要引用项目上下文。
 - 财务口径必须统一：实际已支出 = 直接成本 + 工时成本。不要只拿成本条目金额当作实际已支出。
 - 当用户询问“本周新增支出/本周花费”时，优先使用上面的“本周财务口径”数字，不要自行猜测。
 - 如果用户询问特定项目的进展，请基于上述数据回答。
