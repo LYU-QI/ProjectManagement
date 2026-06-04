@@ -12,6 +12,7 @@ import type {
   ResourceCalendarPerson,
   ResourceCalendarResponse
 } from '../types';
+import ThemedSelect from '../components/ui/ThemedSelect';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -490,7 +491,6 @@ export default function DashboardView({
     if (!selectedClusterProject) return null;
     const project = selectedClusterProject;
     const fields: ClusterDetailField[] = [
-      clusterDetailDisplayField('序号', project.index),
       clusterDetailDisplayField('重点项目', project.projectName),
       clusterDetailDisplayField('项目ID', project.projectId),
       clusterDetailDisplayField('项目1号位', project.ownerOne),
@@ -691,25 +691,25 @@ export default function DashboardView({
 
       <div className="cluster-board-filters">
         <input placeholder="搜索项目 / 负责人 / 风险文本" value={clusterKeyword} onChange={(e) => setClusterKeyword(e.target.value)} />
-        <select value={clusterRiskFilter} onChange={(e) => setClusterRiskFilter(e.target.value as 'all' | ClusterRiskLight)}>
+        <ThemedSelect className="cluster-filter-select" value={clusterRiskFilter} onChange={(e) => setClusterRiskFilter(e.target.value as 'all' | ClusterRiskLight)}>
           <option value="all">全部风险灯</option>
           <option value="红灯">红灯</option>
           <option value="黄灯">黄灯</option>
           <option value="绿灯">绿灯</option>
           <option value="未填">未填</option>
-        </select>
-        <select value={clusterPmFilter} onChange={(e) => setClusterPmFilter(e.target.value)}>
+        </ThemedSelect>
+        <ThemedSelect className="cluster-filter-select" value={clusterPmFilter} onChange={(e) => setClusterPmFilter(e.target.value)}>
           <option value="all">全部项目经理</option>
           {clusterPmOptions.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}
-        </select>
-        <select value={clusterDemoFilter} onChange={(e) => setClusterDemoFilter(e.target.value as 'all' | 'yes' | 'no' | 'unknown')}>
+        </ThemedSelect>
+        <ThemedSelect className="cluster-filter-select" value={clusterDemoFilter} onChange={(e) => setClusterDemoFilter(e.target.value as 'all' | 'yes' | 'no' | 'unknown')}>
           <option value="all">全部演示状态</option>
           <option value="yes">近期重点演示</option>
           <option value="no">非近期演示</option>
           <option value="unknown">待确认</option>
-        </select>
+        </ThemedSelect>
       </div>
 
       <div className="cluster-main-grid">

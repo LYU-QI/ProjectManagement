@@ -9,29 +9,15 @@ function clusterDraftFromItem(item: ClusterRiskBoardItem): ClusterRiskUpdatePayl
   return {
     projectName: item.projectName,
     projectId: item.projectId,
-    projectStage: item.projectStage,
-    deliveryStatus: item.deliveryStatus,
     ownerOne: item.ownerOne,
     pm: item.pm,
     riskLight: item.riskLight,
-    riskTrend: item.riskTrend,
-    riskCategory: item.riskCategory,
-    keyRiskSummary: item.keyRiskSummary,
-    riskImpact: item.riskImpact,
-    weeklyProgress: item.weeklyProgress,
-    dailyRiskHelp: item.dailyRiskHelp,
-    riskResolution: item.riskResolution,
-    nextAction: item.nextAction,
-    actionOwner: item.actionOwner,
-    actionDueDate: item.actionDueDate,
-    needsEscalation: item.needsEscalation,
-    escalationRequest: item.escalationRequest,
     deliveryScope: item.deliveryScope,
     hasKeyDemo: item.hasKeyDemo,
-    qualityGap: item.qualityGap,
-    qualityLevel: item.qualityLevel,
-    updatedAt: item.updatedAt,
-    updatedBy: item.updatedBy
+    weeklyProgress: item.weeklyProgress,
+    dailyRiskHelp: item.dailyRiskHelp,
+    urgentStaffingGap: item.urgentStaffingGap,
+    qualityGap: item.qualityGap
   };
 }
 
@@ -45,57 +31,29 @@ function riskToneClass(value: ClusterRiskLight) {
 type CreateForm = {
   projectName: string;
   projectId: string;
-  projectStage: string;
-  deliveryStatus: string;
   ownerOne: string;
   pm: string;
   riskLight: ClusterRiskLight;
-  riskTrend: string;
-  riskCategory: string;
-  keyRiskSummary: string;
-  riskImpact: string;
   deliveryScope: string;
   hasKeyDemo: 'unknown' | 'yes' | 'no';
   weeklyProgress: string;
   dailyRiskHelp: string;
-  riskResolution: string;
-  nextAction: string;
-  actionOwner: string;
-  actionDueDate: string;
-  needsEscalation: string;
-  escalationRequest: string;
+  urgentStaffingGap: string;
   qualityGap: string;
-  qualityLevel: string;
-  updatedAt: string;
-  updatedBy: string;
 };
 
 const emptyCreateForm: CreateForm = {
   projectName: '',
   projectId: '',
-  projectStage: '',
-  deliveryStatus: '',
   ownerOne: '',
   pm: '',
   riskLight: '未填',
-  riskTrend: '',
-  riskCategory: '',
-  keyRiskSummary: '',
-  riskImpact: '',
   deliveryScope: '',
   hasKeyDemo: 'unknown',
   weeklyProgress: '',
   dailyRiskHelp: '',
-  riskResolution: '',
-  nextAction: '',
-  actionOwner: '',
-  actionDueDate: '',
-  needsEscalation: '',
-  escalationRequest: '',
-  qualityGap: '',
-  qualityLevel: '',
-  updatedAt: '',
-  updatedBy: ''
+  urgentStaffingGap: '',
+  qualityGap: ''
 };
 
 export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole?: string }) {
@@ -134,7 +92,7 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
     const text = keyword.trim().toLowerCase();
     const items = clusterBoard?.items || [];
     if (!text) return items;
-    return items.filter((item) => `${item.projectName} ${item.projectId} ${item.projectStage} ${item.deliveryStatus} ${item.ownerOne} ${item.pm} ${item.ownerPm} ${item.riskTrend} ${item.riskCategory} ${item.keyRiskSummary} ${item.riskImpact} ${item.weeklyProgress} ${item.dailyRiskHelp} ${item.riskResolution} ${item.nextAction} ${item.actionOwner}`.toLowerCase().includes(text));
+    return items.filter((item) => `${item.projectName} ${item.projectId} ${item.ownerOne} ${item.pm} ${item.ownerPm} ${item.deliveryScope} ${item.weeklyProgress} ${item.dailyRiskHelp} ${item.urgentStaffingGap} ${item.qualityGap}`.toLowerCase().includes(text));
   }, [clusterBoard, keyword]);
 
   function updateDraft(recordId: string, item: ClusterRiskBoardItem, patch: Partial<ClusterRiskUpdatePayload>) {
@@ -176,29 +134,15 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
       await createClusterRiskStatus({
         projectName: createForm.projectName,
         projectId: createForm.projectId,
-        projectStage: createForm.projectStage,
-        deliveryStatus: createForm.deliveryStatus,
         ownerOne: createForm.ownerOne,
         pm: createForm.pm,
         riskLight: createForm.riskLight,
-        riskTrend: createForm.riskTrend,
-        riskCategory: createForm.riskCategory,
-        keyRiskSummary: createForm.keyRiskSummary,
-        riskImpact: createForm.riskImpact,
         deliveryScope: createForm.deliveryScope,
         hasKeyDemo: createForm.hasKeyDemo === 'unknown' ? null : createForm.hasKeyDemo === 'yes',
         weeklyProgress: createForm.weeklyProgress,
         dailyRiskHelp: createForm.dailyRiskHelp,
-        riskResolution: createForm.riskResolution,
-        nextAction: createForm.nextAction,
-        actionOwner: createForm.actionOwner,
-        actionDueDate: createForm.actionDueDate,
-        needsEscalation: createForm.needsEscalation,
-        escalationRequest: createForm.escalationRequest,
-        qualityGap: createForm.qualityGap,
-        qualityLevel: createForm.qualityLevel,
-        updatedAt: createForm.updatedAt,
-        updatedBy: createForm.updatedBy
+        urgentStaffingGap: createForm.urgentStaffingGap,
+        qualityGap: createForm.qualityGap
       });
       setMessage(`已新增 ${createForm.projectName} 的集群风险状态`);
       setCreateForm(emptyCreateForm);
@@ -232,19 +176,11 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
           <div className="cluster-maintenance-create-grid">
             <input placeholder="项目名称 *" value={createForm.projectName} onChange={(e) => setCreateField('projectName', e.target.value)} />
             <input placeholder="项目ID（未立项不填）" value={createForm.projectId} onChange={(e) => setCreateField('projectId', e.target.value)} />
-            <input placeholder="项目阶段" value={createForm.projectStage} onChange={(e) => setCreateField('projectStage', e.target.value)} />
-            <input placeholder="交付状态" value={createForm.deliveryStatus} onChange={(e) => setCreateField('deliveryStatus', e.target.value)} />
             <input placeholder="项目1号位" value={createForm.ownerOne} onChange={(e) => setCreateField('ownerOne', e.target.value)} />
             <input placeholder="PM *" value={createForm.pm} onChange={(e) => setCreateField('pm', e.target.value)} />
             <select value={createForm.riskLight} onChange={(e) => setCreateField('riskLight', e.target.value as ClusterRiskLight)}>
               {clusterRiskOptions.map((option) => <option key={option} value={option}>{option}</option>)}
             </select>
-            <input placeholder="风险趋势（升高/持平/下降）" value={createForm.riskTrend} onChange={(e) => setCreateField('riskTrend', e.target.value)} />
-            <input placeholder="主要风险类型" value={createForm.riskCategory} onChange={(e) => setCreateField('riskCategory', e.target.value)} />
-            <input placeholder="风险影响范围" value={createForm.riskImpact} onChange={(e) => setCreateField('riskImpact', e.target.value)} />
-            <input placeholder="动作负责人" value={createForm.actionOwner} onChange={(e) => setCreateField('actionOwner', e.target.value)} />
-            <input type="date" placeholder="动作截止时间" value={createForm.actionDueDate} onChange={(e) => setCreateField('actionDueDate', e.target.value)} />
-            <input placeholder="是否需管理层支持" value={createForm.needsEscalation} onChange={(e) => setCreateField('needsEscalation', e.target.value)} />
             <select value={createForm.hasKeyDemo} onChange={(e) => setCreateField('hasKeyDemo', e.target.value as CreateForm['hasKeyDemo'])}>
               <option value="unknown">近期重点演示：待确认</option>
               <option value="yes">近期重点演示：是</option>
@@ -252,17 +188,11 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
             </select>
           </div>
           <div className="cluster-maintenance-create-textareas">
-            <textarea placeholder="关键风险摘要" value={createForm.keyRiskSummary} onChange={(e) => setCreateField('keyRiskSummary', e.target.value)} />
             <textarea placeholder="交付范围" value={createForm.deliveryScope} onChange={(e) => setCreateField('deliveryScope', e.target.value)} />
             <textarea placeholder="周进展（PM）" value={createForm.weeklyProgress} onChange={(e) => setCreateField('weeklyProgress', e.target.value)} />
             <textarea placeholder="Daily 风险求助（PM）" value={createForm.dailyRiskHelp} onChange={(e) => setCreateField('dailyRiskHelp', e.target.value)} />
-            <textarea placeholder="风险解决情况" value={createForm.riskResolution} onChange={(e) => setCreateField('riskResolution', e.target.value)} />
-            <textarea placeholder="下一步动作" value={createForm.nextAction} onChange={(e) => setCreateField('nextAction', e.target.value)} />
-            <textarea placeholder="需支持事项" value={createForm.escalationRequest} onChange={(e) => setCreateField('escalationRequest', e.target.value)} />
-            <input placeholder="质量状态与 GAP" value={createForm.qualityGap} onChange={(e) => setCreateField('qualityGap', e.target.value)} />
-            <input placeholder="质量等级" value={createForm.qualityLevel} onChange={(e) => setCreateField('qualityLevel', e.target.value)} />
-            <input type="date" placeholder="更新时间" value={createForm.updatedAt} onChange={(e) => setCreateField('updatedAt', e.target.value)} />
-            <input placeholder="更新人" value={createForm.updatedBy} onChange={(e) => setCreateField('updatedBy', e.target.value)} />
+            <textarea placeholder="最紧急的缺人情况（PM视角）" value={createForm.urgentStaffingGap} onChange={(e) => setCreateField('urgentStaffingGap', e.target.value)} />
+            <textarea placeholder="质量状态与GAP-叶芳" value={createForm.qualityGap} onChange={(e) => setCreateField('qualityGap', e.target.value)} />
           </div>
         </section>
       )}
@@ -308,34 +238,6 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
                   </div>
                   <div className="cluster-maintenance-fields">
                     <label>
-                      <span>项目阶段</span>
-                      <input value={draft.projectStage} onChange={(e) => updateDraft(item.recordId, item, { projectStage: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>交付状态</span>
-                      <input value={draft.deliveryStatus} onChange={(e) => updateDraft(item.recordId, item, { deliveryStatus: e.target.value })} />
-                    </label>
-                  </div>
-                  <div className="cluster-maintenance-fields">
-                    <label>
-                      <span>风险趋势</span>
-                      <input value={draft.riskTrend} onChange={(e) => updateDraft(item.recordId, item, { riskTrend: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>主要风险类型</span>
-                      <input value={draft.riskCategory} onChange={(e) => updateDraft(item.recordId, item, { riskCategory: e.target.value })} />
-                    </label>
-                  </div>
-                  <label className="cluster-maintenance-field">
-                    <span>关键风险摘要</span>
-                    <textarea value={draft.keyRiskSummary} onChange={(e) => updateDraft(item.recordId, item, { keyRiskSummary: e.target.value })} />
-                  </label>
-                  <label className="cluster-maintenance-field">
-                    <span>风险影响范围</span>
-                    <textarea value={draft.riskImpact} onChange={(e) => updateDraft(item.recordId, item, { riskImpact: e.target.value })} />
-                  </label>
-                  <div className="cluster-maintenance-fields">
-                    <label>
                       <span>项目名称</span>
                       <input value={draft.projectName} disabled={!canEditAssignmentFields} onChange={(e) => updateDraft(item.recordId, item, { projectName: e.target.value })} />
                     </label>
@@ -367,51 +269,13 @@ export default function ClusterRiskMaintenanceView({ userRole = '' }: { userRole
                     <textarea value={draft.dailyRiskHelp} onChange={(e) => updateDraft(item.recordId, item, { dailyRiskHelp: e.target.value })} />
                   </label>
                   <label className="cluster-maintenance-field">
-                    <span>风险解决情况</span>
-                    <textarea value={draft.riskResolution} onChange={(e) => updateDraft(item.recordId, item, { riskResolution: e.target.value })} />
+                    <span>最紧急的缺人情况（PM视角）</span>
+                    <textarea value={draft.urgentStaffingGap} onChange={(e) => updateDraft(item.recordId, item, { urgentStaffingGap: e.target.value })} />
                   </label>
                   <label className="cluster-maintenance-field">
-                    <span>下一步动作</span>
-                    <textarea value={draft.nextAction} onChange={(e) => updateDraft(item.recordId, item, { nextAction: e.target.value })} />
+                    <span>质量状态与GAP-叶芳</span>
+                    <textarea value={draft.qualityGap} onChange={(e) => updateDraft(item.recordId, item, { qualityGap: e.target.value })} />
                   </label>
-                  <div className="cluster-maintenance-fields">
-                    <label>
-                      <span>动作负责人</span>
-                      <input value={draft.actionOwner} onChange={(e) => updateDraft(item.recordId, item, { actionOwner: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>动作截止时间</span>
-                      <input type="date" value={draft.actionDueDate} onChange={(e) => updateDraft(item.recordId, item, { actionDueDate: e.target.value })} />
-                    </label>
-                  </div>
-                  <div className="cluster-maintenance-fields">
-                    <label>
-                      <span>是否需管理层支持</span>
-                      <input value={draft.needsEscalation} onChange={(e) => updateDraft(item.recordId, item, { needsEscalation: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>更新人</span>
-                      <input value={draft.updatedBy} onChange={(e) => updateDraft(item.recordId, item, { updatedBy: e.target.value })} />
-                    </label>
-                  </div>
-                  <label className="cluster-maintenance-field">
-                    <span>需支持事项</span>
-                    <textarea value={draft.escalationRequest} onChange={(e) => updateDraft(item.recordId, item, { escalationRequest: e.target.value })} />
-                  </label>
-                  <div className="cluster-maintenance-fields">
-                    <label>
-                      <span>质量状态与 GAP</span>
-                      <input value={draft.qualityGap} onChange={(e) => updateDraft(item.recordId, item, { qualityGap: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>质量等级</span>
-                      <input value={draft.qualityLevel} onChange={(e) => updateDraft(item.recordId, item, { qualityLevel: e.target.value })} />
-                    </label>
-                    <label>
-                      <span>更新时间</span>
-                      <input type="date" value={draft.updatedAt} onChange={(e) => updateDraft(item.recordId, item, { updatedAt: e.target.value })} />
-                    </label>
-                  </div>
                   <div className="panel-actions">
                     <button className="btn primary" type="button" onClick={() => void saveItem(item)} disabled={!item.recordId || savingId === item.recordId}>
                       {savingId === item.recordId ? '保存中...' : '保存状态'}

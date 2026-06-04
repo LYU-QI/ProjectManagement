@@ -965,6 +965,7 @@ export class DashboardService {
       ['riskLight', 'riskLight'],
       ['weeklyProgress', 'weeklyProgress'],
       ['dailyRiskHelp', 'dailyRiskHelp'],
+      ['urgentStaffingGap', 'urgentStaffingGap'],
       ['riskResolution', 'riskResolution'],
       ['deliveryScope', 'deliveryScope'],
       ['projectStage', 'projectStage'],
@@ -1023,7 +1024,8 @@ export class DashboardService {
     const optionalFields: Array<[string, keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'>]> = [
       ['projectId', 'projectId'],
       ['ownerOne', 'ownerOne'],
-      ['pm', 'pm']
+      ['pm', 'pm'],
+      ['urgentStaffingGap', 'urgentStaffingGap']
     ];
     for (const [bodyKey, fieldKey] of optionalFields) {
       const value = String(body[bodyKey] ?? '').trim();

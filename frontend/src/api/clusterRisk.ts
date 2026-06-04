@@ -4,29 +4,15 @@ import { apiGet, apiPost, apiPut } from './client';
 export type ClusterRiskUpdatePayload = {
   projectName: string;
   projectId: string;
-  projectStage: string;
-  deliveryStatus: string;
   ownerOne: string;
   pm: string;
   riskLight: string;
-  riskTrend: string;
-  riskCategory: string;
-  keyRiskSummary: string;
-  riskImpact: string;
-  weeklyProgress: string;
-  dailyRiskHelp: string;
-  riskResolution: string;
-  nextAction: string;
-  actionOwner: string;
-  actionDueDate: string;
-  needsEscalation: string;
-  escalationRequest: string;
   deliveryScope: string;
   hasKeyDemo: boolean | null;
+  weeklyProgress: string;
+  dailyRiskHelp: string;
+  urgentStaffingGap: string;
   qualityGap: string;
-  qualityLevel: string;
-  updatedAt: string;
-  updatedBy: string;
 };
 
 export function getClusterRiskBoard(force = false) {

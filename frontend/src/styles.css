@@ -1979,6 +1979,16 @@ select option {
   margin-bottom: 14px;
 }
 
+.cluster-board-filters .cluster-filter-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.cluster-board-filters .cluster-filter-select .themed-select-trigger {
+  min-height: 46px;
+  border-radius: 14px;
+}
+
 .cluster-main-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
