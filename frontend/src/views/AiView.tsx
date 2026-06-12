@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { apiPost } from '../api/client';
 import AsyncStatePanel from '../components/AsyncStatePanel';
 import ThemedSelect from '../components/ui/ThemedSelect';
@@ -14,6 +14,7 @@ type ProjectItem = {
 type Props = {
   aiReport: string;
   aiReportSource: string;
+  isGeneratingWeeklyReport: boolean;
   onGenerate: () => void;
   activeOrgName?: string | null;
   projects: ProjectItem[];
@@ -25,6 +26,7 @@ type Props = {
 export default function AiView({
   aiReport,
   aiReportSource,
+  isGeneratingWeeklyReport,
   onGenerate,
   activeOrgName,
   projects,
@@ -36,8 +38,10 @@ export default function AiView({
   const [progressDraft, setProgressDraft] = useState('');
   const [copiedWeekly, setCopiedWeekly] = useState(false);
   const [copiedProgress, setCopiedProgress] = useState(false);
+  const [exportingWeeklyPdf, setExportingWeeklyPdf] = useState(false);
   const [generatingProgress, setGeneratingProgress] = useState(false);
   const [activeTab, setActiveTab] = useState<'weekly' | 'progress' | 'nlp' | 'meeting'>('weekly');
+  const weeklyPdfRef = useRef<HTMLDivElement | null>(null);
 
   // 自然语言录入状态
   type ParsedTask = {
@@ -292,6 +296,48 @@ export default function AiView({
     URL.revokeObjectURL(url);
   }
 
+  async function downloadWeeklyPdf() {
+    if (!weeklyDraft || !weeklyPdfRef.current || exportingWeeklyPdf) return;
+    setExportingWeeklyPdf(true);
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf')
+      ]);
+      const node = weeklyPdfRef.current;
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: node.scrollWidth,
+        windowHeight: node.scrollHeight
+      } as Parameters<typeof html2canvas>[1] & { scale: number });
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const contentWidth = pageWidth - margin * 2;
+      const imageHeight = (canvas.height * contentWidth) / canvas.width;
+      const imageData = canvas.toDataURL('image/png');
+
+      let remainingHeight = imageHeight;
+      let y = margin;
+      pdf.addImage(imageData, 'PNG', margin, y, contentWidth, imageHeight);
+      remainingHeight -= pageHeight - margin * 2;
+
+      while (remainingHeight > 0) {
+        pdf.addPage();
+        y = margin - (imageHeight - remainingHeight);
+        pdf.addImage(imageData, 'PNG', margin, y, contentWidth, imageHeight);
+        remainingHeight -= pageHeight - margin * 2;
+      }
+
+      pdf.save(`weekly-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      setExportingWeeklyPdf(false);
+    }
+  }
+
   // 复制到剪贴板
   async function copy(content: string, setter: (v: boolean) => void) {
     try {
@@ -306,6 +352,28 @@ export default function AiView({
   // 编辑与预览模式切换
   const [weeklyViewMode, setWeeklyViewMode] = useState<'edit' | 'preview'>('preview');
   const [progressViewMode, setProgressViewMode] = useState<'edit' | 'preview'>('preview');
+
+  function renderAiProgressPanel(title: string, description: string, steps: string[]) {
+    return (
+      <div className="ai-weekly-progress">
+        <div className="ai-weekly-progress-head">
+          <span className="ai-weekly-progress-dot" />
+          <div>
+            <div className="ai-weekly-progress-title">{title}</div>
+            <div className="ai-weekly-progress-desc">{description}</div>
+          </div>
+        </div>
+        <div className="ai-weekly-progress-track">
+          <div className="ai-weekly-progress-bar" />
+        </div>
+        <div className="ai-weekly-progress-steps">
+          {steps.map((step) => (
+            <span key={step}>{step}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -363,9 +431,14 @@ export default function AiView({
       {activeTab === 'weekly' && (
         <div className="card ai-tab-panel ai-tab-weekly">
           <div className="ai-tab-actions">
-            <button className="btn" onClick={onGenerate}>生成周报草稿</button>
-            <button className="btn" type="button" onClick={() => copy(weeklyDraft, setCopiedWeekly)} disabled={!weeklyDraft}>复制全文</button>
-            <button className="btn" type="button" onClick={() => download(weeklyDraft, 'weekly-report')} disabled={!weeklyDraft}>下载 TXT</button>
+            <button className={`btn ${isGeneratingWeeklyReport ? 'btn-mode active' : ''}`} onClick={onGenerate} disabled={isGeneratingWeeklyReport}>
+              {isGeneratingWeeklyReport ? '生成中...' : '生成周报草稿'}
+            </button>
+            <button className="btn" type="button" onClick={() => copy(weeklyDraft, setCopiedWeekly)} disabled={!weeklyDraft || isGeneratingWeeklyReport}>复制全文</button>
+            <button className="btn" type="button" onClick={() => download(weeklyDraft, 'weekly-report')} disabled={!weeklyDraft || isGeneratingWeeklyReport}>下载 TXT</button>
+            <button className="btn" type="button" onClick={() => void downloadWeeklyPdf()} disabled={!weeklyDraft || exportingWeeklyPdf || isGeneratingWeeklyReport}>
+              {exportingWeeklyPdf ? '导出中...' : '下载 PDF'}
+            </button>
             {copiedWeekly && <span className="ai-copy-ok">已复制</span>}
 
             <div className="ai-view-switch">
@@ -399,7 +472,13 @@ export default function AiView({
             />
           ) : (
             <div className="markdown-body ai-markdown-view">
-              {weeklyDraft ? (
+              {isGeneratingWeeklyReport ? (
+                renderAiProgressPanel(
+                  '正在生成周报草稿',
+                  '正在汇总项目任务、需求、测试和缺陷数据，并调用 AI 生成管理层周报。',
+                  ['汇总项目数据', '计算质量指标', '生成风险结论', '整理 Markdown']
+                )
+              ) : weeklyDraft ? (
                 <Suspense
                   fallback={
                     <AsyncStatePanel
@@ -430,10 +509,10 @@ export default function AiView({
               onClick={generateProgressReport}
               disabled={!selectedProjectId || generatingProgress}
             >
-              {generatingProgress ? '⏳ 分析中...' : '🤖 AI 生成项目进展报告'}
+              {generatingProgress ? '分析中...' : '🤖 AI 生成项目进展报告'}
             </button>
-            <button className="btn" type="button" onClick={() => copy(progressDraft, setCopiedProgress)} disabled={!progressDraft}>复制全文</button>
-            <button className="btn" type="button" onClick={() => download(progressDraft, 'progress-report')} disabled={!progressDraft}>下载 TXT</button>
+            <button className="btn" type="button" onClick={() => copy(progressDraft, setCopiedProgress)} disabled={!progressDraft || generatingProgress}>复制全文</button>
+            <button className="btn" type="button" onClick={() => download(progressDraft, 'progress-report')} disabled={!progressDraft || generatingProgress}>下载 TXT</button>
             {copiedProgress && <span className="ai-copy-ok">已复制</span>}
             {!selectedProjectId && (
               <span className="ai-project-hint">请先选择目标工作区</span>
@@ -455,7 +534,13 @@ export default function AiView({
             />
           ) : (
             <div className="markdown-body ai-markdown-view">
-              {progressDraft ? (
+              {generatingProgress ? (
+                renderAiProgressPanel(
+                  '正在生成项目进展报告',
+                  '正在分析任务完成率、里程碑、风险和项目健康度，生成结构化报告。',
+                  ['读取项目数据', '计算进度指标', '识别关键风险', '生成分析报告']
+                )
+              ) : progressDraft ? (
                 <Suspense
                   fallback={
                     <AsyncStatePanel
@@ -509,8 +594,14 @@ export default function AiView({
             </div>
           )}
 
+          {nlpLoading && renderAiProgressPanel(
+            '正在解析任务描述',
+            '正在识别任务名称、负责人、时间、优先级和状态字段。',
+            ['理解自然语言', '抽取任务字段', '补全日期信息', '生成可编辑表单']
+          )}
+
           {/* 解析结果预览 */}
-          {nlpResult && (
+          {!nlpLoading && nlpResult && (
             <div className="ai-result-wrap">
               <div className="ai-success-tip">
                 ✅ 解析成功 — 可编辑后确认，再一键创建到飞书
@@ -688,7 +779,13 @@ export default function AiView({
             </div>
           )}
 
-          {meetingTasks.length > 0 && (
+          {meetingLoading && renderAiProgressPanel(
+            '正在提取会议行动项',
+            '正在从会议纪要中识别任务、责任人和计划时间，并生成可批量创建的任务列表。',
+            ['拆解会议内容', '识别行动项', '匹配责任人', '整理任务列表']
+          )}
+
+          {!meetingLoading && meetingTasks.length > 0 && (
             <div className="ai-result-wrap ai-result-wrap-lg">
               <div className="ai-result-head">
                 <div className="ai-warning-tip">
@@ -845,16 +942,26 @@ export default function AiView({
                 </div>
               )}
 
-              {!meetingTasks.length && !meetingLoading && !meetingError && (
-                <div className="ai-empty-state">
-                  输入会议文本后点击指示按钮提取行动项
-                </div>
-              )}
+            </div>
+          )}
+
+          {!meetingTasks.length && !meetingLoading && !meetingError && (
+            <div className="ai-empty-state">
+              输入会议文本后点击指示按钮提取行动项
             </div>
           )}
 
         </div>
       )}
+      <div className="ai-pdf-export-surface" aria-hidden="true">
+        <div ref={weeklyPdfRef} className="markdown-body ai-markdown-view ai-pdf-export-document">
+          <Suspense fallback={null}>
+            <RichMarkdown>
+              {weeklyDraft || ''}
+            </RichMarkdown>
+          </Suspense>
+        </div>
+      </div>
     </div>
   );
 }

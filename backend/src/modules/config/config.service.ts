@@ -118,6 +118,7 @@ const CONFIG_META: Record<string, { group: string; groupLabel: string; sensitive
     AI_API_URL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型 API 端点（兼容 OpenAI 格式，如 https://api.deepseek.com/v1）' },
     AI_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'AI 模型 API 密钥' },
     AI_MODEL: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 模型名称（如 deepseek-chat、gpt-4o、qwen-plus）' },
+    AI_WEEKLY_REPORT_TIMEOUT_MS: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: false, description: 'AI 周报生成请求超时时间，单位毫秒，默认 120000' },
     TAVILY_API_KEY: { group: 'ai', groupLabel: 'AI 模型配置', sensitive: true, description: 'Tavily 联网搜索 API 密钥（用于聊天机器人实时检索）' },
 };
 

@@ -163,6 +163,28 @@ export default function RequirementsView({
     }
   }
 
+  function renderAiProgressPanel(title: string, description: string, steps: string[]) {
+    return (
+      <div className="ai-weekly-progress">
+        <div className="ai-weekly-progress-head">
+          <span className="ai-weekly-progress-dot" />
+          <div>
+            <div className="ai-weekly-progress-title">{title}</div>
+            <div className="ai-weekly-progress-desc">{description}</div>
+          </div>
+        </div>
+        <div className="ai-weekly-progress-track">
+          <div className="ai-weekly-progress-bar" />
+        </div>
+        <div className="ai-weekly-progress-steps">
+          {steps.map((step) => (
+            <span key={step}>{step}</span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   async function submitRequirementInModal(e: FormEvent<HTMLFormElement>) {
     await Promise.resolve(onSubmitRequirement(e));
     setCreateModalOpen(false);
@@ -1079,11 +1101,11 @@ export default function RequirementsView({
             </div>
             <div className="drawer-body req-action-modal-body modal-section-body">
               {aiReviewDrawer.loading ? (
-                <AsyncStatePanel
-                  tone="loading"
-                  title="AI 正在评审需求"
-                  description="正在分析需求完整性、可执行性与潜在风险，请稍候。"
-                />
+                renderAiProgressPanel(
+                  'AI 正在评审需求',
+                  '正在分析需求完整性、可执行性与潜在风险，请稍候。',
+                  ['读取需求内容', '检查完整性', '识别风险点', '生成评审意见']
+                )
               ) : (
                 <Suspense
                   fallback={
@@ -1157,6 +1179,11 @@ export default function RequirementsView({
                 <div className="req-import-error">
                   ⚠️ {importModal.error}
                 </div>
+              )}
+              {importModal.loading && !importModal.result && renderAiProgressPanel(
+                'AI 正在识别需求文档',
+                '正在读取文件内容，提取需求条目并转换为可校对列表。',
+                ['读取文件内容', '识别需求条目', '补全字段信息', '生成导入清单']
               )}
             </div>
 

@@ -238,6 +238,75 @@ export interface ResourceCalendarResponse {
   conflicts: ResourceCalendarConflict[];
 }
 
+export type ProjectWeeklyTone = 'good' | 'warn' | 'danger' | '';
+
+export interface ProjectWeeklyMetric {
+  label: string;
+  value: string;
+  sub: string;
+  tone: ProjectWeeklyTone;
+}
+
+export interface ProjectWeeklyReportResponse {
+  generatedAt: string;
+  source: 'mixed' | 'local' | 'config_missing' | 'error';
+  error?: string;
+  project: {
+    id: number;
+    name: string;
+    alias: string;
+    pm: string;
+    stage: string;
+    riskLight: ClusterRiskLight;
+    period: { weekStart: string; weekEnd: string };
+    dataSource: string;
+  };
+  metrics: ProjectWeeklyMetric[];
+  bugStats: {
+    cards: Array<{ label: string; value: number; sub?: string; explain?: string }>;
+    p0p1StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
+    p0TechnicalModuleDistribution: Array<{ name: string; value: number }>;
+  };
+  pendingP0Bugs: Array<{
+    id: string;
+    title: string;
+    technicalModules: string[];
+    expectedFixDate: string;
+    status: string;
+    source: string;
+    rootCause: string;
+    assignee: string;
+    severity: string;
+  }>;
+  health: Array<{
+    dimension: string;
+    metric: string;
+    percent: number;
+    trend: string;
+    judgement: string;
+    tone: Exclude<ProjectWeeklyTone, ''>;
+    action: string;
+  }>;
+  progress: {
+    weeklyProgress: string;
+    deliveryScope: string;
+    keyDemo: string;
+  };
+  milestones: Array<{ name: string; due: string; status: string; tone: Exclude<ProjectWeeklyTone, ''>; owner: string }>;
+  discussions: Array<{ index: string; topic: string; technicalPoint: string; owner: string; plannedDate: string; progress: string; solution: string; tone: Exclude<ProjectWeeklyTone, ''> }>;
+  risks: Array<{ title: string; impact: string; owner: string; due: string; status: string; tone: Exclude<ProjectWeeklyTone, ''>; support: string }>;
+  qualityCards: ProjectWeeklyMetric[];
+  tests: Array<{ module: string; cases: number; executed: number; passRate: number; failedBlocked: string; tone: Exclude<ProjectWeeklyTone, ''>; conclusion: string }>;
+  ranks: Array<{ title: string; items: Array<{ name: string; value: number }> }>;
+  trends: Array<{ title: string; unit: string; color: Exclude<ProjectWeeklyTone, ''>; days: Array<{ day: string; value: number }> }>;
+  aiSummary: {
+    conclusion: string;
+    risks: string[];
+    actions: string[];
+    nextWeek: string[];
+  };
+}
+
 export interface Requirement {
   id: number;
   projectId: number;
@@ -376,6 +445,78 @@ export interface ProjectItem {
   feishuAppToken?: string | null;
   feishuTableId?: string | null;
   feishuViewId?: string | null;
+}
+
+export type ProjectWeeklyDataSourceType = 'status_risk' | 'bugs' | 'tests' | 'resources' | 'milestones' | 'discussion_plans' | 'feature_list';
+
+export interface ProjectWeeklyDataSource {
+  sourceType: ProjectWeeklyDataSourceType;
+  label: string;
+  appToken?: string | null;
+  tableId?: string | null;
+  viewId?: string | null;
+}
+
+export interface ProjectWeeklyDataSourcesResponse {
+  projectId: number;
+  sources: ProjectWeeklyDataSource[];
+}
+
+export interface FeatureListDataSourceResponse {
+  projectId: number;
+  source: ProjectWeeklyDataSource & { sourceType: 'feature_list' };
+}
+
+export interface FeatureListBoardResponse {
+  generatedAt: string;
+  source: 'feishu' | 'config_missing' | 'error';
+  error?: string;
+  project: { id: number; name: string; dataSource: string };
+  summary: {
+    totalFeatures: number;
+    effectiveFeatures: number;
+    domainCount: number;
+    domainEmptyCount: number;
+    secondLevelCount: number;
+    secondLevelEmptyCount: number;
+    thirdLevelCount: number;
+    thirdLevelEmptyCount: number;
+    rawQueryCount: number;
+    rawQueryEmptyCount: number;
+    queryCount: number;
+    queryEmptyCount: number;
+    caseCount: number;
+    averagePassRate: number;
+    acceptedCount: number;
+    failedCount: number;
+    pendingCloseCount: number;
+    linkedBugFeatureCount: number;
+    closureRate: number;
+  };
+  metrics: ProjectWeeklyMetric[];
+  domains: Array<{ name: string; featureCount: number; caseCount: number; averagePassRate: number; closureRate: number; failedCount: number; pendingCount: number; tone: Exclude<ProjectWeeklyTone, ''> }>;
+  riskDomains: Array<{ name: string; reason: string; action: string; tone: Exclude<ProjectWeeklyTone, ''> }>;
+  developers: Array<{ name: string; featureCount: number; caseCount: number; averagePassRate: number; pendingCount: number; tone: Exclude<ProjectWeeklyTone, ''> }>;
+  items: Array<{
+    featureId: string;
+    domain: string;
+    secondLevel: string;
+    thirdLevel: string;
+    query: string;
+    developer: string;
+    caseCount: number;
+    passRate: number;
+    testStatus: string;
+    testConclusion: string;
+    acceptanceStatus: string;
+    isClosed: boolean;
+    linkedBugIds: string;
+    owner: string;
+    plannedCloseDate: string;
+    actualCloseDate: string;
+    note: string;
+    tone: Exclude<ProjectWeeklyTone, ''>;
+  }>;
 }
 
 export interface CostEntryItem {

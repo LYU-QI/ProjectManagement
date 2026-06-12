@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req } from '@nestjs/common';
-import { IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
+import { IsArray, IsNotEmpty, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import { ProjectsService } from './projects.service';
 import { Roles } from '../auth/roles.decorator';
 
@@ -77,6 +77,28 @@ class UpdateProjectDto {
   feishuViewId?: string;
 }
 
+class ProjectWeeklyDataSourceDto {
+  @IsString()
+  sourceType!: string;
+
+  @IsOptional()
+  @IsString()
+  appToken?: string | null;
+
+  @IsOptional()
+  @IsString()
+  tableId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  viewId?: string | null;
+}
+
+class UpdateProjectWeeklyDataSourcesDto {
+  @IsArray()
+  sources!: ProjectWeeklyDataSourceDto[];
+}
+
 @Controller('api/v1/projects')
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
@@ -103,6 +125,42 @@ export class ProjectsController {
     @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
   ) {
     return this.projectsService.update(id, body, req.user, req.org?.id ?? null);
+  }
+
+  @Get(':id/weekly-data-sources')
+  weeklyDataSources(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
+  ) {
+    return this.projectsService.weeklyDataSources(id, req.user, req.org?.id ?? null);
+  }
+
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
+  @Patch(':id/weekly-data-sources')
+  updateWeeklyDataSources(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateProjectWeeklyDataSourcesDto,
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
+  ) {
+    return this.projectsService.updateWeeklyDataSources(id, body.sources || [], req.user, req.org?.id ?? null);
+  }
+
+  @Get(':id/feature-list-data-source')
+  featureListDataSource(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
+  ) {
+    return this.projectsService.featureListDataSource(id, req.user, req.org?.id ?? null);
+  }
+
+  @Roles('project_manager', 'member', 'pm', 'super_admin')
+  @Patch(':id/feature-list-data-source')
+  updateFeatureListDataSource(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ProjectWeeklyDataSourceDto,
+    @Req() req: { user?: { sub?: number; role?: string }; org?: { id?: string | null } }
+  ) {
+    return this.projectsService.updateFeatureListDataSource(id, body || {}, req.user, req.org?.id ?? null);
   }
 
   @Roles('project_manager', 'member', 'pm', 'super_admin')

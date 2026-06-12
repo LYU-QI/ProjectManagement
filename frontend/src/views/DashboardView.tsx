@@ -1,4 +1,4 @@
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, FormEvent, KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type {
   ClusterRiskBoardItem,
@@ -7,12 +7,20 @@ import type {
   DashboardOverview,
   DeliveryRoadmapItem,
   DeliveryRoadmapResponse,
+  FeatureListBoardResponse,
+  FeatureListDataSourceResponse,
+  ProjectWeeklyDataSource,
+  ProjectWeeklyDataSourcesResponse,
+  ProjectWeeklyReportResponse,
+  ProjectWeeklyTone,
   ProjectItem,
   ResourceCalendarCell,
   ResourceCalendarPerson,
   ResourceCalendarResponse
 } from '../types';
 import ThemedSelect from '../components/ui/ThemedSelect';
+import AsyncStatePanel from '../components/AsyncStatePanel';
+import { apiGet, apiPatch } from '../api/client';
 
 type InlineEditState<T, Id> = {
   editingId: Id | null;
@@ -63,6 +71,12 @@ type ResourceCalendarTooltipState = {
   label: string;
   mode: ResourceCalendarColumn['mode'];
   cell: ResourceCalendarDisplayCell;
+};
+
+type WeeklyCellTooltipState = {
+  text: string;
+  x: number;
+  y: number;
 };
 
 type Props = {
@@ -200,6 +214,231 @@ function countFilteredClusterSummary(items: ClusterRiskBoardItem[]) {
     dailyRiskHelpCount: items.filter((item) => Boolean(item.dailyRiskHelp.trim())).length,
     highQualityRiskCount: items.filter((item) => item.qualityLevel.includes('高') || item.qualityGap.includes('高风险')).length
   };
+}
+
+function weeklyToneClass(tone: ProjectWeeklyTone): string {
+  if (tone === 'danger') return 'danger';
+  if (tone === 'warn') return 'warn';
+  if (tone === 'good') return 'good';
+  return '';
+}
+
+function weeklyStatus(text: string, tone: ProjectWeeklyTone) {
+  return <span className={`weekly-status ${weeklyToneClass(tone)}`} title={text || '-'}>{text || '-'}</span>;
+}
+
+function weeklyPercentBar(label: string, percent: number, tone: ProjectWeeklyTone) {
+  const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+  return (
+    <div className="weekly-bar-row">
+      {label && <span>{label}</span>}
+      <div className="weekly-bar-track">
+        <div className={`weekly-bar-fill ${weeklyToneClass(tone)}`} style={{ width: `${safe}%` }} />
+      </div>
+      <strong>{safe}%</strong>
+    </div>
+  );
+}
+
+function weeklyTrendWidth(value: number, max: number) {
+  return `${Math.max(8, Math.round((Math.abs(value) / Math.max(max, 1)) * 100))}%`;
+}
+
+function ProjectWeeklyBugStatsPanel({ stats }: { stats: ProjectWeeklyReportResponse['bugStats'] }) {
+  const pieSegments = stats.p0p1StatusDistribution || [];
+  const totalPie = pieSegments.reduce((sum, item) => sum + item.value, 0);
+  let offset = 0;
+  const gradient = pieSegments.length > 0 && totalPie > 0
+    ? pieSegments.map((item) => {
+      const start = offset;
+      const span = (item.value / totalPie) * 100;
+      offset += span;
+      return `${item.color} ${start}% ${offset}%`;
+    }).join(', ')
+    : '#e7edf6 0% 100%';
+  const maxModuleValue = Math.max(1, ...stats.p0TechnicalModuleDistribution.map((item) => item.value));
+  const p0ModuleTotal = stats.p0TechnicalModuleDistribution.reduce((sum, item) => sum + item.value, 0);
+
+  return (
+    <section className="weekly-bug-stats-panel">
+      <div className="weekly-bug-card-grid">
+        {stats.cards.map((card) => (
+          <article className="weekly-bug-stat-card" key={card.label}>
+            {card.explain && (
+              <span className="weekly-card-help" tabIndex={0} aria-label={card.explain}>
+                ❕
+                <em>{card.explain}</em>
+              </span>
+            )}
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+            {card.sub && <p>{card.sub}</p>}
+          </article>
+        ))}
+      </div>
+      <div className="weekly-bug-chart-grid">
+        <article className="weekly-bug-chart-card">
+          <div className="section-title-row">
+            <div>
+              <h3>P0/P1问题状态占比</h3>
+              <p className="muted">统计严重等级包含 P0、P1 的问题状态分布。</p>
+            </div>
+          </div>
+          <div className="weekly-pie-layout">
+            <div
+              className="weekly-pie-chart"
+              style={{ '--weekly-pie-gradient': gradient } as CSSProperties}
+              aria-label={`P0/P1问题状态占比，总数 ${totalPie}`}
+            >
+              <span>{totalPie}</span>
+              <small>P0/P1 总数</small>
+            </div>
+            <div className="weekly-pie-legend">
+              {pieSegments.map((item) => (
+                <div className="weekly-pie-legend-item" key={item.name}>
+                  <i style={{ background: item.color }} />
+                  <span>{item.name}</span>
+                  <strong>{item.value}</strong>
+                  <em>{item.percent}%</em>
+                </div>
+              ))}
+            </div>
+          </div>
+        </article>
+        <article className="weekly-bug-chart-card">
+          <div className="section-title-row">
+            <div>
+              <h3>遗留P0问题技术模块分布 <span className="weekly-section-count">总数 {p0ModuleTotal}</span></h3>
+              <p className="muted">统计待处理 P0 问题在技术模块上的分布，多选模块会拆分计数。</p>
+            </div>
+          </div>
+          <div className="weekly-module-bars">
+            {stats.p0TechnicalModuleDistribution.length > 0 ? stats.p0TechnicalModuleDistribution.map((item, index) => (
+              <div
+                className="weekly-module-column"
+                key={item.name}
+                style={{ '--bar-delay': `${index * 60}ms` } as CSSProperties}
+              >
+                <div className="weekly-module-column-plot">
+                  <div
+                    className="weekly-module-bar-fill"
+                    style={{
+                      '--bar-height': `${Math.max(8, Math.round((item.value / maxModuleValue) * 100))}%`
+                    } as CSSProperties}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+                <span title={item.name}>{item.name}</span>
+              </div>
+            )) : (
+              <div className="weekly-empty-chart">暂无遗留 P0 技术模块数据</div>
+            )}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function parseWeeklyDateText(value: string): number | null {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(text)
+    ? text
+    : /^\d{2}-\d{2}$/.test(text)
+      ? `${new Date().getFullYear()}-${text}`
+      : '';
+  if (!normalized) return null;
+  const time = new Date(`${normalized}T00:00:00`).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function formatShortDate(value: string): string {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return '-';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text.slice(5);
+  return text;
+}
+
+function formatLocalShortDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}-${day}`;
+}
+
+function ProjectWeeklyMilestoneTimeline({ report }: { report: ProjectWeeklyReportResponse }) {
+  const milestones = [...report.milestones].sort((a, b) => {
+    const aTime = parseWeeklyDateText(a.due) ?? Number.MAX_SAFE_INTEGER;
+    const bTime = parseWeeklyDateText(b.due) ?? Number.MAX_SAFE_INTEGER;
+    return aTime - bTime || a.name.localeCompare(b.name);
+  });
+  const validTimes = milestones
+    .map((item) => parseWeeklyDateText(item.due))
+    .filter((time): time is number => time !== null);
+  const positionForIndex = (index: number) => {
+    if (milestones.length <= 1) return 50;
+    return 4 + (index / Math.max(milestones.length - 1, 1)) * 92;
+  };
+  const today = new Date();
+  const todayTime = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const timedMilestones = milestones
+    .map((item, index) => ({ time: parseWeeklyDateText(item.due), position: positionForIndex(index) }))
+    .filter((item): item is { time: number; position: number } => item.time !== null)
+    .sort((a, b) => a.time - b.time);
+  const exactTodayMilestones = timedMilestones.filter((item) => item.time === todayTime);
+  const todayPosition = (() => {
+    if (timedMilestones.length === 0) return 50;
+    if (exactTodayMilestones.length > 0) {
+      return exactTodayMilestones.reduce((sum, item) => sum + item.position, 0) / exactTodayMilestones.length;
+    }
+    if (todayTime <= timedMilestones[0].time) return timedMilestones[0].position;
+    const last = timedMilestones[timedMilestones.length - 1];
+    if (todayTime >= last.time) return last.position;
+    const nextIndex = timedMilestones.findIndex((item) => item.time > todayTime);
+    const prev = timedMilestones[Math.max(0, nextIndex - 1)];
+    const next = timedMilestones[nextIndex];
+    const ratio = next.time === prev.time ? 0 : (todayTime - prev.time) / (next.time - prev.time);
+    return prev.position + (next.position - prev.position) * ratio;
+  })();
+  const axisMinWidth = Math.max(1180, milestones.length * 150);
+
+  return (
+    <article className="weekly-milestone-timeline-card">
+      <div className="section-title-row">
+        <div>
+          <h3>交付里程碑时间轴</h3>
+          <p className="muted">来自交付里程碑表，节点仅展示时间和里程碑名称。</p>
+        </div>
+      </div>
+      <div className="weekly-milestone-axis-scroll">
+        <div className="weekly-milestone-axis" style={{ minWidth: `${axisMinWidth}px` }} role="list">
+          <div
+            className="weekly-milestone-today-line"
+            style={{ left: `${todayPosition}%` }}
+            aria-label={`当前时间 ${formatLocalShortDate(today)}`}
+          >
+            <span>当前时间 {formatLocalShortDate(today)}</span>
+          </div>
+          {milestones.map((item, index) => {
+            const position = positionForIndex(index);
+            return (
+              <div
+                className={`weekly-milestone-node ${weeklyToneClass(item.tone)}`}
+                style={{ left: `${position}%` }}
+                key={`${item.name}-${item.due}-${index}`}
+                role="listitem"
+              >
+                <span className="weekly-milestone-dot" />
+                <span className="weekly-milestone-date">{formatShortDate(item.due)}</span>
+                <strong>{item.name}</strong>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function roadmapDateLabel(item: DeliveryRoadmapItem): string {
@@ -456,6 +695,16 @@ export default function DashboardView({
   onInlineKeyDown
 }: Props) {
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [weeklyDataSourceProject, setWeeklyDataSourceProject] = useState<ProjectItem | null>(null);
+  const [weeklyDataSources, setWeeklyDataSources] = useState<ProjectWeeklyDataSource[]>([]);
+  const [weeklyDataSourcesLoading, setWeeklyDataSourcesLoading] = useState(false);
+  const [weeklyDataSourcesSaving, setWeeklyDataSourcesSaving] = useState(false);
+  const [weeklyDataSourcesError, setWeeklyDataSourcesError] = useState('');
+  const [featureListDataSourceProject, setFeatureListDataSourceProject] = useState<ProjectItem | null>(null);
+  const [featureListDataSource, setFeatureListDataSource] = useState<ProjectWeeklyDataSource | null>(null);
+  const [featureListDataSourceLoading, setFeatureListDataSourceLoading] = useState(false);
+  const [featureListDataSourceSaving, setFeatureListDataSourceSaving] = useState(false);
+  const [featureListDataSourceError, setFeatureListDataSourceError] = useState('');
   const [projectKeyword, setProjectKeyword] = useState('');
   const [clusterRiskFilter, setClusterRiskFilter] = useState<'all' | ClusterRiskLight>('all');
   const [clusterPmFilter, setClusterPmFilter] = useState('all');
@@ -464,7 +713,22 @@ export default function DashboardView({
   const [clusterFullscreen, setClusterFullscreen] = useState(false);
   const [selectedClusterProject, setSelectedClusterProject] = useState<ClusterRiskBoardItem | null>(null);
   const [clusterRefreshing, setClusterRefreshing] = useState(false);
-  const [dashboardBoardTab, setDashboardBoardTab] = useState<'cluster' | 'roadmap' | 'resources'>('cluster');
+  const [dashboardBoardTab, setDashboardBoardTab] = useState<'cluster' | 'roadmap' | 'resources' | 'weekly' | 'feature-list'>('cluster');
+  const [projectWeeklyReport, setProjectWeeklyReport] = useState<ProjectWeeklyReportResponse | null>(null);
+  const [projectWeeklyLoading, setProjectWeeklyLoading] = useState(false);
+  const [projectWeeklyError, setProjectWeeklyError] = useState('');
+  const [weeklyP0ModuleFilter, setWeeklyP0ModuleFilter] = useState('all');
+  const [weeklyP0DateFilter, setWeeklyP0DateFilter] = useState('all');
+  const [weeklyP0StatusFilter, setWeeklyP0StatusFilter] = useState('all');
+  const [weeklyP0SourceFilter, setWeeklyP0SourceFilter] = useState('all');
+  const [weeklyP0SeverityFilter, setWeeklyP0SeverityFilter] = useState<'all' | 'P0' | 'P1'>('all');
+  const [featureListBoard, setFeatureListBoard] = useState<FeatureListBoardResponse | null>(null);
+  const [featureListLoading, setFeatureListLoading] = useState(false);
+  const [featureListError, setFeatureListError] = useState('');
+  const [weeklyFullscreen, setWeeklyFullscreen] = useState(false);
+  const [featureListFullscreen, setFeatureListFullscreen] = useState(false);
+  const [weeklyImageExporting, setWeeklyImageExporting] = useState(false);
+  const weeklyBoardRef = useRef<HTMLElement | null>(null);
   const [roadmapFullscreen, setRoadmapFullscreen] = useState(false);
   const [roadmapRefreshing, setRoadmapRefreshing] = useState(false);
   const [resourceRoleFilter, setResourceRoleFilter] = useState('all');
@@ -476,7 +740,31 @@ export default function DashboardView({
   const [resourceFullscreen, setResourceFullscreen] = useState(false);
   const [resourceCalendarRefreshing, setResourceCalendarRefreshing] = useState(false);
   const [resourceTooltip, setResourceTooltip] = useState<ResourceCalendarTooltipState | null>(null);
+  const [weeklyCellTooltip, setWeeklyCellTooltip] = useState<WeeklyCellTooltipState | null>(null);
   const canUsePortal = typeof window !== 'undefined' && typeof document !== 'undefined';
+
+  function positionWeeklyCellTooltip(text: string, event: ReactMouseEvent<HTMLElement>) {
+    const value = String(text || '').trim();
+    if (!value || value === '-') {
+      setWeeklyCellTooltip(null);
+      return;
+    }
+    const maxWidth = 360;
+    const maxHeight = 180;
+    setWeeklyCellTooltip({
+      text: value,
+      x: Math.min(event.clientX + 14, Math.max(16, window.innerWidth - maxWidth - 16)),
+      y: Math.min(event.clientY + 18, Math.max(16, window.innerHeight - maxHeight - 16))
+    });
+  }
+
+  function weeklyCellTooltipProps(text: string) {
+    return {
+      onMouseEnter: (event: ReactMouseEvent<HTMLElement>) => positionWeeklyCellTooltip(text, event),
+      onMouseMove: (event: ReactMouseEvent<HTMLElement>) => positionWeeklyCellTooltip(text, event),
+      onMouseLeave: () => setWeeklyCellTooltip(null)
+    };
+  }
 
   useEffect(() => {
     if (!selectedClusterProject || typeof window === 'undefined') return;
@@ -509,9 +797,233 @@ export default function DashboardView({
     };
   }, [selectedClusterProject]);
 
+  useEffect(() => {
+    if (dashboardBoardTab !== 'weekly') return;
+    if (!selectedProjectId) {
+      setProjectWeeklyReport(null);
+      setProjectWeeklyError('');
+      return;
+    }
+    let cancelled = false;
+    setProjectWeeklyLoading(true);
+    setProjectWeeklyError('');
+    apiGet<ProjectWeeklyReportResponse>(`/dashboard/project-weekly-report?projectId=${selectedProjectId}`)
+      .then((data) => {
+        if (!cancelled) setProjectWeeklyReport(data);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setProjectWeeklyError(err.message || '项目周报加载失败');
+          setProjectWeeklyReport(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProjectWeeklyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardBoardTab, selectedProjectId]);
+
+  useEffect(() => {
+    if (dashboardBoardTab !== 'weekly' || !selectedProjectId) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      apiGet<ProjectWeeklyReportResponse>(`/dashboard/project-weekly-report?projectId=${selectedProjectId}`)
+        .then((data) => {
+          if (!cancelled) {
+            setProjectWeeklyReport(data);
+            setProjectWeeklyError('');
+          }
+        })
+        .catch((err: Error) => {
+          if (!cancelled) setProjectWeeklyError(err.message || '项目周报自动刷新失败');
+        });
+    }, 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [dashboardBoardTab, selectedProjectId]);
+
+  useEffect(() => {
+    if (dashboardBoardTab !== 'feature-list') return;
+    if (!selectedProjectId) {
+      setFeatureListBoard(null);
+      setFeatureListError('');
+      return;
+    }
+    let cancelled = false;
+    setFeatureListLoading(true);
+    setFeatureListError('');
+    apiGet<FeatureListBoardResponse>(`/dashboard/feature-list-board?projectId=${selectedProjectId}`)
+      .then((data) => {
+        if (!cancelled) setFeatureListBoard(data);
+      })
+      .catch((err: Error) => {
+        if (!cancelled) {
+          setFeatureListError(err.message || 'Feature List 看板加载失败');
+          setFeatureListBoard(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setFeatureListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardBoardTab, selectedProjectId]);
+
+  async function refreshProjectWeeklyReport() {
+    if (!selectedProjectId) return;
+    setProjectWeeklyLoading(true);
+    setProjectWeeklyError('');
+    try {
+      const data = await apiGet<ProjectWeeklyReportResponse>(`/dashboard/project-weekly-report?projectId=${selectedProjectId}`);
+      setProjectWeeklyReport(data);
+    } catch (err) {
+      setProjectWeeklyError(err instanceof Error ? err.message : '项目周报加载失败');
+      setProjectWeeklyReport(null);
+    } finally {
+      setProjectWeeklyLoading(false);
+    }
+  }
+
+  async function refreshFeatureListBoard() {
+    if (!selectedProjectId) return;
+    setFeatureListLoading(true);
+    setFeatureListError('');
+    try {
+      const data = await apiGet<FeatureListBoardResponse>(`/dashboard/feature-list-board?projectId=${selectedProjectId}`);
+      setFeatureListBoard(data);
+    } catch (err) {
+      setFeatureListError(err instanceof Error ? err.message : 'Feature List 看板加载失败');
+      setFeatureListBoard(null);
+    } finally {
+      setFeatureListLoading(false);
+    }
+  }
+
+  async function exportProjectWeeklyPng() {
+    const node = weeklyBoardRef.current;
+    if (!node || weeklyImageExporting) return;
+    setWeeklyImageExporting(true);
+    try {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        windowWidth: Math.max(node.scrollWidth, node.clientWidth),
+        windowHeight: Math.max(node.scrollHeight, node.clientHeight)
+      } as Parameters<typeof html2canvas>[1] & { scale: number });
+      const url = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      const projectName = projectWeeklyReport?.project.name || 'project-weekly-report';
+      const safeName = projectName.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || 'project-weekly-report';
+      link.href = url;
+      link.download = `${safeName}-周报长图-${new Date().toISOString().slice(0, 10)}.png`;
+      link.click();
+    } finally {
+      setWeeklyImageExporting(false);
+    }
+  }
+
   async function submitCreateProject(e: FormEvent<HTMLFormElement>) {
     await Promise.resolve(onSubmitProject(e));
     setShowCreateModal(false);
+  }
+
+  async function openWeeklyDataSources(project: ProjectItem) {
+    setWeeklyDataSourceProject(project);
+    setWeeklyDataSources([]);
+    setWeeklyDataSourcesError('');
+    setWeeklyDataSourcesLoading(true);
+    try {
+      const data = await apiGet<ProjectWeeklyDataSourcesResponse>(`/projects/${project.id}/weekly-data-sources`);
+      setWeeklyDataSources(data.sources || []);
+    } catch (err) {
+      setWeeklyDataSourcesError(err instanceof Error ? err.message : '周报数据源配置加载失败');
+    } finally {
+      setWeeklyDataSourcesLoading(false);
+    }
+  }
+
+  function updateWeeklyDataSource(sourceType: ProjectWeeklyDataSource['sourceType'], field: 'appToken' | 'tableId' | 'viewId', value: string) {
+    setWeeklyDataSources((rows) => rows.map((row) => (
+      row.sourceType === sourceType ? { ...row, [field]: value } : row
+    )));
+  }
+
+  async function saveWeeklyDataSources() {
+    if (!weeklyDataSourceProject) return;
+    setWeeklyDataSourcesSaving(true);
+    setWeeklyDataSourcesError('');
+    try {
+      const data = await apiPatch<ProjectWeeklyDataSourcesResponse>(`/projects/${weeklyDataSourceProject.id}/weekly-data-sources`, {
+        sources: weeklyDataSources.map((row) => ({
+          sourceType: row.sourceType,
+          appToken: row.appToken || '',
+          tableId: row.tableId || '',
+          viewId: row.viewId || ''
+        }))
+      });
+      setWeeklyDataSources(data.sources || []);
+    } catch (err) {
+      setWeeklyDataSourcesError(err instanceof Error ? err.message : '周报数据源配置保存失败');
+    } finally {
+      setWeeklyDataSourcesSaving(false);
+    }
+  }
+
+  async function openFeatureListDataSource(project: ProjectItem) {
+    setFeatureListDataSourceProject(project);
+    setFeatureListDataSource(null);
+    setFeatureListDataSourceError('');
+    setFeatureListDataSourceLoading(true);
+    try {
+      const data = await apiGet<FeatureListDataSourceResponse>(`/projects/${project.id}/feature-list-data-source`);
+      setFeatureListDataSource(data.source);
+    } catch (err) {
+      setFeatureListDataSourceError(err instanceof Error ? err.message : 'Feature List 数据源配置加载失败');
+    } finally {
+      setFeatureListDataSourceLoading(false);
+    }
+  }
+
+  function updateFeatureListDataSource(field: 'appToken' | 'tableId' | 'viewId', value: string) {
+    setFeatureListDataSource((source) => ({
+      sourceType: 'feature_list',
+      label: 'Feature List 验收表',
+      ...(source || {}),
+      [field]: value
+    }));
+  }
+
+  async function saveFeatureListDataSource() {
+    if (!featureListDataSourceProject) return;
+    setFeatureListDataSourceSaving(true);
+    setFeatureListDataSourceError('');
+    try {
+      const data = await apiPatch<FeatureListDataSourceResponse>(`/projects/${featureListDataSourceProject.id}/feature-list-data-source`, {
+        sourceType: 'feature_list',
+        appToken: featureListDataSource?.appToken || '',
+        tableId: featureListDataSource?.tableId || '',
+        viewId: featureListDataSource?.viewId || ''
+      });
+      setFeatureListDataSource(data.source);
+      if (dashboardBoardTab === 'feature-list') {
+        void refreshFeatureListBoard();
+      }
+    } catch (err) {
+      setFeatureListDataSourceError(err instanceof Error ? err.message : 'Feature List 数据源配置保存失败');
+    } finally {
+      setFeatureListDataSourceSaving(false);
+    }
   }
 
   const summary = useMemo(() => {
@@ -556,6 +1068,36 @@ export default function DashboardView({
       return text.includes(keyword);
     });
   }, [projectKeyword, projects]);
+  const selectedProjectForWeekly = useMemo(() => (
+    selectedProjectId ? projects.find((project) => project.id === selectedProjectId) || null : null
+  ), [projects, selectedProjectId]);
+  const weeklyPendingP0Bugs = projectWeeklyReport?.pendingP0Bugs || [];
+  const weeklyP0ModuleOptions = useMemo(() => (
+    Array.from(new Set(weeklyPendingP0Bugs.flatMap((bug) => bug.technicalModules || []).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  ), [weeklyPendingP0Bugs]);
+  const weeklyP0DateOptions = useMemo(() => (
+    Array.from(new Set(weeklyPendingP0Bugs.map((bug) => bug.expectedFixDate || '未填写').filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  ), [weeklyPendingP0Bugs]);
+  const weeklyP0StatusOptions = useMemo(() => (
+    Array.from(new Set((projectWeeklyReport?.bugStats.p0p1StatusDistribution || []).map((item) => item.name || '未填写状态').filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  ), [projectWeeklyReport]);
+  const weeklyP0SourceOptions = useMemo(() => (
+    Array.from(new Set(weeklyPendingP0Bugs.map((bug) => bug.source || '未填写来源').filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  ), [weeklyPendingP0Bugs]);
+  const filteredWeeklyPendingP0Bugs = useMemo(() => {
+    return weeklyPendingP0Bugs.filter((bug) => {
+      if (weeklyP0ModuleFilter !== 'all' && !(bug.technicalModules || []).includes(weeklyP0ModuleFilter)) return false;
+      if (weeklyP0DateFilter !== 'all' && (bug.expectedFixDate || '未填写') !== weeklyP0DateFilter) return false;
+      if (weeklyP0StatusFilter !== 'all' && (bug.status || '未填写状态') !== weeklyP0StatusFilter) return false;
+      if (weeklyP0SourceFilter !== 'all' && (bug.source || '未填写来源') !== weeklyP0SourceFilter) return false;
+      if (weeklyP0SeverityFilter !== 'all' && !String(bug.severity || '').toUpperCase().includes(weeklyP0SeverityFilter)) return false;
+      return true;
+    });
+  }, [weeklyP0DateFilter, weeklyP0ModuleFilter, weeklyP0SeverityFilter, weeklyP0SourceFilter, weeklyP0StatusFilter, weeklyPendingP0Bugs]);
 
   const clusterItems = clusterRiskBoard?.items || [];
   const clusterPmOptions = useMemo(() => {
@@ -1214,6 +1756,511 @@ export default function DashboardView({
     </section>
   );
 
+  const projectWeeklyBoard = (
+    <section
+      ref={weeklyBoardRef}
+      className={`weekly-dashboard-board weekly-print-target ${weeklyFullscreen ? 'weekly-dashboard-fullscreen' : ''} ${weeklyImageExporting ? 'weekly-dashboard-exporting' : ''}`}
+    >
+      {selectedProjectForWeekly && !weeklyFullscreen && (
+        <div className="weekly-source-shortcut">
+          <div>
+            <strong>周报数据源</strong>
+            <span>当前项目：{selectedProjectForWeekly.name}。在这里配置 6 张周报业务表。</span>
+          </div>
+          <div className="weekly-source-shortcut-actions">
+            <button className="btn btn-primary" type="button" onClick={() => void openWeeklyDataSources(selectedProjectForWeekly)}>
+              配置周报数据源
+            </button>
+          </div>
+        </div>
+      )}
+      {!selectedProjectId ? (
+        <AsyncStatePanel
+          tone="empty"
+          title="请先选择项目"
+          description="项目周报按当前顶部选中的项目生成，请先选择一个项目后查看周报看板。"
+        />
+      ) : projectWeeklyLoading ? (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在生成项目周报"
+          description="正在聚合项目飞书任务、风险状态、资源日历、缺陷和测试数据。"
+        />
+      ) : projectWeeklyError ? (
+        <AsyncStatePanel
+          tone="error"
+          title="项目周报加载失败"
+          description={projectWeeklyError}
+        />
+      ) : !projectWeeklyReport ? (
+        <AsyncStatePanel
+          tone="empty"
+          title="暂无项目周报数据"
+          description="当前项目还没有足够数据生成周报看板。"
+        />
+      ) : (
+        <>
+          <div className="weekly-hero">
+            <div>
+              <p className="weekly-eyebrow">Project weekly cockpit</p>
+              <h2>{projectWeeklyReport.project.name} 周报</h2>
+              <p className="muted">
+                统计周期：{projectWeeklyReport.project.period.weekStart} 至 {projectWeeklyReport.project.period.weekEnd}
+                {' · '}生成时间：{new Date(projectWeeklyReport.generatedAt).toLocaleString('zh-CN')}
+              </p>
+              <div className="weekly-meta-row">
+                <span>PM：{projectWeeklyReport.project.pm}</span>
+                <span>阶段：{projectWeeklyReport.project.stage}</span>
+                <span className={riskToneClass(projectWeeklyReport.project.riskLight)}>风险灯：{projectWeeklyReport.project.riskLight}</span>
+                <span>数据源：{projectWeeklyReport.project.dataSource}</span>
+              </div>
+            </div>
+            <div className="weekly-actions">
+              <span className={`cluster-source-pill ${projectWeeklyReport.source === 'mixed' ? 'ok' : 'warn'}`}>
+                {projectWeeklyReport.source === 'mixed' ? '6表周报数据源' : projectWeeklyReport.source === 'config_missing' ? '部分周报数据源' : '本地兜底数据'}
+              </span>
+              {selectedProjectForWeekly && !weeklyFullscreen && (
+                <button className="btn" type="button" onClick={() => void openWeeklyDataSources(selectedProjectForWeekly)}>
+                  数据源配置
+                </button>
+              )}
+              <button className="btn" type="button" onClick={() => void refreshProjectWeeklyReport()} disabled={projectWeeklyLoading}>
+                刷新
+              </button>
+              <button className="btn" type="button" onClick={() => void exportProjectWeeklyPng()} disabled={weeklyImageExporting}>
+                {weeklyImageExporting ? '生成中...' : '导出长图'}
+              </button>
+              <button className="btn" type="button" onClick={() => setWeeklyFullscreen((prev) => !prev)}>
+                {weeklyFullscreen ? '退出全屏' : '全屏'}
+              </button>
+            </div>
+          </div>
+
+          {projectWeeklyReport.error && (
+            <div className="cluster-board-alert">
+              {projectWeeklyReport.error}
+            </div>
+          )}
+
+          <ProjectWeeklyMilestoneTimeline report={projectWeeklyReport} />
+
+          <ProjectWeeklyBugStatsPanel stats={projectWeeklyReport.bugStats} />
+
+          <article className="weekly-section">
+            <div className="section-title-row">
+              <div>
+                <h3>待处理 P0/P1 问题列表 <span className="weekly-section-count">{filteredWeeklyPendingP0Bugs.length}/{weeklyPendingP0Bugs.length}</span></h3>
+                <p className="muted">严重等级包含 P0 或 P1，且问题状态属于新建、修复中、待验证、验证失败、有依赖项、持续跟踪、依赖 MB、依赖火山、待复现。</p>
+              </div>
+            </div>
+            <div className="weekly-p0-filters">
+              <ThemedSelect value={weeklyP0ModuleFilter} onChange={(e) => setWeeklyP0ModuleFilter(e.target.value)}>
+                <option value="all">全部技术模块</option>
+                {weeklyP0ModuleOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </ThemedSelect>
+              <ThemedSelect value={weeklyP0DateFilter} onChange={(e) => setWeeklyP0DateFilter(e.target.value)}>
+                <option value="all">全部预计修复时间</option>
+                {weeklyP0DateOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </ThemedSelect>
+              <ThemedSelect value={weeklyP0StatusFilter} onChange={(e) => setWeeklyP0StatusFilter(e.target.value)}>
+                <option value="all">全部问题状态</option>
+                {weeklyP0StatusOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </ThemedSelect>
+              <ThemedSelect value={weeklyP0SourceFilter} onChange={(e) => setWeeklyP0SourceFilter(e.target.value)}>
+                <option value="all">全部问题来源</option>
+                {weeklyP0SourceOptions.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </ThemedSelect>
+              <ThemedSelect value={weeklyP0SeverityFilter} onChange={(e) => setWeeklyP0SeverityFilter(e.target.value as 'all' | 'P0' | 'P1')}>
+                <option value="all">全部严重等级</option>
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+              </ThemedSelect>
+            </div>
+            <div className="weekly-table-wrap weekly-p0-table-wrap">
+              <table className="weekly-table weekly-p0-table">
+                <thead>
+                  <tr>
+                    <th>缺陷ID</th>
+                    <th>问题描述</th>
+                    <th>技术模块</th>
+                    <th>预计修复时间</th>
+                    <th>问题状态</th>
+                    <th>问题来源</th>
+                    <th>RootCause</th>
+                    <th>负责人</th>
+                    <th>严重等级</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWeeklyPendingP0Bugs.length > 0 ? filteredWeeklyPendingP0Bugs.map((bug, index) => (
+                    <tr key={`${bug.id || bug.title}-${index}`}>
+                      <td><span className="weekly-p0-id" {...weeklyCellTooltipProps(bug.id || '-')}>{bug.id || '-'}</span></td>
+                      <td><span className="weekly-p0-title" {...weeklyCellTooltipProps(bug.title)}>{bug.title}</span></td>
+                      <td>
+                        <div className="weekly-p0-tags">
+                          {(bug.technicalModules || ['未填写']).map((item) => (
+                            <span key={item} {...weeklyCellTooltipProps(item)}>{item}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td><span className="weekly-discussion-date" {...weeklyCellTooltipProps(bug.expectedFixDate || '未填写')}>{bug.expectedFixDate || '未填写'}</span></td>
+                      <td><span className="weekly-p0-status" {...weeklyCellTooltipProps(bug.status || '未填写状态')}>{bug.status || '未填写状态'}</span></td>
+                      <td><span className="weekly-p0-source" {...weeklyCellTooltipProps(bug.source || '未填写来源')}>{bug.source || '未填写来源'}</span></td>
+                      <td><span className="weekly-p0-root-cause" {...weeklyCellTooltipProps(bug.rootCause || '')}>{bug.rootCause || '未填写'}</span></td>
+                      <td {...weeklyCellTooltipProps(bug.assignee || '未分配')}>{bug.assignee || '未分配'}</td>
+                      <td><span className="weekly-p0-severity" {...weeklyCellTooltipProps(bug.severity || 'P0')}>{bug.severity || 'P0'}</span></td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={9}>暂无符合筛选条件的待处理 P0/P1 问题。</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="weekly-section">
+            <div className="section-title-row">
+              <div>
+                <h3>专项讨论计划清单</h3>
+                <p className="muted">来自专项讨论计划清单，跟踪关键技术攻坚、责任人、计划时间和当前进展。</p>
+              </div>
+            </div>
+            <div className="weekly-table-wrap weekly-discussion-table-wrap">
+              <table className="weekly-table weekly-discussion-table">
+                <thead>
+                  <tr>
+                    <th>序号</th>
+                    <th>专项名</th>
+                    <th>攻坚技术点</th>
+                    <th>负责人</th>
+                    <th>计划完成时间</th>
+                    <th>当前进展</th>
+                    <th>主要解决问题</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectWeeklyReport.discussions.length > 0 ? projectWeeklyReport.discussions.map((row, index) => (
+                    <tr key={`${row.index || index}-${row.topic}`}>
+                      <td><span className="weekly-discussion-index">{row.index || index + 1}</span></td>
+                      <td><strong className="weekly-discussion-topic" {...weeklyCellTooltipProps(row.topic)}>{row.topic}</strong></td>
+                      <td><span className="weekly-discussion-text" {...weeklyCellTooltipProps(row.technicalPoint || '-')}>{row.technicalPoint || '-'}</span></td>
+                      <td><span className="weekly-discussion-owner" {...weeklyCellTooltipProps(row.owner || '-')}>{row.owner || '-'}</span></td>
+                      <td><span className="weekly-discussion-date" {...weeklyCellTooltipProps(row.plannedDate || '-')}>{row.plannedDate || '-'}</span></td>
+                      <td><span className={`weekly-discussion-progress ${weeklyToneClass(row.tone)}`} {...weeklyCellTooltipProps(row.progress || '待更新')}>{row.progress || '待更新'}</span></td>
+                      <td><span className="weekly-discussion-text" {...weeklyCellTooltipProps(row.solution || '-')}>{row.solution || '-'}</span></td>
+                    </tr>
+                  )) : (
+                    <tr>
+                      <td colSpan={7}>暂无专项讨论计划数据，请在周报数据源中配置“专项讨论计划清单”。</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article className="weekly-section">
+            <h3>质量与测试</h3>
+            <div className="weekly-quality-grid">
+              {projectWeeklyReport.qualityCards.map((metric) => (
+                <article className={`weekly-metric-card ${weeklyToneClass(metric.tone)}`} key={metric.label}>
+                  <span>{metric.label}</span>
+                  <strong>{metric.value}</strong>
+                  <p>{metric.sub}</p>
+                </article>
+              ))}
+            </div>
+            <div className="weekly-table-wrap">
+              <table className="weekly-table">
+                <thead>
+                  <tr>
+                    <th>模块</th>
+                    <th>用例数</th>
+                    <th>已执行</th>
+                    <th>通过率</th>
+                    <th>失败/阻塞</th>
+                    <th>质量结论</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projectWeeklyReport.tests.map((item) => (
+                    <tr key={item.module}>
+                      <td><strong {...weeklyCellTooltipProps(item.module)}>{item.module}</strong></td>
+                      <td>{item.cases}</td>
+                      <td>{item.executed}</td>
+                      <td>{weeklyPercentBar('', item.passRate, item.tone)}</td>
+                      <td {...weeklyCellTooltipProps(item.failedBlocked)}>{item.failedBlocked}</td>
+                      <td>{weeklyStatus(item.conclusion, item.tone)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div className="weekly-rank-grid">
+            {projectWeeklyReport.ranks.map((rank) => (
+              <article className="weekly-rank-card" key={rank.title}>
+                <h3>{rank.title}</h3>
+                {rank.items.map((item, index) => (
+                  <div className="weekly-rank-item" key={`${rank.title}-${item.name}`}>
+                    <span>{index + 1}</span>
+                    <strong {...weeklyCellTooltipProps(item.name)}>{item.name}</strong>
+                    <em>{item.value}</em>
+                  </div>
+                ))}
+              </article>
+            ))}
+          </div>
+
+          <article className="weekly-section">
+            <h3>近 7 日趋势</h3>
+            <div className="weekly-trend-grid">
+              {projectWeeklyReport.trends.map((trend) => {
+                const max = Math.max(...trend.days.map((item) => Math.abs(item.value)), 1);
+                return (
+                  <article className="weekly-trend-card" key={trend.title}>
+                    <h4>{trend.title}</h4>
+                    {trend.days.map((item) => (
+                      <div className="weekly-trend-row" key={`${trend.title}-${item.day}`}>
+                        <span>{item.day}</span>
+                        <div className="weekly-bar-track">
+                          <div className={`weekly-bar-fill ${weeklyToneClass(trend.color)}`} style={{ width: weeklyTrendWidth(item.value, max) }} />
+                        </div>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ))}
+                  </article>
+                );
+              })}
+            </div>
+          </article>
+
+        </>
+      )}
+    </section>
+  );
+
+  const featureListDashboard = (
+    <section className={`weekly-dashboard-board ${featureListFullscreen ? 'weekly-dashboard-fullscreen' : ''}`}>
+      {selectedProjectForWeekly && !featureListFullscreen && (
+        <div className="weekly-source-shortcut">
+          <div>
+            <strong>Feature List 数据源</strong>
+            <span>当前项目：{selectedProjectForWeekly.name}。这里单独配置 Feature List 验收表，不影响项目周报数据源。</span>
+          </div>
+          <div className="weekly-source-shortcut-actions">
+            <button className="btn btn-primary" type="button" onClick={() => void openFeatureListDataSource(selectedProjectForWeekly)}>
+              配置 Feature List 数据源
+            </button>
+          </div>
+        </div>
+      )}
+      {!selectedProjectId ? (
+        <AsyncStatePanel
+          tone="empty"
+          title="请先选择项目"
+          description="Feature List 看板按当前顶部选中的项目生成，请先选择一个项目。"
+        />
+      ) : featureListLoading ? (
+        <AsyncStatePanel
+          tone="loading"
+          title="正在加载 Feature List"
+          description="正在读取 Feature List 验收表并计算功能域、闭环率和待处理 Feature。"
+        />
+      ) : featureListError ? (
+        <AsyncStatePanel
+          tone="error"
+          title="Feature List 看板加载失败"
+          description={featureListError}
+        />
+      ) : !featureListBoard || featureListBoard.source !== 'feishu' ? (
+        <AsyncStatePanel
+          tone={featureListBoard?.source === 'error' ? 'error' : 'empty'}
+          title="请配置 Feature List 数据源"
+          description={featureListBoard?.error || '当前项目还没有配置 Feature List 验收表。'}
+        />
+      ) : (
+        <>
+          <div className="weekly-hero">
+            <div>
+              <p className="weekly-eyebrow">Feature acceptance cockpit</p>
+              <h2>{featureListBoard.project.name} Feature List 验收闭环</h2>
+              <p className="muted">
+                生成时间：{new Date(featureListBoard.generatedAt).toLocaleString('zh-CN')}
+              </p>
+              <div className="weekly-meta-row">
+                <span>数据源：{featureListBoard.project.dataSource}</span>
+                <span>有效 Feature：{featureListBoard.summary.effectiveFeatures}</span>
+                <span>闭环口径：甲方验收通过</span>
+              </div>
+            </div>
+            <div className="weekly-actions">
+              <span className="cluster-source-pill ok">独立 Feature List 数据源</span>
+              {selectedProjectForWeekly && !featureListFullscreen && (
+                <button className="btn" type="button" onClick={() => void openFeatureListDataSource(selectedProjectForWeekly)}>
+                  数据源配置
+                </button>
+              )}
+              <button className="btn" type="button" onClick={() => void refreshFeatureListBoard()} disabled={featureListLoading}>
+                刷新
+              </button>
+              <button className="btn" type="button" onClick={() => setFeatureListFullscreen((prev) => !prev)}>
+                {featureListFullscreen ? '退出全屏' : '全屏'}
+              </button>
+            </div>
+          </div>
+
+          <div className="weekly-metric-grid">
+            {featureListBoard.metrics.map((metric) => (
+              <article className={`weekly-metric-card ${weeklyToneClass(metric.tone)}`} key={metric.label}>
+                <span>{metric.label}</span>
+                <strong>{metric.value}</strong>
+                <p>{metric.sub}</p>
+              </article>
+            ))}
+          </div>
+
+          <article className="weekly-section">
+            <div className="section-title-row">
+              <div>
+                <h3>功能域质量分布</h3>
+                <p className="muted">按一级功能 / 文本 6 展示通过率、闭环率、Fail 和待闭环数量。</p>
+              </div>
+              <span className="cluster-source-pill">共 {featureListBoard.domains.length} 个功能域，已全部展示</span>
+            </div>
+            <div className="weekly-table-wrap feature-domain-table-wrap">
+              <table className="weekly-table">
+                <thead>
+                  <tr>
+                    <th>功能域</th>
+                    <th>Feature</th>
+                    <th>CASE</th>
+                    <th>平均通过率</th>
+                    <th>闭环率</th>
+                    <th>Fail</th>
+                    <th>待闭环</th>
+                    <th>判断</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {featureListBoard.domains.map((item) => (
+                    <tr key={item.name}>
+                      <td><strong {...weeklyCellTooltipProps(item.name)}>{item.name}</strong></td>
+                      <td>{item.featureCount}</td>
+                      <td>{item.caseCount}</td>
+                      <td>{weeklyPercentBar('', item.averagePassRate, item.tone)}</td>
+                      <td>{weeklyPercentBar('', item.closureRate, item.tone)}</td>
+                      <td>{item.failedCount}</td>
+                      <td>{item.pendingCount}</td>
+                      <td>{weeklyStatus(item.tone === 'danger' ? '高风险' : item.tone === 'warn' ? '关注' : '可控', item.tone)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div className="weekly-two-col">
+            <article className="weekly-section">
+              <h3>高风险功能域</h3>
+              {featureListBoard.riskDomains.length === 0 ? (
+                <p className="muted">暂无高风险功能域。</p>
+              ) : featureListBoard.riskDomains.map((item) => (
+                <div className="weekly-summary-card" key={item.name}>
+                  <span>{weeklyStatus(item.name, item.tone)}</span>
+                  <p {...weeklyCellTooltipProps(item.reason)}>{item.reason}</p>
+                  <p {...weeklyCellTooltipProps(item.action)}>{item.action}</p>
+                </div>
+              ))}
+            </article>
+            <article className="weekly-section">
+              <h3>开发者 / 协作方统计</h3>
+              <div className="weekly-table-wrap">
+                <table className="weekly-table">
+                  <thead>
+                    <tr>
+                      <th>协作方</th>
+                      <th>Feature</th>
+                      <th>CASE</th>
+                      <th>通过率</th>
+                      <th>待闭环</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {featureListBoard.developers.map((item) => (
+                      <tr key={item.name}>
+                        <td><strong {...weeklyCellTooltipProps(item.name)}>{item.name}</strong></td>
+                        <td>{item.featureCount}</td>
+                        <td>{item.caseCount}</td>
+                        <td>{weeklyPercentBar('', item.averagePassRate, item.tone)}</td>
+                        <td>{item.pendingCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <article className="weekly-section">
+            <h3>Feature 验收闭环清单</h3>
+            <div className="weekly-table-wrap feature-acceptance-table-wrap">
+              <table className="weekly-table feature-acceptance-table">
+                <thead>
+                  <tr>
+                    <th>Feature ID</th>
+                    <th>一级功能</th>
+                    <th>二级功能</th>
+                    <th>三级功能</th>
+                    <th>Query</th>
+                    <th>开发者</th>
+                    <th>CASE</th>
+                    <th>通过率</th>
+                    <th>测试结论</th>
+                    <th>甲方验收</th>
+                    <th>关联缺陷</th>
+                    <th>责任人</th>
+                    <th>计划闭环</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {featureListBoard.items.map((item) => (
+                    <tr key={`${item.featureId}-${item.query}`}>
+                      <td><strong {...weeklyCellTooltipProps(item.featureId || '-')}>{item.featureId || '-'}</strong></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.domain)}>{item.domain}</span></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.secondLevel || '-')}>{item.secondLevel || '-'}</span></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.thirdLevel || '-')}>{item.thirdLevel || '-'}</span></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.query || '-')}>{item.query || '-'}</span></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.developer || '-')}>{item.developer || '-'}</span></td>
+                      <td>{item.caseCount}</td>
+                      <td>{weeklyPercentBar('', item.passRate, item.tone)}</td>
+                      <td>{weeklyStatus(item.testConclusion || item.testStatus || '待测试', item.tone)}</td>
+                      <td>{weeklyStatus(item.acceptanceStatus || (item.isClosed ? '验收通过' : '未验收'), item.isClosed ? 'good' : item.tone)}</td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.linkedBugIds || '-')}>{item.linkedBugIds || '-'}</span></td>
+                      <td><span className="feature-table-cell" {...weeklyCellTooltipProps(item.owner || '-')}>{item.owner || '-'}</span></td>
+                      <td {...weeklyCellTooltipProps(item.plannedCloseDate || '-')}>{item.plannedCloseDate || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </>
+      )}
+    </section>
+  );
+
   return (
     <div>
       <div className="dashboard-board-tabs">
@@ -1238,9 +2285,31 @@ export default function DashboardView({
         >
           项目资源日历
         </button>
+        <button
+          className={dashboardBoardTab === 'weekly' ? 'active' : ''}
+          type="button"
+          onClick={() => setDashboardBoardTab('weekly')}
+        >
+          项目周报
+        </button>
+        <button
+          className={dashboardBoardTab === 'feature-list' ? 'active' : ''}
+          type="button"
+          onClick={() => setDashboardBoardTab('feature-list')}
+        >
+          Feature List
+        </button>
       </div>
 
-      {dashboardBoardTab === 'cluster' ? clusterBoard : dashboardBoardTab === 'roadmap' ? roadmapBoard : resourceBoard}
+      {dashboardBoardTab === 'cluster'
+        ? clusterBoard
+        : dashboardBoardTab === 'roadmap'
+          ? roadmapBoard
+          : dashboardBoardTab === 'resources'
+            ? resourceBoard
+            : dashboardBoardTab === 'weekly'
+              ? projectWeeklyBoard
+              : featureListDashboard}
 
       {false && (
       <>
@@ -1578,9 +2647,14 @@ export default function DashboardView({
                           </button>
                         </>
                       ) : (
-                        <button className="btn dashboard-project-delete-btn" type="button" onClick={() => onDeleteProject(project)}>
-                          删除
-                        </button>
+                        <>
+                          <button className="btn" type="button" onClick={() => void openWeeklyDataSources(project)}>
+                            周报数据源
+                          </button>
+                          <button className="btn dashboard-project-delete-btn" type="button" onClick={() => onDeleteProject(project)}>
+                            删除
+                          </button>
+                        </>
                       )}
                     </td>
                   )}
@@ -1621,7 +2695,191 @@ export default function DashboardView({
         </div>,
         document.body
       )}
+
+      {weeklyDataSourceProject && canUsePortal && createPortal(
+        <div className="req-modal-backdrop" onClick={() => setWeeklyDataSourceProject(null)}>
+          <div className="req-modal dashboard-weekly-source-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <div>
+                <p className="weekly-source-eyebrow">Project weekly data sources</p>
+                <h3>{weeklyDataSourceProject!.name} · 周报数据源配置</h3>
+              </div>
+              <div className="dashboard-project-modal-head-actions">
+                <button className="btn btn-primary" type="button" onClick={() => void saveWeeklyDataSources()} disabled={weeklyDataSourcesSaving || weeklyDataSourcesLoading}>
+                  {weeklyDataSourcesSaving ? '保存中...' : '保存配置'}
+                </button>
+                <button className="btn" type="button" onClick={() => setWeeklyDataSourceProject(null)}>关闭</button>
+              </div>
+            </div>
+            <p className="muted weekly-source-help">
+              这里配置项目周报看板读取的 6 张飞书业务表。View ID 可选；如果同一张多维表用不同视图区分数据，请填写对应 View ID。
+            </p>
+            {weeklyDataSourcesError && <p className="error">{weeklyDataSourcesError}</p>}
+            {weeklyDataSourcesLoading ? (
+              <AsyncStatePanel title="正在加载周报数据源配置" description="读取当前项目的飞书表配置..." />
+            ) : (
+              <div className="weekly-source-grid">
+                {weeklyDataSources.map((source) => (
+                  <article className="weekly-source-card" key={source.sourceType}>
+                    <div>
+                      <h4>{source.label}</h4>
+                      <p>{source.sourceType}</p>
+                    </div>
+                    <label>
+                      <span>App Token</span>
+                      <input
+                        value={source.appToken || ''}
+                        placeholder="飞书多维表格 App Token"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'appToken', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>Table ID</span>
+                      <input
+                        value={source.tableId || ''}
+                        placeholder="Table ID"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'tableId', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>View ID</span>
+                      <input
+                        value={source.viewId || ''}
+                        placeholder="View ID（可选）"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'viewId', e.target.value)}
+                      />
+                    </label>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
       </>
+      )}
+
+      {weeklyDataSourceProject && canUsePortal && createPortal(
+        <div className="req-modal-backdrop" onClick={() => setWeeklyDataSourceProject(null)}>
+          <div className="req-modal dashboard-weekly-source-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <div>
+                <p className="weekly-source-eyebrow">Project weekly data sources</p>
+                <h3>{weeklyDataSourceProject!.name} · 周报数据源配置</h3>
+              </div>
+              <div className="dashboard-project-modal-head-actions">
+                <button className="btn btn-primary" type="button" onClick={() => void saveWeeklyDataSources()} disabled={weeklyDataSourcesSaving || weeklyDataSourcesLoading}>
+                  {weeklyDataSourcesSaving ? '保存中...' : '保存配置'}
+                </button>
+                <button className="btn" type="button" onClick={() => setWeeklyDataSourceProject(null)}>关闭</button>
+              </div>
+            </div>
+            <p className="muted weekly-source-help">
+              这里配置项目周报看板读取的 6 张飞书业务表。View ID 可选；如果同一张多维表用不同视图区分数据，请填写对应 View ID。
+            </p>
+            {weeklyDataSourcesError && <p className="error">{weeklyDataSourcesError}</p>}
+            {weeklyDataSourcesLoading ? (
+              <AsyncStatePanel title="正在加载周报数据源配置" description="读取当前项目的飞书表配置..." />
+            ) : (
+              <div className="weekly-source-grid">
+                {weeklyDataSources.map((source) => (
+                  <article className="weekly-source-card" key={source.sourceType}>
+                    <div>
+                      <h4>{source.label}</h4>
+                      <p>{source.sourceType}</p>
+                    </div>
+                    <label>
+                      <span>App Token</span>
+                      <input
+                        value={source.appToken || ''}
+                        placeholder="飞书多维表格 App Token"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'appToken', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>Table ID</span>
+                      <input
+                        value={source.tableId || ''}
+                        placeholder="Table ID"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'tableId', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>View ID</span>
+                      <input
+                        value={source.viewId || ''}
+                        placeholder="View ID（可选）"
+                        onChange={(e) => updateWeeklyDataSource(source.sourceType, 'viewId', e.target.value)}
+                      />
+                    </label>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {featureListDataSourceProject && canUsePortal && createPortal(
+        <div className="req-modal-backdrop" onClick={() => setFeatureListDataSourceProject(null)}>
+          <div className="req-modal dashboard-weekly-source-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="req-modal-head">
+              <div>
+                <p className="weekly-source-eyebrow">Feature List data source</p>
+                <h3>{featureListDataSourceProject!.name} · Feature List 数据源配置</h3>
+              </div>
+              <div className="dashboard-project-modal-head-actions">
+                <button className="btn btn-primary" type="button" onClick={() => void saveFeatureListDataSource()} disabled={featureListDataSourceSaving || featureListDataSourceLoading}>
+                  {featureListDataSourceSaving ? '保存中...' : '保存配置'}
+                </button>
+                <button className="btn" type="button" onClick={() => setFeatureListDataSourceProject(null)}>关闭</button>
+              </div>
+            </div>
+            <p className="muted weekly-source-help">
+              这里单独配置 Feature List 验收表，不属于项目周报数据源。View ID 可选；如果同一张多维表用不同视图区分数据，请填写对应 View ID。
+            </p>
+            {featureListDataSourceError && <p className="error">{featureListDataSourceError}</p>}
+            {featureListDataSourceLoading ? (
+              <AsyncStatePanel title="正在加载 Feature List 数据源配置" description="读取当前项目的飞书表配置..." />
+            ) : (
+              <div className="weekly-source-grid">
+                <article className="weekly-source-card">
+                  <div>
+                    <h4>{featureListDataSource?.label || 'Feature List 验收表'}</h4>
+                    <p>feature_list</p>
+                  </div>
+                  <label>
+                    <span>App Token</span>
+                    <input
+                      value={featureListDataSource?.appToken || ''}
+                      placeholder="飞书多维表格 App Token"
+                      onChange={(e) => updateFeatureListDataSource('appToken', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Table ID</span>
+                    <input
+                      value={featureListDataSource?.tableId || ''}
+                      placeholder="Table ID"
+                      onChange={(e) => updateFeatureListDataSource('tableId', e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>View ID</span>
+                    <input
+                      value={featureListDataSource?.viewId || ''}
+                      placeholder="View ID（可选）"
+                      onChange={(e) => updateFeatureListDataSource('viewId', e.target.value)}
+                    />
+                  </label>
+                </article>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
       )}
 
       {resourceTooltip && canUsePortal && createPortal(
@@ -1653,6 +2911,17 @@ export default function DashboardView({
           ) : (
             <p>暂无项目分配</p>
           )}
+        </div>,
+        document.body
+      )}
+
+      {weeklyCellTooltip && canUsePortal && createPortal(
+        <div
+          className="weekly-cell-floating-tooltip"
+          style={{ left: weeklyCellTooltip.x, top: weeklyCellTooltip.y }}
+          role="tooltip"
+        >
+          {weeklyCellTooltip.text}
         </div>,
         document.body
       )}

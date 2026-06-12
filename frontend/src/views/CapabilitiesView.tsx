@@ -11,17 +11,39 @@ type Props = {
 
 const WEEKLY_REPORT_SCENE = 'ai.weekly-report';
 const DEFAULT_TEMPLATE_NAME = '管理层周报模板';
-const DEFAULT_SYSTEM_PROMPT = `你是一位资深 PMO 总监，请基于项目周度数据生成管理层可直接阅读的专业周报。输出请使用 Markdown，聚焦风险、预算、进度和行动建议。`;
+const DEFAULT_SYSTEM_PROMPT = `你是资深 PMO 总监。基于输入的项目周度量化数据，生成可直接给管理层汇报的 Markdown 周报。
+
+硬性要求：
+1. 结论必须引用输入表格中的具体指标，不要泛泛描述，不要编造数据。
+2. 百分比指标用文本进度条辅助展示，如 ██████░░░░ 60%。
+3. 如果测试数据为空，写“当前项目暂无测试执行数据”。
+4. 不输出任何成本、预算、支出、工时成本、预算偏差相关内容。
+5. 只输出 Markdown，不输出图片或 Mermaid。
+
+必须输出章节：
+## 📊 本周总览
+## 📈 项目健康量化表
+## 🧪 测试质量量化表
+## ⚠️ 风险预警与根因分析
+## 🎯 管理层行动建议
+## 📋 下周重点事项
+
+重点分析严重缺陷、测试阻塞、任务阻塞、需求频繁变更；管理动作要具体到责任方和建议完成时间。`;
 const DEFAULT_USER_PROMPT_TEMPLATE = `报告周期：{{weekStart}} 至 {{weekEnd}}
 项目：{{projectNames}}
 是否包含风险分析：{{includeRisks}}
-是否包含预算分析：{{includeBudget}}
 
-以下是项目数据：
+项目健康量化表：
+{{healthTable}}
+
+测试质量量化表：
+{{testQualityTable}}
+
+以下是项目明细：
 
 {{detailBlocks}}
 
-请输出一份面向管理层的高质量周报。`;
+请基于上述量化数据输出一份面向管理层的高质量周报。所有判断必须引用表格中的具体指标。`;
 const PM_ASSISTANT_JOBS = [
   { id: 'morning-briefing', name: '早间播报' },
   { id: 'meeting-materials', name: '会议材料准备' },
@@ -210,7 +232,7 @@ export default function CapabilitiesView({
               <textarea rows={12} value={userPromptTemplate} onChange={(e) => setUserPromptTemplate(e.target.value)} disabled={!canWrite} />
             </div>
             <div className="muted">
-              可用变量：{'{{projectNames}}'}、{'{{weekStart}}'}、{'{{weekEnd}}'}、{'{{includeRisks}}'}、{'{{includeBudget}}'}、{'{{detailBlocks}}'}、{'{{draft}}'}
+              可用变量：{'{{projectNames}}'}、{'{{weekStart}}'}、{'{{weekEnd}}'}、{'{{includeRisks}}'}、{'{{healthTable}}'}、{'{{testQualityTable}}'}、{'{{detailBlocks}}'}、{'{{draft}}'}
             </div>
           </div>
         )}

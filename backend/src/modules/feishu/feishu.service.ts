@@ -141,31 +141,44 @@ export class FeishuService {
 
   private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const token = await this.getTenantAccessToken();
-    const res = await this.fetchWithRetry(`https://open.feishu.cn/open-apis${path}`, {
+    const requestOptions = {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
         ...(options.headers || {})
       }
-    });
+    };
 
-    const raw = await res.text().catch(() => '');
-    const parsed = raw
-      ? (() => {
-        try {
-          return JSON.parse(raw) as { code?: number; msg?: string; data?: T };
-        } catch {
-          return null;
-        }
-      })()
-      : null;
+    let res: Response | null = null;
+    let raw = '';
+    let parsed: { code?: number; msg?: string; data?: T } | null = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      res = await this.fetchWithRetry(`https://open.feishu.cn/open-apis${path}`, requestOptions);
+      raw = await res.text().catch(() => '');
+      parsed = raw
+        ? (() => {
+          try {
+            return JSON.parse(raw) as { code?: number; msg?: string; data?: T };
+          } catch {
+            return null;
+          }
+        })()
+        : null;
+      const dataNotReady = parsed?.code === 1254607 || /Data not ready/i.test(parsed?.msg || raw);
+      if (!dataNotReady || attempt === 3) break;
+      await new Promise((resolve) => setTimeout(resolve, 700 * (attempt + 1)));
+    }
 
+    if (!res) throw new BadRequestException('Feishu API failed: no response');
     if (!res.ok) {
       if (res.status === 403 && parsed?.code === 91403) {
         throw new BadRequestException(
           '飞书权限不足（91403 Forbidden）。请检查：1）当前应用是否已添加为该多维表格协作者；2）应用是否开通多维表格读写权限；3）FEISHU_APP_ID/FEISHU_APP_SECRET 与 FEISHU_APP_TOKEN 是否属于同一飞书应用与租户。'
         );
+      }
+      if (parsed?.code === 1254607 || /Data not ready/i.test(parsed?.msg || raw)) {
+        throw new BadRequestException('飞书多维表格数据暂未准备好，请稍后刷新重试。');
       }
       const detail = raw ? ` ${raw.slice(0, 400)}` : '';
       throw new BadRequestException(`Feishu API failed: HTTP ${res.status}${detail}`);

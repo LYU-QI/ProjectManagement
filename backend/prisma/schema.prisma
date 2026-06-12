@@ -321,8 +321,24 @@ model Project {
   bugs           Bug[]
   wikiPages      WikiPage[]
   capabilityTemplates CapabilityTemplate[]
+  weeklyDataSources ProjectWeeklyDataSource[]
 
   @@index([organizationId])
+}
+
+model ProjectWeeklyDataSource {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  sourceType  String
+  appToken    String?
+  tableId     String?
+  viewId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, sourceType])
+  @@index([projectId])
 }
 
 model WorkItem {

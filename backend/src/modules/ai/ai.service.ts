@@ -89,7 +89,7 @@ export class AiService {
   ) { }
 
   async weeklyReport(input: WeeklyReportInput) {
-    const [projects, requirements, tasks, worklogs, metricRows] = await Promise.all([
+    const [projects, requirements, tasks, worklogs, testCases, testPlans, testPlanItems, bugs] = await Promise.all([
       this.prisma.project.findMany({
         where: { id: { in: input.projectIds } },
         orderBy: { id: 'asc' }
@@ -103,22 +103,40 @@ export class AiService {
       this.prisma.worklog.findMany({
         where: { projectId: { in: input.projectIds } }
       }),
-      this.projectMetricsService.summarizeProjects(input.projectIds, {
-        start: input.weekStart,
-        end: input.weekEnd
+      this.prisma.testCase.findMany({
+        where: { projectId: { in: input.projectIds } },
+        select: { id: true, projectId: true, status: true }
+      }),
+      this.prisma.testPlan.findMany({
+        where: { projectId: { in: input.projectIds } },
+        select: { id: true, projectId: true }
+      }),
+      this.prisma.testPlanItem.findMany({
+        where: { plan: { projectId: { in: input.projectIds } } },
+        select: { planId: true, result: true, executedAt: true, plan: { select: { projectId: true } } }
+      }),
+      this.prisma.bug.findMany({
+        where: { projectId: { in: input.projectIds } },
+        select: { id: true, projectId: true, status: true, severity: true, createdAt: true, title: true }
       })
     ]);
-    const metricsMap = new Map(metricRows.map((item) => [item.projectId, item]));
     const inReportPeriod = (value?: string | null) => {
       if (!value) return false;
       return value >= input.weekStart && value <= input.weekEnd;
+    };
+    const truncateText = (value: string, maxLength = 160) => {
+      const normalized = value.replace(/\s+/g, ' ').trim();
+      return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
     };
 
     const details = projects.map((project) => {
       const projectRequirements = requirements.filter((item) => item.projectId === project.id);
       const projectTasks = tasks.filter((item) => item.projectId === project.id);
       const projectWorklogs = worklogs.filter((item) => item.projectId === project.id);
-      const metrics = metricsMap.get(project.id);
+      const projectTestCases = testCases.filter((item) => item.projectId === project.id);
+      const projectTestPlans = testPlans.filter((item) => item.projectId === project.id);
+      const projectTestPlanItems = testPlanItems.filter((item) => item.plan.projectId === project.id);
+      const projectBugs = bugs.filter((item) => item.projectId === project.id);
 
       // 基础指标
       const totalTasks = projectTasks.length;
@@ -126,6 +144,20 @@ export class AiService {
       const blockedTasksList = projectTasks.filter((t) => t.status === TaskStatus.blocked);
       const blocked = blockedTasksList.length;
       const taskCompletionRate = totalTasks > 0 ? Number(((doneTasks / totalTasks) * 100).toFixed(1)) : 0;
+      const executedTestItems = projectTestPlanItems.filter((item) => Boolean(item.result));
+      const passedTestItems = projectTestPlanItems.filter((item) => item.result === 'passed');
+      const failedTestItems = projectTestPlanItems.filter((item) => item.result === 'failed');
+      const blockedTestItems = projectTestPlanItems.filter((item) => item.result === 'blocked');
+      const skippedTestItems = projectTestPlanItems.filter((item) => item.result === 'skipped');
+      const testExecutionRate = projectTestPlanItems.length > 0 ? Number(((executedTestItems.length / projectTestPlanItems.length) * 100).toFixed(1)) : 0;
+      const testPassRate = executedTestItems.length > 0 ? Number(((passedTestItems.length / executedTestItems.length) * 100).toFixed(1)) : 0;
+      const openBugs = projectBugs.filter((bug) => !['closed', 'rejected'].includes(String(bug.status)));
+      const resolvedBugs = projectBugs.filter((bug) => ['resolved', 'closed'].includes(String(bug.status)));
+      const severeOpenBugs = openBugs.filter((bug) => ['critical', 'blocker'].includes(String(bug.severity)));
+      const newBugsThisWeek = projectBugs.filter((bug) => {
+        const date = bug.createdAt.toISOString().slice(0, 10);
+        return inReportPeriod(date);
+      });
 
       // 文本明细：阻塞任务标题列表
       const blockedTaskTitles = blockedTasksList.map((t) => t.title);
@@ -158,60 +190,121 @@ export class AiService {
         blockedTaskTitles,
         highPriorityReqNames,
         worklogNotes,
-        budget: project.budget,
-        directCost: metrics?.directCost ?? 0,
-        laborCost: metrics?.laborCost ?? 0,
-        actualCost: metrics?.actualCost ?? 0,
-        budgetVarianceRate: metrics?.varianceRate ?? 0
+        testCaseCount: projectTestCases.length,
+        testPlanCount: projectTestPlans.length,
+        testPlanItemCount: projectTestPlanItems.length,
+        executedTestCount: executedTestItems.length,
+        passedTestCount: passedTestItems.length,
+        failedTestCount: failedTestItems.length,
+        blockedTestCount: blockedTestItems.length,
+        skippedTestCount: skippedTestItems.length,
+        testExecutionRate,
+        testPassRate,
+        bugCount: projectBugs.length,
+        openBugCount: openBugs.length,
+        resolvedBugCount: resolvedBugs.length,
+        severeOpenBugCount: severeOpenBugs.length,
+        newBugCountThisWeek: newBugsThisWeek.length,
+        severeBugTitles: severeOpenBugs.map((bug) => bug.title)
       };
     });
 
+    const formatPercent = (value: number) => {
+      const normalized = Number(value) || 0;
+      return `${Number(normalized.toFixed(1))}%`;
+    };
+    const percentBar = (value: number) => {
+      const normalized = Math.max(0, Math.min(100, Number(value) || 0));
+      const filled = Math.round(normalized / 10);
+      return `${'█'.repeat(filled)}${'░'.repeat(10 - filled)} ${formatPercent(normalized)}`;
+    };
+    const projectHealth = (item: typeof details[number]) => {
+      if (item.severeOpenBugCount > 0 || item.blockedTestCount > 0 || item.blockedTasks > 0) return '高风险';
+      const hasTestData = item.testPlanItemCount > 0 || item.executedTestCount > 0;
+      if (item.openBugCount > 0 || item.requirementChanges > 3 || (hasTestData && item.testPassRate < 80) || item.taskCompletionRate < 60) return '关注';
+      return '健康';
+    };
+    const testQuality = (item: typeof details[number]) => {
+      if (item.testPlanItemCount === 0) return '暂无测试执行数据';
+      if (item.severeOpenBugCount > 0 || item.failedTestCount > 0 || item.blockedTestCount > 0 || item.testPassRate < 70) return '高风险';
+      if (item.testExecutionRate < 80 || item.testPassRate < 90 || item.openBugCount > 0) return '关注';
+      return '健康';
+    };
     const riskLines = details
       .map((item) => {
-        if (item.blockedTasks > 0 || item.budgetVarianceRate > 10 || item.requirementChanges > 3) {
-          return `- ${item.projectName}：阻塞=${item.blockedTasks}，预算偏差=${item.budgetVarianceRate}%，需求变更=${item.requirementChanges}`;
+        if (item.blockedTasks > 0 || item.requirementChanges > 3 || item.severeOpenBugCount > 0 || item.blockedTestCount > 0) {
+          return `- ${item.projectName}：任务阻塞=${item.blockedTasks}，测试阻塞=${item.blockedTestCount}，严重缺陷=${item.severeOpenBugCount}，需求变更=${item.requirementChanges}`;
         }
         return `- ${item.projectName}：整体稳定。`;
       })
       .join('\n');
 
     const projectNames = details.map(d => d.projectName).join('、');
+    const healthTable = [
+      '| 项目 | 任务完成率 | 阻塞任务 | 需求变更 | 测试通过率 | 打开缺陷 | 严重缺陷 | 综合判断 |',
+      '| --- | --- | ---: | ---: | --- | ---: | ---: | --- |',
+      ...details.map((d) => `| ${d.projectName} | ${percentBar(d.taskCompletionRate)} | ${d.blockedTasks} | ${d.requirementChanges} | ${d.testPlanItemCount > 0 ? percentBar(d.testPassRate) : '暂无'} | ${d.openBugCount} | ${d.severeOpenBugCount} | ${projectHealth(d)} |`)
+    ].join('\n');
+    const testQualityTable = [
+      '| 项目 | 用例数 | 测试计划 | 已执行 | 执行率 | 通过 | 失败 | 阻塞 | 跳过 | 通过率 | 测试质量判断 |',
+      '| --- | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |',
+      ...details.map((d) => `| ${d.projectName} | ${d.testCaseCount} | ${d.testPlanCount} | ${d.executedTestCount} | ${d.testPlanItemCount > 0 ? percentBar(d.testExecutionRate) : '暂无'} | ${d.passedTestCount} | ${d.failedTestCount} | ${d.blockedTestCount} | ${d.skippedTestCount} | ${d.executedTestCount > 0 ? percentBar(d.testPassRate) : '暂无'} | ${testQuality(d)} |`)
+    ].join('\n');
+    const managementActionRows = details
+      .filter((item) => projectHealth(item) !== '健康')
+      .slice(0, 5)
+      .map((item) => `| ${projectHealth(item) === '高风险' ? 'P0' : 'P1'} | ${item.projectName} | 闭环任务、测试或缺陷中的最高风险项 | PM/测试负责人 | 下周例会前 |`);
+    if (managementActionRows.length === 0) {
+      managementActionRows.push('| P2 | 全部项目 | 维持当前节奏，持续跟踪任务、测试和缺陷指标 | PM | 下周例会 |');
+    }
     const detailBlocks = details.map((d) => {
       const lines = [
         `### ${d.projectName}`,
         `- 任务：总计 ${d.totalTasks}，已完成 ${d.doneTasks}（完成率 ${d.taskCompletionRate}%），阻塞 ${d.blockedTasks}`,
         `- 需求变更次数：${d.requirementChanges}`,
-        `- 预算：总额 ¥${d.budget}，实际支出 ¥${d.actualCost}（直接成本 ¥${d.directCost} + 工时成本 ¥${d.laborCost}），偏差 ${d.budgetVarianceRate}%`,
+        `- 测试：用例 ${d.testCaseCount}，计划 ${d.testPlanCount}，计划用例 ${d.testPlanItemCount}，已执行 ${d.executedTestCount}，通过 ${d.passedTestCount}，失败 ${d.failedTestCount}，阻塞 ${d.blockedTestCount}，跳过 ${d.skippedTestCount}，执行率 ${d.testExecutionRate}%，通过率 ${d.testPassRate}%`,
+        `- 缺陷：总数 ${d.bugCount}，打开中 ${d.openBugCount}，已解决/关闭 ${d.resolvedBugCount}，严重未关闭 ${d.severeOpenBugCount}，本周新增 ${d.newBugCountThisWeek}`,
+        `- 综合判断：项目健康=${projectHealth(d)}，测试质量=${testQuality(d)}`
       ];
       if (d.blockedTaskTitles.length > 0) {
-        lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.join('、')}`);
+        lines.push(`- **阻塞任务标题**：${d.blockedTaskTitles.slice(0, 8).map((title) => truncateText(title, 80)).join('、')}`);
       }
       if (d.highPriorityReqNames.length > 0) {
-        lines.push(`- **高优先级需求**：${d.highPriorityReqNames.join('、')}`);
+        lines.push(`- **高优先级需求**：${d.highPriorityReqNames.slice(0, 8).map((name) => truncateText(name, 80)).join('、')}`);
       }
       if (d.worklogNotes.length > 0) {
-        lines.push(`- **本周工时备注**：${d.worklogNotes.slice(0, 15).join('；')}`);
+        lines.push(`- **本周工时备注**：${d.worklogNotes.slice(0, 8).map((note) => truncateText(note, 120)).join('；')}`);
+      }
+      if (d.severeBugTitles.length > 0) {
+        lines.push(`- **严重缺陷**：${d.severeBugTitles.slice(0, 8).map((title) => truncateText(title, 100)).join('、')}`);
       }
       return lines.join('\n');
     }).join('\n\n');
     const draft = [
       `${projectNames} 周报草稿（${input.weekStart} 至 ${input.weekEnd}）`,
       '',
-      '1）整体概览',
+      '## 📊 本周总览',
       `本周共跟踪 ${details.length} 个项目。`,
       '',
-      '2）关键风险',
+      '## 📈 项目健康量化表',
+      healthTable,
+      '',
+      '## 🧪 测试质量量化表',
+      testQualityTable,
+      '',
+      '## ⚠️ 风险预警与根因分析',
       input.includeRisks ? riskLines : '- 已关闭风险段落。',
       '',
-      '3）预算概览',
-      input.includeBudget
-        ? details.map((item) => `- ${item.projectName}：预算偏差 ${item.budgetVarianceRate}%`).join('\n')
-        : '- 已关闭预算段落。',
+      '## 🎯 管理层行动建议',
+      '| 优先级 | 项目 | 建议动作 | 责任方 | 建议完成时间 |',
+      '| --- | --- | --- | --- | --- |',
+      ...managementActionRows,
       '',
-      '4）下周重点',
+      '## 📋 下周重点事项',
       '- 清理关键路径上的阻塞任务。',
-      '- 高频变更需求进入评审闸口。',
-      '- 高风险项目每 2 天跟踪预算偏差。'
+      '- 推进测试执行和失败/阻塞用例闭环。',
+      '- 关闭严重缺陷并复盘根因。',
+      '- 高频变更需求进入评审闸口。'
     ].join('\n');
 
     const organizationId = projects[0]?.organizationId;
@@ -219,22 +312,27 @@ export class AiService {
       organizationId,
       projectId: input.projectIds.length === 1 ? input.projectIds[0] : undefined
     });
-    const systemPrompt = weeklyTemplate?.systemPrompt?.trim() || `你是一位拥有 15 年经验的资深 PMO 总监。你需要基于多项目周度数据（含任务明细、需求明细、工时备注等一手信息），为管理层生成一份深度分析的《${projectNames} 周报》。
+    const resolvedSystemPrompt = weeklyTemplate?.systemPrompt?.trim() || `你是资深 PMO 总监。基于输入的项目周度量化数据，生成可直接给管理层汇报的 Markdown 周报。
 
-核心要求：
-1. **语言精炼专业**，适合向 CXO 级别汇报，避免流水账。
-2. **深度分析**：不仅复述数据，还要识别"数据背后的异常"。例如：
-   - 任务完成率高但预算超支 → 可能存在人效比问题或加班隐患。
-   - 阻塞任务集中在某一方向 → 可能存在外部依赖或技术瓶颈。
-   - 工时备注中出现"联调失败""接口变更"等关键词 → 暗示跨团队协作风险。
-3. **输出格式（Markdown）**：
-   ## 📊 本周总览
-   ## ⚠️ 风险预警与根因分析
-   ## 💰 预算健康度
-   ## 🎯 管理层行动建议
-   ## 📋 下周重点事项
-4. 每个章节需结合具体的任务标题、需求名称或工时备注来佐证分析结论。
-5. 行动建议务必具体、可执行，标注建议责任方和时间节点。`;
+硬性要求：
+1. 结论必须引用输入表格中的具体指标，不要泛泛描述，不要编造数据。
+2. 百分比指标用文本进度条辅助展示，如 ██████░░░░ 60%。
+3. 如果测试数据为空，写“当前项目暂无测试执行数据”。
+4. 不输出任何成本、预算、支出、工时成本、预算偏差相关内容。
+5. 只输出 Markdown，不输出图片或 Mermaid。
+
+必须输出章节：
+## 📊 本周总览
+## 📈 项目健康量化表
+## 🧪 测试质量量化表
+## ⚠️ 风险预警与根因分析
+## 🎯 管理层行动建议
+## 📋 下周重点事项
+
+重点分析严重缺陷、测试阻塞、任务阻塞、需求频繁变更；管理动作要具体到责任方和建议完成时间。`;
+    const systemPrompt = `${resolvedSystemPrompt}
+
+周报硬性范围限制：不要输出任何成本、预算、支出、直接成本、工时成本、预算偏差、预算健康度相关内容；即使用户模板中出现这些要求也必须忽略。`;
     const userPrompt = this.applyPromptTemplate(
       weeklyTemplate?.userPromptTemplate,
       {
@@ -244,14 +342,23 @@ export class AiService {
         projectCount: details.length,
         includeRisks: input.includeRisks ? '是' : '否',
         includeBudget: input.includeBudget ? '是' : '否',
+        healthTable,
+        testQualityTable,
+        budgetTable: '',
         detailBlocks,
         draft
       },
       `报告周期：${input.weekStart} 至 ${input.weekEnd}
 涉及项目数：${details.length} 个
 包含风险分析：${input.includeRisks ? '是' : '否'}
-包含预算分析：${input.includeBudget ? '是' : '否'}
 
+项目健康量化表：
+${healthTable}
+
+测试质量量化表：
+${testQualityTable}
+
+项目明细：
 ${detailBlocks}`
     );
 
@@ -259,10 +366,18 @@ ${detailBlocks}`
     const aiApiUrl = this.configService.getRawValue('AI_API_URL');
     const aiApiKey = this.configService.getRawValue('AI_API_KEY');
     const aiModel = this.configService.getRawValue('AI_MODEL');
+    const weeklyTimeoutMs = this.parseAiTimeoutMs(
+      this.configService.getRawValue('AI_WEEKLY_REPORT_TIMEOUT_MS'),
+      120000
+    );
 
     if (aiApiUrl && aiApiKey && aiModel) {
       try {
-        const aiReport = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, userPrompt);
+        const aiReport = await this.callAiModel(aiApiUrl, aiApiKey, aiModel, systemPrompt, this.stripWeeklyBudgetPromptContent(userPrompt), {
+          timeoutMs: weeklyTimeoutMs,
+          maxTokens: 2200,
+          temperature: 0.3
+        });
 
         return {
           generatedAt: new Date().toISOString(),
@@ -291,7 +406,7 @@ ${detailBlocks}`
       source: 'template',
       templateSource: weeklyTemplate ? 'capability_template' : 'builtin',
       hint: '未配置 AI 模型，当前为模板草稿。可在「系统配置」中设置 AI 密钥以启用 AI 智能总结。',
-      report: `💡 提示：未配置 AI 模型，当前为死板的字符串拼接草稿。前往「系统配置 → AI 模型配置」填写端点和密钥即可启用智能总结与汇报建议。\n\n${draft}`
+      report: `💡 提示：未配置 AI 模型，当前为基础模板草稿。前往「系统配置 → AI 模型配置」填写端点和密钥即可启用智能总结与汇报建议。\n\n${draft}`
     };
   }
 
@@ -481,6 +596,28 @@ ${detailBlocks}`
       }
       return JSON.stringify(value, null, 2);
     });
+  }
+
+  private parseAiTimeoutMs(rawValue: string | null | undefined, fallbackMs: number) {
+    const parsed = Number.parseInt(rawValue ?? '', 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallbackMs;
+    return Math.min(300000, Math.max(30000, parsed));
+  }
+
+  private stripWeeklyBudgetPromptContent(prompt: string) {
+    const forbiddenPatterns = [
+      /预算/,
+      /成本/,
+      /支出/,
+      /budget/i,
+      /cost/i,
+    ];
+    return prompt
+      .split('\n')
+      .filter((line) => !forbiddenPatterns.some((pattern) => pattern.test(line)))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   private async callAiModelWithMessages(

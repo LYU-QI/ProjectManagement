@@ -26,6 +26,27 @@ interface UpdateProjectInput {
   feishuViewId?: string;
 }
 
+const PROJECT_WEEKLY_DATA_SOURCE_DEFINITIONS = [
+  { sourceType: 'status_risk', label: '项目状态 / 风险表' },
+  { sourceType: 'bugs', label: '缺陷表' },
+  { sourceType: 'tests', label: '测试概况表' },
+  { sourceType: 'resources', label: '资源投入表' },
+  { sourceType: 'milestones', label: '交付里程碑表' },
+  { sourceType: 'discussion_plans', label: '专项讨论计划清单' }
+] as const;
+
+const FEATURE_LIST_DATA_SOURCE_TYPE = 'feature_list';
+const FEATURE_LIST_DATA_SOURCE_LABEL = 'Feature List 验收表';
+
+type ProjectWeeklyDataSourceType = typeof PROJECT_WEEKLY_DATA_SOURCE_DEFINITIONS[number]['sourceType'];
+
+interface ProjectWeeklyDataSourceInput {
+  sourceType: string;
+  appToken?: string | null;
+  tableId?: string | null;
+  viewId?: string | null;
+}
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -100,6 +121,120 @@ export class ProjectsService {
     });
   }
 
+  private async assertProjectInOrganization(id: number, actor?: AuthActor, organizationId?: string | null) {
+    if (!organizationId) {
+      throw new ForbiddenException('No organization context');
+    }
+    await this.accessService.assertProjectAccess(actor, id);
+    const project = await this.prisma.project.findUnique({
+      where: { id },
+      select: { id: true, organizationId: true }
+    });
+    if (!project || project.organizationId !== organizationId) {
+      throw new NotFoundException('Project not found');
+    }
+    return project;
+  }
+
+  private normalizeWeeklyDataSources(rows: Array<{ sourceType: string; appToken?: string | null; tableId?: string | null; viewId?: string | null }>) {
+    const byType = new Map(rows.map((row) => [row.sourceType, row]));
+    return PROJECT_WEEKLY_DATA_SOURCE_DEFINITIONS.map((definition) => {
+      const row = byType.get(definition.sourceType);
+      return {
+        sourceType: definition.sourceType,
+        label: definition.label,
+        appToken: row?.appToken ?? '',
+        tableId: row?.tableId ?? '',
+        viewId: row?.viewId ?? ''
+      };
+    });
+  }
+
+  async weeklyDataSources(id: number, actor?: AuthActor, organizationId?: string | null) {
+    await this.assertProjectInOrganization(id, actor, organizationId);
+    const rows = await this.prisma.projectWeeklyDataSource.findMany({
+      where: { projectId: id },
+      orderBy: { id: 'asc' }
+    });
+    return {
+      projectId: id,
+      sources: this.normalizeWeeklyDataSources(rows)
+    };
+  }
+
+  async updateWeeklyDataSources(id: number, input: ProjectWeeklyDataSourceInput[], actor?: AuthActor, organizationId?: string | null) {
+    await this.assertProjectInOrganization(id, actor, organizationId);
+    const allowedTypes = new Set<ProjectWeeklyDataSourceType>(PROJECT_WEEKLY_DATA_SOURCE_DEFINITIONS.map((item) => item.sourceType));
+    const rows = Array.isArray(input) ? input : [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const sourceType = String(row.sourceType || '').trim() as ProjectWeeklyDataSourceType;
+        if (!allowedTypes.has(sourceType)) {
+          throw new BadRequestException(`未知的周报数据源类型：${sourceType || '-'}`);
+        }
+        const appToken = String(row.appToken || '').trim();
+        const tableId = String(row.tableId || '').trim();
+        const viewId = String(row.viewId || '').trim();
+        if (!appToken && !tableId && !viewId) {
+          await tx.projectWeeklyDataSource.deleteMany({ where: { projectId: id, sourceType } });
+          continue;
+        }
+        await tx.projectWeeklyDataSource.upsert({
+          where: { projectId_sourceType: { projectId: id, sourceType } },
+          update: { appToken: appToken || null, tableId: tableId || null, viewId: viewId || null },
+          create: { projectId: id, sourceType, appToken: appToken || null, tableId: tableId || null, viewId: viewId || null }
+        });
+      }
+    });
+
+    return this.weeklyDataSources(id, actor, organizationId);
+  }
+
+  async featureListDataSource(id: number, actor?: AuthActor, organizationId?: string | null) {
+    await this.assertProjectInOrganization(id, actor, organizationId);
+    const row = await this.prisma.projectWeeklyDataSource.findUnique({
+      where: { projectId_sourceType: { projectId: id, sourceType: FEATURE_LIST_DATA_SOURCE_TYPE } }
+    });
+    return {
+      projectId: id,
+      source: {
+        sourceType: FEATURE_LIST_DATA_SOURCE_TYPE,
+        label: FEATURE_LIST_DATA_SOURCE_LABEL,
+        appToken: row?.appToken ?? '',
+        tableId: row?.tableId ?? '',
+        viewId: row?.viewId ?? ''
+      }
+    };
+  }
+
+  async updateFeatureListDataSource(id: number, input: ProjectWeeklyDataSourceInput, actor?: AuthActor, organizationId?: string | null) {
+    await this.assertProjectInOrganization(id, actor, organizationId);
+    const appToken = String(input?.appToken || '').trim();
+    const tableId = String(input?.tableId || '').trim();
+    const viewId = String(input?.viewId || '').trim();
+
+    if (!appToken && !tableId && !viewId) {
+      await this.prisma.projectWeeklyDataSource.deleteMany({
+        where: { projectId: id, sourceType: FEATURE_LIST_DATA_SOURCE_TYPE }
+      });
+      return this.featureListDataSource(id, actor, organizationId);
+    }
+
+    await this.prisma.projectWeeklyDataSource.upsert({
+      where: { projectId_sourceType: { projectId: id, sourceType: FEATURE_LIST_DATA_SOURCE_TYPE } },
+      update: { appToken: appToken || null, tableId: tableId || null, viewId: viewId || null },
+      create: {
+        projectId: id,
+        sourceType: FEATURE_LIST_DATA_SOURCE_TYPE,
+        appToken: appToken || null,
+        tableId: tableId || null,
+        viewId: viewId || null
+      }
+    });
+    return this.featureListDataSource(id, actor, organizationId);
+  }
+
   async remove(id: number, actor?: AuthActor, organizationId?: string | null) {
     if (!organizationId) {
       throw new ForbiddenException('No organization context');
@@ -125,6 +260,7 @@ export class ProjectsService {
       await tx.task.deleteMany({ where: { projectId: id } });
       await tx.worklog.deleteMany({ where: { projectId: id } });
       await tx.auditLog.deleteMany({ where: { projectId: id } });
+      await tx.projectWeeklyDataSource.deleteMany({ where: { projectId: id } });
       await tx.project.delete({ where: { id } });
     });
 

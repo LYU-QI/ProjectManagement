@@ -265,6 +265,7 @@ function App() {
   const [worklogs, setWorklogs] = useState<Worklog[]>([]);
   const [aiReport, setAiReport] = useState<string>('');
   const [aiReportSource, setAiReportSource] = useState<string>('');
+  const [generatingWeeklyReport, setGeneratingWeeklyReport] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [chatbotAuditLogs, setChatbotAuditLogs] = useState<ChatbotAuditItem[]>([]);
@@ -1288,6 +1289,9 @@ function App() {
     sunday.setDate(monday.getDate() + 6);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+    setGeneratingWeeklyReport(true);
+    setAiReport('');
+    setAiReportSource('');
     try {
       await runWithRetry('生成周报', async () => {
         const res = await apiPost<{ report: string; source?: string }>('/ai/reports/weekly', {
@@ -1295,7 +1299,7 @@ function App() {
           weekStart: fmt(monday),
           weekEnd: fmt(sunday),
           includeRisks: true,
-          includeBudget: true
+          includeBudget: false
         });
         setAiReport(res.report);
         setAiReportSource(res.source ?? 'template');
@@ -1303,6 +1307,8 @@ function App() {
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'unknown';
       setError(`生成周报失败。（${detail}）`);
+    } finally {
+      setGeneratingWeeklyReport(false);
     }
   }
 
@@ -3042,6 +3048,7 @@ function App() {
           <AiView
             aiReport={aiReport}
             aiReportSource={aiReportSource}
+            isGeneratingWeeklyReport={generatingWeeklyReport}
             onGenerate={generateReport}
             activeOrgName={activeOrgName}
             projects={projects}

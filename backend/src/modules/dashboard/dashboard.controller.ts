@@ -61,6 +61,39 @@ export class DashboardController {
     return this.dashboardService.resourceCalendar(req.user, force === 'true');
   }
 
+  @Get('project-weekly-report')
+  async projectWeeklyReport(
+    @Query('projectId') projectId: string,
+    @Query('weekStart') weekStart: string | undefined,
+    @Query('weekEnd') weekEnd: string | undefined,
+    @Req() req: { user?: { sub?: number; name?: string; role?: string; organizationId?: string }; org?: { id?: string | null } }
+  ) {
+    const id = Number(projectId);
+    if (!Number.isFinite(id)) {
+      return { error: 'Invalid projectId' };
+    }
+    return this.dashboardService.projectWeeklyReport(
+      id,
+      { weekStart, weekEnd },
+      { ...req.user, organizationId: req.org?.id ?? req.user?.organizationId }
+    );
+  }
+
+  @Get('feature-list-board')
+  async featureListBoard(
+    @Query('projectId') projectId: string,
+    @Req() req: { user?: { sub?: number; name?: string; role?: string; organizationId?: string }; org?: { id?: string | null } }
+  ) {
+    const id = Number(projectId);
+    if (!Number.isFinite(id)) {
+      return { error: 'Invalid projectId' };
+    }
+    return this.dashboardService.featureListBoard(
+      id,
+      { ...req.user, organizationId: req.org?.id ?? req.user?.organizationId }
+    );
+  }
+
   @Get('efficiency')
   async efficiency(
     @Query('projectId') projectId: string,
