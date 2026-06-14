@@ -322,6 +322,7 @@ model Project {
   wikiPages      WikiPage[]
   capabilityTemplates CapabilityTemplate[]
   weeklyDataSources ProjectWeeklyDataSource[]
+  weeklyBugMetricSnapshots ProjectWeeklyBugMetricSnapshot[]
 
   @@index([organizationId])
 }
@@ -338,6 +339,23 @@ model ProjectWeeklyDataSource {
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, sourceType])
+  @@index([projectId])
+}
+
+model ProjectWeeklyBugMetricSnapshot {
+  id                    Int      @id @default(autoincrement())
+  projectId             Int
+  snapshotDate          String
+  capturedAt            DateTime @default(now())
+  totalIssues           Int      @default(0)
+  solvedIssues          Int      @default(0)
+  pendingIssues         Int      @default(0)
+  totalP0Issues         Int      @default(0)
+  adjustedTotalP0Issues Int      @default(0)
+  pendingP0Issues       Int      @default(0)
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, snapshotDate])
   @@index([projectId])
 }
 

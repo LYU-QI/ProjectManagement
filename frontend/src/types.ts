@@ -263,8 +263,10 @@ export interface ProjectWeeklyReportResponse {
   };
   metrics: ProjectWeeklyMetric[];
   bugStats: {
-    cards: Array<{ label: string; value: number; sub?: string; explain?: string }>;
+    cards: Array<{ label: string; value: number; sub?: string; explain?: string; delta?: number; baselineValue?: number; baselineDate?: string }>;
     p0p1StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
+    p0StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
+    p1StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
     p0TechnicalModuleDistribution: Array<{ name: string; value: number }>;
   };
   pendingP0Bugs: Array<{
@@ -293,12 +295,29 @@ export interface ProjectWeeklyReportResponse {
     keyDemo: string;
   };
   milestones: Array<{ name: string; due: string; status: string; tone: Exclude<ProjectWeeklyTone, ''>; owner: string }>;
-  discussions: Array<{ index: string; topic: string; technicalPoint: string; owner: string; plannedDate: string; progress: string; solution: string; tone: Exclude<ProjectWeeklyTone, ''> }>;
+  discussions: Array<{ index: string; topic: string; technicalPoint: string; owner: string; plannedDate: string; progress: string; solution: string; bugCount: number; tone: Exclude<ProjectWeeklyTone, ''> }>;
   risks: Array<{ title: string; impact: string; owner: string; due: string; status: string; tone: Exclude<ProjectWeeklyTone, ''>; support: string }>;
   qualityCards: ProjectWeeklyMetric[];
   tests: Array<{ module: string; cases: number; executed: number; passRate: number; failedBlocked: string; tone: Exclude<ProjectWeeklyTone, ''>; conclusion: string }>;
   ranks: Array<{ title: string; items: Array<{ name: string; value: number }> }>;
-  trends: Array<{ title: string; unit: string; color: Exclude<ProjectWeeklyTone, ''>; days: Array<{ day: string; value: number }> }>;
+  trends: Array<{
+    id: string;
+    label: string;
+    title: string;
+    description: string;
+    value: string;
+    unit: string;
+    chart: 'line' | 'stacked';
+    conclusion: string;
+    conclusionTone: Exclude<ProjectWeeklyTone, ''>;
+    days: string[];
+    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    variants?: Array<{
+      key: string;
+      label: string;
+      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    }>;
+  }>;
   aiSummary: {
     conclusion: string;
     risks: string[];

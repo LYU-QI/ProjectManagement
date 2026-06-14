@@ -244,8 +244,269 @@ function weeklyTrendWidth(value: number, max: number) {
   return `${Math.max(8, Math.round((Math.abs(value) / Math.max(max, 1)) * 100))}%`;
 }
 
-function ProjectWeeklyBugStatsPanel({ stats }: { stats: ProjectWeeklyReportResponse['bugStats'] }) {
-  const pieSegments = stats.p0p1StatusDistribution || [];
+function weeklyBugCardDelta(card: ProjectWeeklyReportResponse['bugStats']['cards'][number]) {
+  const delta = Number(card.delta || 0);
+  const className = delta > 0 ? 'is-up' : delta < 0 ? 'is-down' : 'is-flat';
+  const text = delta > 0 ? `+${delta}` : String(delta);
+  const baseline = typeof card.baselineValue === 'number' && card.baselineDate
+    ? `今日基准 ${card.baselineDate} 00:00：${card.baselineValue}`
+    : '今日基准暂无数据';
+  return (
+    <span className={`weekly-bug-stat-delta ${className}`} title={baseline} aria-label={`${card.label}今日变化 ${text}`}>
+      {text}
+    </span>
+  );
+}
+
+type ProjectWeeklyTrendMode = ProjectWeeklyReportResponse['trends'][number];
+
+function weeklyTrendPath(points: Array<{ x: number; y: number }>) {
+  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+}
+
+function weeklyTrendAreaPath(points: Array<{ x: number; y: number }>, bottom: number) {
+  if (points.length === 0) return '';
+  return `${weeklyTrendPath(points)} L ${points[points.length - 1].x} ${bottom} L ${points[0].x} ${bottom} Z`;
+}
+
+function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportResponse['trends'] }) {
+  const [activeTrendId, setActiveTrendId] = useState(trends[0]?.id || '');
+  const [activeVariantKey, setActiveVariantKey] = useState('');
+  const [hiddenSeries, setHiddenSeries] = useState<string[]>([]);
+  const [hoverState, setHoverState] = useState<{ x: number; y: number; dayIndex: number } | null>(null);
+  const activeTrend = trends.find((item) => item.id === activeTrendId) || trends[0];
+
+  useEffect(() => {
+    if (!activeTrend && trends[0]) {
+      setActiveTrendId(trends[0].id);
+    }
+    if (activeTrend && !trends.some((item) => item.id === activeTrend.id)) {
+      setActiveTrendId(trends[0]?.id || '');
+    }
+  }, [activeTrend, trends]);
+
+  if (!activeTrend) return null;
+
+  const trendVariants = activeTrend.variants || [];
+  const activeVariant = trendVariants.find((item) => item.key === activeVariantKey) || trendVariants[0];
+  const activeSeries = activeVariant?.series || activeTrend.series;
+  const visibleSeries = activeSeries.filter((item) => !hiddenSeries.includes(item.name));
+  const width = 1080;
+  const height = 390;
+  const pad = { top: 26, right: 34, bottom: 54, left: 58 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+  const days = activeTrend.days;
+
+  const lineValues = visibleSeries.flatMap((item) => item.values);
+  const lineMin = Math.min(0, ...lineValues);
+  const lineMax = Math.max(10, ...lineValues);
+  const roundedMin = lineMin < 0 ? Math.floor(lineMin / 20) * 20 : 0;
+  const roundedMax = Math.ceil(lineMax / 20) * 20;
+  const lineRange = roundedMax - roundedMin || 1;
+  const lineX = (index: number) => pad.left + (chartW / Math.max(days.length - 1, 1)) * index;
+  const lineY = (value: number) => pad.top + chartH - ((value - roundedMin) / lineRange) * chartH;
+
+  const stackTotals = days.map((_, dayIndex) => visibleSeries.reduce((sum, item) => sum + (item.values[dayIndex] || 0), 0));
+  const stackMax = Math.ceil(Math.max(10, ...stackTotals) / 20) * 20;
+  const stackXStep = chartW / Math.max(days.length, 1);
+  const stackBarWidth = Math.min(82, stackXStep * 0.58);
+  const stackY = (value: number) => pad.top + chartH - (value / stackMax) * chartH;
+
+  const showTrendTooltip = (event: ReactMouseEvent<SVGElement>, dayIndex: number) => {
+    setHoverState({
+      x: Math.min(event.clientX + 16, window.innerWidth - 320),
+      y: Math.min(event.clientY + 16, window.innerHeight - 260),
+      dayIndex
+    });
+  };
+  const hoverRows = hoverState
+    ? activeSeries.map((item) => ({
+      name: item.name,
+      color: item.color,
+      value: item.values[hoverState.dayIndex] || 0,
+      unit: item.unit ?? activeTrend.unit
+    }))
+    : [];
+
+  return (
+    <article className="weekly-trend-analysis-card glass-chart-card">
+      <div className="section-title-row">
+        <div>
+          <h3>项目趋势分析</h3>
+          <p className="muted">多指标同图对比，用于判断缺陷收敛、高优问题下降、计划兑现、延期失控和技术模块风险结构。</p>
+        </div>
+      </div>
+      <div className="weekly-trend-tabs">
+        {trends.map((trend) => (
+          <button
+            className={trend.id === activeTrend.id ? 'active' : ''}
+            type="button"
+            key={trend.id}
+            onClick={() => {
+              setActiveTrendId(trend.id);
+              setActiveVariantKey('');
+              setHiddenSeries([]);
+              setHoverState(null);
+            }}
+          >
+            {trend.label}
+          </button>
+        ))}
+      </div>
+      <div className="weekly-trend-card-head">
+        <div>
+          <h4>{activeTrend.title}</h4>
+          <p>{activeTrend.description}</p>
+        </div>
+        <div className="weekly-trend-card-actions">
+          <span>{activeTrend.value}</span>
+          {trendVariants.length > 0 && (
+            <div className="weekly-trend-variant-tabs">
+              {trendVariants.map((variant) => (
+                <button
+                  className={variant.key === (activeVariant?.key || '') ? 'active' : ''}
+                  type="button"
+                  key={variant.key}
+                  onClick={() => {
+                    setActiveVariantKey(variant.key);
+                    setHiddenSeries([]);
+                    setHoverState(null);
+                  }}
+                >
+                  {variant.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="weekly-trend-chart-scroll">
+        <svg className="weekly-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={activeTrend.title}>
+          {Array.from({ length: 6 }).map((_, index) => {
+            const value = activeTrend.chart === 'stacked'
+              ? Math.round((stackMax / 5) * index)
+              : Math.round(roundedMin + (lineRange / 5) * index);
+            const y = activeTrend.chart === 'stacked' ? stackY(value) : lineY(value);
+            return (
+              <g key={`grid-${index}`}>
+                <line className="weekly-trend-grid-line" x1={pad.left} y1={y} x2={width - pad.right} y2={y} />
+                <text className="weekly-trend-axis-text" x={pad.left - 14} y={y + 4} textAnchor="end">{value}</text>
+              </g>
+            );
+          })}
+          {activeTrend.chart === 'line' && roundedMin < 0 && (
+            <line className="weekly-trend-zero-line" x1={pad.left} y1={lineY(0)} x2={width - pad.right} y2={lineY(0)} />
+          )}
+          <line className="weekly-trend-axis-line" x1={pad.left} y1={pad.top} x2={pad.left} y2={height - pad.bottom} />
+          <line className="weekly-trend-axis-line" x1={pad.left} y1={height - pad.bottom} x2={width - pad.right} y2={height - pad.bottom} />
+          {days.map((day, index) => {
+            const x = activeTrend.chart === 'stacked' ? pad.left + stackXStep * index + stackXStep / 2 : lineX(index);
+            return <text className="weekly-trend-axis-text" x={x} y={height - 22} textAnchor="middle" key={`day-${day}`}>{day}</text>;
+          })}
+          {activeTrend.chart === 'stacked' ? days.map((day, dayIndex) => {
+            const centerX = pad.left + stackXStep * dayIndex + stackXStep / 2;
+            let cursorY = height - pad.bottom;
+            return (
+              <g key={`stack-${day}`}>
+                {visibleSeries.map((item) => {
+                  const value = item.values[dayIndex] || 0;
+                  const segmentHeight = Math.max(value > 0 ? 2 : 0, (value / stackMax) * chartH);
+                  cursorY -= segmentHeight;
+                  return (
+                    <rect
+                      className="weekly-trend-stack-segment"
+                      key={`${day}-${item.name}`}
+                      x={centerX - stackBarWidth / 2}
+                      y={cursorY}
+                      width={stackBarWidth}
+                      height={segmentHeight}
+                      rx={9}
+                      fill={item.color}
+                      onMouseMove={(event) => showTrendTooltip(event, dayIndex)}
+                      onMouseLeave={() => setHoverState(null)}
+                    />
+                  );
+                })}
+                <text className="weekly-trend-axis-text" x={centerX} y={cursorY - 8} textAnchor="middle">{stackTotals[dayIndex]}</text>
+              </g>
+            );
+          }) : visibleSeries.map((item) => {
+            const points = item.values.map((value, index) => ({ x: lineX(index), y: lineY(value || 0), value }));
+            return (
+              <g key={item.name}>
+                {!item.dashed && <path className="weekly-trend-area" d={weeklyTrendAreaPath(points, lineY(Math.max(0, roundedMin)))} fill={item.color} />}
+                <path className="weekly-trend-line" d={weeklyTrendPath(points)} stroke={item.color} strokeDasharray={item.dashed ? '7 7' : undefined} />
+                {points.map((point, index) => (
+                  <circle
+                    className="weekly-trend-point"
+                    cx={point.x}
+                    cy={point.y}
+                    r={5}
+                    fill={item.color}
+                    key={`${item.name}-${days[index]}`}
+                    onMouseMove={(event) => showTrendTooltip(event, index)}
+                    onMouseLeave={() => setHoverState(null)}
+                  />
+                ))}
+              </g>
+            );
+          })}
+          {days.map((day, index) => {
+            const x = activeTrend.chart === 'stacked' ? pad.left + stackXStep * index + stackXStep / 2 : lineX(index);
+            return (
+              <rect
+                key={`hover-${day}`}
+                x={x - 42}
+                y={pad.top}
+                width={84}
+                height={chartH}
+                fill="transparent"
+                onMouseMove={(event) => showTrendTooltip(event, index)}
+                onMouseLeave={() => setHoverState(null)}
+              />
+            );
+          })}
+        </svg>
+      </div>
+      <div className="weekly-trend-legend">
+        {activeSeries.map((item) => (
+          <button
+            className={hiddenSeries.includes(item.name) ? 'off' : ''}
+            type="button"
+            key={item.name}
+            onClick={() => setHiddenSeries((prev) => prev.includes(item.name) ? prev.filter((name) => name !== item.name) : [...prev, item.name])}
+          >
+            <i style={{ background: item.color }} />
+            {item.name}
+          </button>
+        ))}
+      </div>
+      {hoverState && (
+        <div className="weekly-trend-tooltip" style={{ left: hoverState.x, top: hoverState.y }}>
+          <strong>{activeTrend.days[hoverState.dayIndex]} 指标明细</strong>
+          {hoverRows.map((row) => (
+            <div className="weekly-trend-tooltip-row" key={row.name}>
+              <i style={{ background: row.color }} />
+              <span>{row.name}</span>
+              <b>{row.value}{row.unit}</b>
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ProjectWeeklyBugStatsPanel({ stats, trends }: { stats: ProjectWeeklyReportResponse['bugStats']; trends: ProjectWeeklyReportResponse['trends'] }) {
+  const [pieMode, setPieMode] = useState<'all' | 'p0' | 'p1'>('all');
+  const pieOptions = [
+    { key: 'all' as const, label: 'P0/P1', segments: stats.p0p1StatusDistribution || [], totalLabel: 'P0/P1 总数' },
+    { key: 'p0' as const, label: 'P0', segments: stats.p0StatusDistribution || [], totalLabel: 'P0 总数' },
+    { key: 'p1' as const, label: 'P1', segments: stats.p1StatusDistribution || [], totalLabel: 'P1 总数' }
+  ];
+  const activePieOption = pieOptions.find((item) => item.key === pieMode) || pieOptions[0];
+  const pieSegments = activePieOption.segments;
   const totalPie = pieSegments.reduce((sum, item) => sum + item.value, 0);
   let offset = 0;
   const gradient = pieSegments.length > 0 && totalPie > 0
@@ -273,25 +534,39 @@ function ProjectWeeklyBugStatsPanel({ stats }: { stats: ProjectWeeklyReportRespo
             <span>{card.label}</span>
             <strong>{card.value}</strong>
             {card.sub && <p>{card.sub}</p>}
+            {typeof card.delta === 'number' && weeklyBugCardDelta(card)}
           </article>
         ))}
       </div>
+      <ProjectWeeklyTrendPanel trends={trends} />
       <div className="weekly-bug-chart-grid">
         <article className="weekly-bug-chart-card">
           <div className="section-title-row">
             <div>
               <h3>P0/P1问题状态占比</h3>
-              <p className="muted">统计严重等级包含 P0、P1 的问题状态分布。</p>
+              <p className="muted">统计严重等级包含 P0、P1 的问题状态分布，可切换查看单独 P0 或 P1。</p>
+            </div>
+            <div className="weekly-pie-mode-tabs">
+              {pieOptions.map((item) => (
+                <button
+                  className={item.key === pieMode ? 'active' : ''}
+                  type="button"
+                  key={item.key}
+                  onClick={() => setPieMode(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
           </div>
           <div className="weekly-pie-layout">
             <div
               className="weekly-pie-chart"
               style={{ '--weekly-pie-gradient': gradient } as CSSProperties}
-              aria-label={`P0/P1问题状态占比，总数 ${totalPie}`}
+              aria-label={`${activePieOption.label}问题状态占比，总数 ${totalPie}`}
             >
               <span>{totalPie}</span>
-              <small>P0/P1 总数</small>
+              <small>{activePieOption.totalLabel}</small>
             </div>
             <div className="weekly-pie-legend">
               {pieSegments.map((item) => (
@@ -728,6 +1003,7 @@ export default function DashboardView({
   const [weeklyFullscreen, setWeeklyFullscreen] = useState(false);
   const [featureListFullscreen, setFeatureListFullscreen] = useState(false);
   const [weeklyImageExporting, setWeeklyImageExporting] = useState(false);
+  const [weeklyImageExportError, setWeeklyImageExportError] = useState('');
   const weeklyBoardRef = useRef<HTMLElement | null>(null);
   const [roadmapFullscreen, setRoadmapFullscreen] = useState(false);
   const [roadmapRefreshing, setRoadmapRefreshing] = useState(false);
@@ -908,18 +1184,80 @@ export default function DashboardView({
     const node = weeklyBoardRef.current;
     if (!node || weeklyImageExporting) return;
     setWeeklyImageExporting(true);
+    setWeeklyImageExportError('');
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       if (document.fonts?.ready) {
         await document.fonts.ready;
       }
+      const captureWidth = Math.ceil(Math.max(node.scrollWidth, node.clientWidth));
+      const captureHeight = Math.ceil(Math.max(node.scrollHeight, node.clientHeight));
       const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(node, {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
-        windowWidth: Math.max(node.scrollWidth, node.clientWidth),
-        windowHeight: Math.max(node.scrollHeight, node.clientHeight)
+        width: captureWidth,
+        height: captureHeight,
+        windowWidth: captureWidth,
+        windowHeight: captureHeight,
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (clonedDocument: Document) => {
+          const clonedBoard = clonedDocument.querySelector('.weekly-print-target') as HTMLElement | null;
+          if (clonedBoard) {
+            clonedBoard.classList.add('weekly-dashboard-exporting');
+            clonedBoard.style.position = 'static';
+            clonedBoard.style.inset = 'auto';
+            clonedBoard.style.width = `${captureWidth}px`;
+            clonedBoard.style.height = 'auto';
+            clonedBoard.style.minHeight = '0';
+            clonedBoard.style.maxHeight = 'none';
+            clonedBoard.style.overflow = 'visible';
+
+            const fallbackText = '#172033';
+            const fallbackMuted = '#66758c';
+            const fallbackBorder = '#dbe5f2';
+            const fallbackSurface = '#ffffff';
+            const fallbackSoft = '#f7faff';
+            const elements = [clonedBoard, ...Array.from(clonedBoard.querySelectorAll<HTMLElement>('*'))];
+            elements.forEach((element) => {
+              const computed = clonedDocument.defaultView?.getComputedStyle(element);
+              if (!computed) return;
+              const textColor = computed.color || '';
+              const bgColor = computed.backgroundColor || '';
+              const bgImage = computed.backgroundImage || '';
+              const borderColor = computed.borderColor || '';
+              if (textColor.includes('color(') || textColor.includes('color-mix(')) {
+                element.style.color = element.classList.contains('muted') ? fallbackMuted : fallbackText;
+              }
+              if (bgColor.includes('color(') || bgColor.includes('color-mix(')) {
+                element.style.backgroundColor = fallbackSurface;
+              }
+              if (bgImage.includes('color(') || bgImage.includes('color-mix(')) {
+                element.style.backgroundImage = 'none';
+              }
+              if (borderColor.includes('color(') || borderColor.includes('color-mix(')) {
+                element.style.borderColor = fallbackBorder;
+              }
+              if ((computed.boxShadow || '').includes('color(') || (computed.boxShadow || '').includes('color-mix(')) {
+                element.style.boxShadow = 'none';
+              }
+              if ((computed.textShadow || '').includes('color(') || (computed.textShadow || '').includes('color-mix(')) {
+                element.style.textShadow = 'none';
+              }
+            });
+            clonedBoard.style.background = fallbackSoft;
+            clonedBoard.querySelectorAll<HTMLElement>('.weekly-hero, .weekly-section, .weekly-bug-stat-card, .weekly-bug-chart-card, .weekly-timeline-panel').forEach((element) => {
+              element.style.background = fallbackSurface;
+              element.style.borderColor = fallbackBorder;
+              element.style.boxShadow = 'none';
+            });
+          }
+          clonedDocument.querySelectorAll('.global-ai-chatbot, .floating-action-stack, .floating-toolbar, .theme-fab, .assistant-fab').forEach((element: Element) => {
+            (element as HTMLElement).style.display = 'none';
+          });
+        }
       } as Parameters<typeof html2canvas>[1] & { scale: number });
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
@@ -928,6 +1266,8 @@ export default function DashboardView({
       link.href = url;
       link.download = `${safeName}-周报长图-${new Date().toISOString().slice(0, 10)}.png`;
       link.click();
+    } catch (err) {
+      setWeeklyImageExportError(err instanceof Error ? err.message : '导出长图失败，请稍后重试。');
     } finally {
       setWeeklyImageExporting(false);
     }
@@ -1841,10 +2181,15 @@ export default function DashboardView({
               {projectWeeklyReport.error}
             </div>
           )}
+          {weeklyImageExportError && (
+            <div className="cluster-board-alert danger">
+              导出长图失败：{weeklyImageExportError}
+            </div>
+          )}
 
           <ProjectWeeklyMilestoneTimeline report={projectWeeklyReport} />
 
-          <ProjectWeeklyBugStatsPanel stats={projectWeeklyReport.bugStats} />
+          <ProjectWeeklyBugStatsPanel stats={projectWeeklyReport.bugStats} trends={projectWeeklyReport.trends} />
 
           <article className="weekly-section">
             <div className="section-title-row">
@@ -1942,6 +2287,7 @@ export default function DashboardView({
                     <th>序号</th>
                     <th>专项名</th>
                     <th>攻坚技术点</th>
+                    <th>关联缺陷数</th>
                     <th>负责人</th>
                     <th>计划完成时间</th>
                     <th>当前进展</th>
@@ -1954,14 +2300,15 @@ export default function DashboardView({
                       <td><span className="weekly-discussion-index">{row.index || index + 1}</span></td>
                       <td><strong className="weekly-discussion-topic" {...weeklyCellTooltipProps(row.topic)}>{row.topic}</strong></td>
                       <td><span className="weekly-discussion-text" {...weeklyCellTooltipProps(row.technicalPoint || '-')}>{row.technicalPoint || '-'}</span></td>
+                      <td><span className="weekly-discussion-count">{row.bugCount ?? 0}</span></td>
                       <td><span className="weekly-discussion-owner" {...weeklyCellTooltipProps(row.owner || '-')}>{row.owner || '-'}</span></td>
                       <td><span className="weekly-discussion-date" {...weeklyCellTooltipProps(row.plannedDate || '-')}>{row.plannedDate || '-'}</span></td>
-                      <td><span className={`weekly-discussion-progress ${weeklyToneClass(row.tone)}`} {...weeklyCellTooltipProps(row.progress || '待更新')}>{row.progress || '待更新'}</span></td>
+                      <td><span className="weekly-discussion-progress neutral" {...weeklyCellTooltipProps(row.progress || '待更新')}>{row.progress || '待更新'}</span></td>
                       <td><span className="weekly-discussion-text" {...weeklyCellTooltipProps(row.solution || '-')}>{row.solution || '-'}</span></td>
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={7}>暂无专项讨论计划数据，请在周报数据源中配置“专项讨论计划清单”。</td>
+                      <td colSpan={8}>暂无专项讨论计划数据，请在周报数据源中配置“专项讨论计划清单”。</td>
                     </tr>
                   )}
                 </tbody>
@@ -2022,29 +2369,6 @@ export default function DashboardView({
               </article>
             ))}
           </div>
-
-          <article className="weekly-section">
-            <h3>近 7 日趋势</h3>
-            <div className="weekly-trend-grid">
-              {projectWeeklyReport.trends.map((trend) => {
-                const max = Math.max(...trend.days.map((item) => Math.abs(item.value)), 1);
-                return (
-                  <article className="weekly-trend-card" key={trend.title}>
-                    <h4>{trend.title}</h4>
-                    {trend.days.map((item) => (
-                      <div className="weekly-trend-row" key={`${trend.title}-${item.day}`}>
-                        <span>{item.day}</span>
-                        <div className="weekly-bar-track">
-                          <div className={`weekly-bar-fill ${weeklyToneClass(trend.color)}`} style={{ width: weeklyTrendWidth(item.value, max) }} />
-                        </div>
-                        <strong>{item.value}</strong>
-                      </div>
-                    ))}
-                  </article>
-                );
-              })}
-            </div>
-          </article>
 
         </>
       )}

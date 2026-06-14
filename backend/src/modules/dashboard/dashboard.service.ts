@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
 import { BugStatus, RequirementStatus, TaskStatus, WorkItemStatus } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { AccessService, AuthActor } from '../access/access.service';
@@ -239,6 +240,10 @@ type ProjectWeeklyHealthRow = {
   action: string;
 };
 
+type ProjectWeeklyBugMetricKey = 'totalIssues' | 'solvedIssues' | 'pendingIssues' | 'totalP0Issues' | 'adjustedTotalP0Issues' | 'pendingP0Issues';
+
+type ProjectWeeklyBugMetricValues = Record<ProjectWeeklyBugMetricKey, number>;
+
 type ProjectWeeklyReportResponse = {
   generatedAt: string;
   source: ProjectWeeklyReportSource;
@@ -255,8 +260,10 @@ type ProjectWeeklyReportResponse = {
   };
   metrics: ProjectWeeklyMetric[];
   bugStats: {
-    cards: Array<{ label: string; value: number; sub?: string; explain?: string }>;
+    cards: Array<{ label: string; value: number; sub?: string; explain?: string; delta?: number; baselineValue?: number; baselineDate?: string }>;
     p0p1StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
+    p0StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
+    p1StatusDistribution: Array<{ name: string; value: number; percent: number; color: string }>;
     p0TechnicalModuleDistribution: Array<{ name: string; value: number }>;
   };
   pendingP0Bugs: Array<{
@@ -277,12 +284,29 @@ type ProjectWeeklyReportResponse = {
     keyDemo: string;
   };
   milestones: Array<{ name: string; due: string; status: string; tone: 'good' | 'warn' | 'danger'; owner: string }>;
-  discussions: Array<{ index: string; topic: string; technicalPoint: string; owner: string; plannedDate: string; progress: string; solution: string; tone: 'good' | 'warn' | 'danger' }>;
+  discussions: Array<{ index: string; topic: string; technicalPoint: string; owner: string; plannedDate: string; progress: string; solution: string; bugCount: number; tone: 'good' | 'warn' | 'danger' }>;
   risks: Array<{ title: string; impact: string; owner: string; due: string; status: string; tone: 'good' | 'warn' | 'danger'; support: string }>;
   qualityCards: ProjectWeeklyMetric[];
   tests: Array<{ module: string; cases: number; executed: number; passRate: number; failedBlocked: string; tone: 'good' | 'warn' | 'danger'; conclusion: string }>;
   ranks: Array<{ title: string; items: Array<{ name: string; value: number }> }>;
-  trends: Array<{ title: string; unit: string; color: 'good' | 'warn' | 'danger'; days: Array<{ day: string; value: number }> }>;
+  trends: Array<{
+    id: string;
+    label: string;
+    title: string;
+    description: string;
+    value: string;
+    unit: string;
+    chart: 'line' | 'stacked';
+    conclusion: string;
+    conclusionTone: 'good' | 'warn' | 'danger';
+    days: string[];
+    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    variants?: Array<{
+      key: string;
+      label: string;
+      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    }>;
+  }>;
   aiSummary: {
     conclusion: string;
     risks: string[];
@@ -462,6 +486,7 @@ const RESOURCE_CALENDAR_FIELD_MAP: Record<string, string> = {
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
   private readonly cacheTtl = 300; // 5 minutes
 
   constructor(
@@ -869,7 +894,8 @@ export class DashboardService {
     const developmentRiskBugs = openBugs.filter((bug) => this.isDevelopmentRiskBug(bug));
     const newBugs = reportBugs.filter((bug) => this.dateInPeriod(this.dateOnly(bug.createdAt), period.weekStart, period.weekEnd));
     const closedBugs = reportBugs.filter((bug) => this.dateInPeriod(this.dateOnly(bug.closedAt || bug.resolvedAt), period.weekStart, period.weekEnd));
-    const bugStats = this.buildProjectWeeklyBugStats(reportBugs);
+    const bugMetricValues = this.calculateProjectWeeklyBugMetricValues(reportBugs);
+    const bugStats = await this.buildProjectWeeklyBugStats(project.id, reportBugs, bugMetricValues);
     const pendingP0BugList = this.buildProjectWeeklyPendingP0Bugs(reportBugs);
 
     const weeklyTests = weeklyTestResult.items.map((record) => this.normalizeWeeklyTestSummary(record.fields || {}));
@@ -906,7 +932,10 @@ export class DashboardService {
     const reportMilestones = weeklyMilestoneResult.items.length > 0
       ? weeklyMilestoneResult.items.map((record) => this.normalizeWeeklyMilestone(record.fields || {}))
       : milestones;
-    const discussions = weeklyDiscussionResult.items.map((record) => this.normalizeWeeklyDiscussion(record.fields || {}));
+    const discussions = this.attachWeeklyDiscussionBugCounts(
+      weeklyDiscussionResult.items.map((record) => this.normalizeWeeklyDiscussion(record.fields || {})),
+      reportBugs
+    );
 
     const riskLight = clusterItem?.riskLight || '未填';
     const riskCount = [
@@ -949,7 +978,7 @@ export class DashboardService {
       : this.buildProjectWeeklyTests(testCases, testPlans, testPlanItems, failedTestItems.length, blockedTestItems.length);
     const ranks = this.buildProjectWeeklyRanks(reportBugs, overdueBugs, seriousBugs, resourceConflicts);
     const trendPeriod = this.resolveRecentSevenDayPeriod(period.weekEnd);
-    const trends = this.buildProjectWeeklyTrends(trendPeriod.start, trendPeriod.end, reportBugs, clusterItem, weeklyTests.length > 0 ? [] : testPlanItems);
+    const trends = this.buildProjectWeeklyTrends(trendPeriod.start, trendPeriod.end, reportBugs, reportMilestones);
     const aiSummary = this.buildProjectWeeklyAiSummary(project.name, metrics, risks, taskCompletionRate, testPassRate, openBugs.length, seriousBugs.length);
     const sourceSummary = this.projectWeeklySourceSummary(weeklySourceResults);
 
@@ -1292,15 +1321,19 @@ export class DashboardService {
       developmentStatus
     ].filter(Boolean).join(' ');
     const severityText = this.fieldValue(fields, '严重等级|严重程度|P级|缺陷等级');
-    const issueType = this.fieldValue(fields, '问题类型|缺陷类型|类型|issueType');
+    const issueType = this.fieldValue(fields, '问题类型|问题分类|缺陷类型|缺陷分类|分类|类型|处理路径|RootCause|Rootcause|Root Cause|Root cause|rootCause|根因判断|issueType');
     const issueSource = this.fieldValue(fields, '问题来源|来源|缺陷来源|source');
     const rootCause = this.fieldValue(fields, 'RootCause|Rootcause|Root Cause|Root cause|rootCause|根因|根因判断|问题根因');
-    const technicalModules = this.fieldValueByPriority(fields, ['技术模块', '模块', '功能模块', '所属模块']);
-    const createdAt = this.parseWeeklyDate(this.fieldValue(fields, '问题创建时间|创建时间|创建日期|createdAt')) || new Date(0);
+    const technicalModules = this.fieldValue(fields, '技术模块');
+    const bugId = this.fieldValue(fields, '缺陷ID|Bug ID|bugId|ID') || title;
+    const createdAt = this.parseWeeklyDate(this.fieldValue(fields, '问题创建时间|创建时间|创建日期|createdAt'))
+      || this.parseBugIdTimestamp(bugId)
+      || new Date(0);
     const closedAt = this.parseWeeklyDate(this.fieldValue(fields, '关闭时间|解决时间|完成时间|closedAt'));
+    const verifiedAt = this.parseWeeklyDate(this.fieldValue(fields, '验证通过时间|验收通过时间|验证时间|通过时间|复测通过时间|verifiedAt|passedAt'));
     const expectedFixDate = this.normalizeDateText(this.fieldValue(fields, '预计修复时间|预计解决时间|期望修复时间|修复截止时间|预计完成时间|计划完成时间|计划修复时间|截止时间|dueDate'));
     return {
-      id: this.fieldValue(fields, '缺陷ID|Bug ID|bugId|ID') || title,
+      id: bugId,
       title,
       status: this.normalizeWeeklyBugStatus(statusText),
       severity: this.normalizeWeeklyBugSeverity(severityText),
@@ -1308,6 +1341,7 @@ export class DashboardService {
       createdAt,
       closedAt,
       resolvedAt: closedAt,
+      verifiedAt,
       expectedFixDate,
       rawStatusText: statusText,
       primaryStatusText: problemStatus || developmentStatus,
@@ -1338,8 +1372,45 @@ export class DashboardService {
       plannedDate: plannedDate || planText,
       progress,
       solution: this.fieldValue(fields, '主要解决问题|解决问题|问题|主要问题'),
+      bugCount: 0,
       tone
     };
+  }
+
+  private attachWeeklyDiscussionBugCounts(
+    discussions: ProjectWeeklyReportResponse['discussions'],
+    bugs: unknown[]
+  ): ProjectWeeklyReportResponse['discussions'] {
+    const highPriorityBugs = bugs.filter((bug) => {
+      const severityText = this.bugSeverityText(bug);
+      return this.normalizeBugText(severityText).includes('p0')
+        || this.normalizeBugText(severityText).includes('p1')
+        || String((bug as { severity?: unknown })?.severity || '') === 'blocker'
+        || String((bug as { severity?: unknown })?.severity || '') === 'critical';
+    });
+    return discussions.map((discussion) => {
+      const keywords = this.weeklyDiscussionModuleKeywords(discussion.topic);
+      const bugCount = highPriorityBugs.filter((bug) => {
+        const modules = this.splitBugModules((bug as { technicalModules?: string | null })?.technicalModules || '');
+        const primaryModule = modules[0] || '未填写';
+        const moduleText = this.normalizeBugText(primaryModule);
+        return keywords.some((keyword) => moduleText === keyword);
+      }).length;
+      return { ...discussion, bugCount };
+    });
+  }
+
+  private weeklyDiscussionModuleKeywords(topic: string): string[] {
+    const text = this.normalizeBugText(topic);
+    const aliases: Record<string, string[]> = {
+      '主链路': ['主链路'],
+      '导航': ['导航专项'],
+      '端状态': ['端状态'],
+      'fc': ['车控fc', 'fc']
+    };
+    const matched = Object.entries(aliases).find(([key]) => text.includes(this.normalizeBugText(key)));
+    const values = matched ? matched[1] : [topic];
+    return Array.from(new Set(values.map((item) => this.normalizeBugText(item)).filter(Boolean)));
   }
 
   private emptyFeatureListBoard(
@@ -1509,7 +1580,7 @@ export class DashboardService {
     return this.normalizeDateText(String(expectedFixDate || ''));
   }
 
-  private buildProjectWeeklyBugStats(bugs: unknown[]): ProjectWeeklyReportResponse['bugStats'] {
+  private calculateProjectWeeklyBugMetricValues(bugs: unknown[]): ProjectWeeklyBugMetricValues {
     const solvedKeys = ['无需修复', '验证通过', '不是问题'];
     const adjustedP0ExcludeKeys = ['无需修复', '转需求', '不是问题', '有依赖项', '重复问题', '重复'];
 
@@ -1532,37 +1603,165 @@ export class DashboardService {
     const p0Bugs = bugs.filter(isP0);
     const adjustedP0Bugs = p0Bugs.filter((bug) => !containsAny(statusText(bug), adjustedP0ExcludeKeys));
     const pendingP0Bugs = this.filterProjectWeeklyPendingP0Bugs(bugs);
+
+    return {
+      totalIssues: bugs.length,
+      solvedIssues: solvedBugs.length,
+      pendingIssues: pendingBugs.length,
+      totalP0Issues: p0Bugs.length,
+      adjustedTotalP0Issues: adjustedP0Bugs.length,
+      pendingP0Issues: pendingP0Bugs.length
+    };
+  }
+
+  private async buildProjectWeeklyBugStats(projectId: number, bugs: unknown[], values: ProjectWeeklyBugMetricValues): Promise<ProjectWeeklyReportResponse['bugStats']> {
+    const isP0 = (bug: unknown) => {
+      const text = this.bugSeverityText(bug);
+      return this.normalizeBugText(text).includes('p0') || String((bug as { severity?: unknown })?.severity || '') === 'blocker';
+    };
+    const isP1 = (bug: unknown) => {
+      const text = this.bugSeverityText(bug);
+      return this.normalizeBugText(text).includes('p1') || String((bug as { severity?: unknown })?.severity || '') === 'critical';
+    };
+    const today = this.projectWeeklySnapshotDate();
+    const baseline = await this.ensureProjectWeeklyBugMetricSnapshot(projectId, today, values);
+    const cardDelta = (key: ProjectWeeklyBugMetricKey) => values[key] - baseline[key];
+
+    const pendingP0Bugs = this.filterProjectWeeklyPendingP0Bugs(bugs);
     const p0p1Bugs = bugs.filter((bug) => isP0(bug) || isP1(bug));
+    const p0Bugs = bugs.filter(isP0);
+    const p1Bugs = bugs.filter(isP1);
     const statusColorPalette = ['#3478f6', '#22c7b8', '#f4b400', '#f97316', '#d58be8', '#27a9e0', '#7cc9e8', '#3b8ebd', '#8b5cf6', '#16a34a'];
     const moduleCounts = new Map<string, number>();
+    const buildStatusDistribution = (items: unknown[]) => {
+      const total = items.length || 1;
+      return this.countAll(items.map((bug) => this.bugDisplayStatusText(bug) || '未填写状态')).map((item, index) => ({
+        name: item.name,
+        value: item.value,
+        percent: Math.round((item.value / total) * 1000) / 10,
+        color: statusColorPalette[index % statusColorPalette.length]
+      }));
+    };
 
     pendingP0Bugs.forEach((bug) => {
       const modules = this.splitBugModules((bug as { technicalModules?: string | null })?.technicalModules || '');
       (modules.length > 0 ? modules : ['未填写']).forEach((name) => moduleCounts.set(name, (moduleCounts.get(name) || 0) + 1));
     });
 
-    const statusDistribution = this.countAll(p0p1Bugs.map((bug) => this.bugDisplayStatusText(bug) || '未填写状态'));
-    const p0p1Total = p0p1Bugs.length || 1;
-
     return {
       cards: [
-        { label: '问题总数', value: bugs.length, explain: '缺陷表读取到的全量问题记录数。' },
-        { label: '已解决问题数', value: solvedBugs.length, explain: '问题状态包含「无需修复、验证通过、不是问题」的问题数。' },
-        { label: '待处理问题数', value: pendingBugs.length, explain: '问题状态不包含「无需修复、验证通过、不是问题」的问题数。' },
-        { label: '总P0问题数', value: p0Bugs.length, explain: '严重等级包含 P0 的问题数。' },
-        { label: '调整后总P0问题数', value: adjustedP0Bugs.length, explain: '严重等级包含 P0，且问题状态不包含「无需修复、转需求、不是问题、有依赖项、重复问题」的问题数。' },
-        { label: '待处理P0问题数', value: pendingP0Bugs.length, explain: '严重等级包含 P0，且问题状态包含「新建、修复中、待验证、验证失败、有依赖项、持续跟踪、依赖MB、依赖火山、待复现」的问题数。' }
+        { label: '问题总数', value: values.totalIssues, explain: '缺陷表读取到的全量问题记录数。', delta: cardDelta('totalIssues'), baselineValue: baseline.totalIssues, baselineDate: today },
+        { label: '已解决问题数', value: values.solvedIssues, explain: '问题状态包含「无需修复、验证通过、不是问题」的问题数。', delta: cardDelta('solvedIssues'), baselineValue: baseline.solvedIssues, baselineDate: today },
+        { label: '待处理问题数', value: values.pendingIssues, explain: '问题状态不包含「无需修复、验证通过、不是问题」的问题数。', delta: cardDelta('pendingIssues'), baselineValue: baseline.pendingIssues, baselineDate: today },
+        { label: '总P0问题数', value: values.totalP0Issues, explain: '严重等级包含 P0 的问题数。', delta: cardDelta('totalP0Issues'), baselineValue: baseline.totalP0Issues, baselineDate: today },
+        { label: '调整后总P0问题数', value: values.adjustedTotalP0Issues, explain: '严重等级包含 P0，且问题状态不包含「无需修复、转需求、不是问题、有依赖项、重复问题」的问题数。', delta: cardDelta('adjustedTotalP0Issues'), baselineValue: baseline.adjustedTotalP0Issues, baselineDate: today },
+        { label: '待处理P0问题数', value: values.pendingP0Issues, explain: '严重等级包含 P0，且问题状态包含「新建、修复中、待验证、验证失败、有依赖项、持续跟踪、依赖MB、依赖火山、待复现」的问题数。', delta: cardDelta('pendingP0Issues'), baselineValue: baseline.pendingP0Issues, baselineDate: today }
       ],
-      p0p1StatusDistribution: statusDistribution.map((item, index) => ({
-        name: item.name,
-        value: item.value,
-        percent: Math.round((item.value / p0p1Total) * 1000) / 10,
-        color: statusColorPalette[index % statusColorPalette.length]
-      })),
+      p0p1StatusDistribution: buildStatusDistribution(p0p1Bugs),
+      p0StatusDistribution: buildStatusDistribution(p0Bugs),
+      p1StatusDistribution: buildStatusDistribution(p1Bugs),
       p0TechnicalModuleDistribution: Array.from(moduleCounts.entries())
         .map(([name, value]) => ({ name, value }))
         .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
     };
+  }
+
+  private projectWeeklySnapshotDate(date = new Date()) {
+    return this.formatDateWithOffset(date, 8);
+  }
+
+  private snapshotToProjectWeeklyBugMetricValues(snapshot: ProjectWeeklyBugMetricValues): ProjectWeeklyBugMetricValues {
+    return {
+      totalIssues: snapshot.totalIssues || 0,
+      solvedIssues: snapshot.solvedIssues || 0,
+      pendingIssues: snapshot.pendingIssues || 0,
+      totalP0Issues: snapshot.totalP0Issues || 0,
+      adjustedTotalP0Issues: snapshot.adjustedTotalP0Issues || 0,
+      pendingP0Issues: snapshot.pendingP0Issues || 0
+    };
+  }
+
+  private async ensureProjectWeeklyBugMetricSnapshot(
+    projectId: number,
+    snapshotDate: string,
+    values: ProjectWeeklyBugMetricValues
+  ): Promise<ProjectWeeklyBugMetricValues> {
+    try {
+      const existing = await this.prisma.projectWeeklyBugMetricSnapshot.findUnique({
+        where: { projectId_snapshotDate: { projectId, snapshotDate } }
+      });
+      if (existing) return this.snapshotToProjectWeeklyBugMetricValues(existing);
+
+      const created = await this.prisma.projectWeeklyBugMetricSnapshot.create({
+        data: {
+          projectId,
+          snapshotDate,
+          totalIssues: values.totalIssues,
+          solvedIssues: values.solvedIssues,
+          pendingIssues: values.pendingIssues,
+          totalP0Issues: values.totalP0Issues,
+          adjustedTotalP0Issues: values.adjustedTotalP0Issues,
+          pendingP0Issues: values.pendingP0Issues
+        }
+      });
+      return this.snapshotToProjectWeeklyBugMetricValues(created);
+    } catch (err: any) {
+      this.logger.warn(`Weekly bug metric snapshot unavailable for project ${projectId}: ${err?.message || err}`);
+      return values;
+    }
+  }
+
+  @Cron('0 0 * * *', { timeZone: 'Asia/Shanghai' })
+  async captureDailyProjectWeeklyBugMetricSnapshots() {
+    const snapshotDate = this.projectWeeklySnapshotDate();
+    const projects = await this.prisma.project.findMany({
+      where: {
+        weeklyDataSources: {
+          some: {
+            sourceType: 'bugs',
+            appToken: { not: null },
+            tableId: { not: null }
+          }
+        }
+      },
+      include: { weeklyDataSources: true }
+    });
+
+    for (const project of projects) {
+      try {
+        const source = await this.readProjectWeeklySource(project, 'bugs', '缺陷表');
+        if (source.source !== 'feishu') {
+          this.logger.warn(`Skip weekly bug metric snapshot for project ${project.id}: ${source.error || source.source}`);
+          continue;
+        }
+        const bugs = source.items.map((record) => this.normalizeWeeklyBug(record.fields || {}));
+        const values = this.calculateProjectWeeklyBugMetricValues(bugs);
+        await this.prisma.projectWeeklyBugMetricSnapshot.upsert({
+          where: { projectId_snapshotDate: { projectId: project.id, snapshotDate } },
+          update: {
+            capturedAt: new Date(),
+            totalIssues: values.totalIssues,
+            solvedIssues: values.solvedIssues,
+            pendingIssues: values.pendingIssues,
+            totalP0Issues: values.totalP0Issues,
+            adjustedTotalP0Issues: values.adjustedTotalP0Issues,
+            pendingP0Issues: values.pendingP0Issues
+          },
+          create: {
+            projectId: project.id,
+            snapshotDate,
+            totalIssues: values.totalIssues,
+            solvedIssues: values.solvedIssues,
+            pendingIssues: values.pendingIssues,
+            totalP0Issues: values.totalP0Issues,
+            adjustedTotalP0Issues: values.adjustedTotalP0Issues,
+            pendingP0Issues: values.pendingP0Issues
+          }
+        });
+      } catch (err: any) {
+        this.logger.warn(`Failed to capture weekly bug metric snapshot for project ${project.id}: ${err?.message || err}`);
+      }
+    }
   }
 
   private filterProjectWeeklyPendingP0P1Bugs(bugs: unknown[]): unknown[] {
@@ -1644,6 +1843,36 @@ export class DashboardService {
       .split(/[、,，/／;；|]/)
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private resolveP0ClearTargetDate(
+    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }>,
+    baseDate: string
+  ): string {
+    const candidates = milestones
+      .map((item) => {
+        const milestoneType = String(item.milestoneType || '');
+        const text = this.normalizeBugText(milestoneType);
+        const plannedDate = this.normalizeDateText(String(item.plannedDate || ''));
+        return { text, plannedDate };
+      })
+      .filter((item) => item.plannedDate && item.plannedDate >= baseDate)
+      .filter((item) => item.text === this.normalizeBugText('最终锁板'))
+      .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate));
+
+    return candidates[0]?.plannedDate || '';
+  }
+
+  private projectWeeklyP0TargetValue(p0Start: number, startDate: string, currentDate: string, targetDate: string): number {
+    if (!targetDate || !startDate || !currentDate) return p0Start;
+    const start = Date.parse(`${startDate}T00:00:00.000Z`);
+    const current = Date.parse(`${currentDate}T00:00:00.000Z`);
+    const target = Date.parse(`${targetDate}T00:00:00.000Z`);
+    if (!Number.isFinite(start) || !Number.isFinite(current) || !Number.isFinite(target)) return p0Start;
+    if (target <= start) return current >= target ? 0 : p0Start;
+
+    const progress = Math.max(0, Math.min(1, (current - start) / (target - start)));
+    return Math.max(0, Math.round(p0Start * (1 - progress)));
   }
 
   private isWeeklyBugVerified(bug: { rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }): boolean {
@@ -1742,6 +1971,7 @@ export class DashboardService {
     const actualDate = this.normalizeDateText(this.fieldValue(fields, '实际完成日期|完成日期|实际完成时间')) || '';
     return {
       name: this.fieldValue(fields, '里程碑名称|名称|交付项|节点') || '未命名里程碑',
+      milestoneType: this.fieldValue(fields, '里程碑类型|节点类型|类型'),
       plannedDate,
       actualDate,
       status: this.fieldValue(fields, '交付状态|状态'),
@@ -1763,6 +1993,33 @@ export class DashboardService {
     if (!normalized) return null;
     const date = new Date(`${normalized}T00:00:00.000Z`);
     return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private parseBugIdTimestamp(value: string): Date | null {
+    const text = String(value || '');
+    const timestampMatch = text.match(/\b(1[6-9]\d{11})\b/);
+    if (timestampMatch) {
+      const parsed = new Date(Number(timestampMatch[1]));
+      if (!Number.isNaN(parsed.getTime())) {
+        return this.parseWeeklyDate(this.formatDateWithOffset(parsed, 8));
+      }
+    }
+
+    const secondTimestampMatch = text.match(/\b(1[6-9]\d{8})\b/);
+    if (secondTimestampMatch) {
+      const parsed = new Date(Number(secondTimestampMatch[1]) * 1000);
+      if (!Number.isNaN(parsed.getTime())) {
+        return this.parseWeeklyDate(this.formatDateWithOffset(parsed, 8));
+      }
+    }
+
+    const compactDateTimeMatch = text.match(/\b(20\d{2})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?\b/);
+    if (compactDateTimeMatch) {
+      const [, year, month, day] = compactDateTimeMatch;
+      return this.parseWeeklyDate(`${year}-${month}-${day}`);
+    }
+
+    return null;
   }
 
   private normalizeWeeklyFeishuTask(fields: Record<string, unknown>, project: { name: string }) {
@@ -2006,50 +2263,223 @@ export class DashboardService {
   private buildProjectWeeklyTrends(
     weekStart: string,
     weekEnd: string,
-    bugs: Array<{ createdAt: Date; closedAt?: Date | null; resolvedAt?: Date | null; severity?: string | null }>,
-    clusterItem: ClusterRiskBoardItem | undefined,
-    testPlanItems: Array<{ result?: string | null; executedAt?: Date | null }>
+    bugs: Array<{
+      createdAt: Date;
+      closedAt?: Date | null;
+      resolvedAt?: Date | null;
+      verifiedAt?: Date | null;
+      severity?: string | null;
+      expectedFixDate?: string | null;
+      rawStatusText?: string | null;
+      primaryStatusText?: string | null;
+      fixStatus?: string | null;
+      status: BugStatus;
+      issueType?: string | null;
+      technicalModules?: string | null;
+    }>,
+    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }> = []
   ) {
     const days = this.daysBetween(weekStart, weekEnd).slice(0, 7);
-    const highRiskBugCreatedOn = (bug: { createdAt: Date; closedAt?: Date | null; resolvedAt?: Date | null; severity?: string | null }, day: string) => {
-      const severity = String(bug.severity || '').toLowerCase();
-      if (!['critical', 'blocker', 'p0', 'p1'].some((key) => severity.includes(key))) return false;
-      return this.dateOnly(bug.createdAt) === day;
+    const expectedOn = (bug: { expectedFixDate?: string | null }, day: string) => this.weeklyBugExpectedDate(bug) === day;
+    const verifiedOn = (bug: { expectedFixDate?: string | null; verifiedAt?: Date | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
+      if (!this.isWeeklyBugVerified(bug)) return false;
+      return this.dateOnly(bug.verifiedAt) === day || (!bug.verifiedAt && expectedOn(bug, day));
     };
+    const closeDate = (bug: {
+      closedAt?: Date | null;
+      resolvedAt?: Date | null;
+      verifiedAt?: Date | null;
+      expectedFixDate?: string | null;
+      rawStatusText?: string | null;
+      fixStatus?: string | null;
+      status: BugStatus;
+    }) => {
+      const explicitCloseDate = this.dateOnly(bug.closedAt || bug.resolvedAt || bug.verifiedAt || null);
+      if (explicitCloseDate) return explicitCloseDate;
+      if (this.isWeeklyBugVerified(bug)) return this.weeklyBugExpectedDate(bug);
+      return '';
+    };
+    const closedOn = (bug: { closedAt?: Date | null; resolvedAt?: Date | null; verifiedAt?: Date | null; expectedFixDate?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
+      if (!this.isWeeklyBugVerified(bug) && bug.status !== BugStatus.closed) return false;
+      return closeDate(bug) === day;
+    };
+    const createdOnOrBefore = (bug: { createdAt: Date }, day: string) => {
+      const created = this.dateOnly(bug.createdAt);
+      return Boolean(created && created <= day);
+    };
+    const closedOnOrBefore = (bug: { closedAt?: Date | null; resolvedAt?: Date | null; verifiedAt?: Date | null; expectedFixDate?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
+      const closed = closeDate(bug);
+      return Boolean(closed && closed <= day && (this.isWeeklyBugVerified(bug) || bug.status === BugStatus.closed));
+    };
+    const activeOnDay = (bug: {
+      createdAt: Date;
+      closedAt?: Date | null;
+      resolvedAt?: Date | null;
+      verifiedAt?: Date | null;
+      expectedFixDate?: string | null;
+      rawStatusText?: string | null;
+      fixStatus?: string | null;
+      status: BugStatus;
+    }, day: string) => createdOnOrBefore(bug, day) && !closedOnOrBefore(bug, day);
+    const expectedBefore = (bug: { expectedFixDate?: string | null }, day: string) => {
+      const expected = this.weeklyBugExpectedDate(bug);
+      return Boolean(expected && expected < day);
+    };
+    const isP0 = (bug: { severity?: string | null; rawSeverityText?: string | null }) => {
+      const text = this.bugSeverityText(bug);
+      return this.normalizeBugText(text).includes('p0') || bug.severity === 'blocker';
+    };
+    const isP1 = (bug: { severity?: string | null; rawSeverityText?: string | null }) => {
+      const text = this.bugSeverityText(bug);
+      return this.normalizeBugText(text).includes('p1') || bug.severity === 'critical';
+    };
+    const adjustedExcludeKeys = ['无需修复', '转需求', '不是问题', '有依赖项', '重复问题', '重复'];
+    const isAdjustedRemaining = (bug: { primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }) => {
+      const statusText = this.bugPrimaryStatusText(bug);
+      const normalizedStatus = this.normalizeBugText(statusText);
+      return !adjustedExcludeKeys.some((key) => normalizedStatus.includes(this.normalizeBugText(key)));
+    };
+    const moduleColorPalette = ['#3177f6', '#e5484d', '#7257d6', '#e29a00', '#0ea5b7', '#16a36a', '#f97316', '#8b5cf6', '#0891b2', '#64748b', '#db2777', '#84cc16'];
+    const normalizeTechnicalModuleName = (value: string) => {
+      const text = value.trim();
+      if (this.normalizeBugText(text) === this.normalizeBugText('导航')) return '导航专项';
+      return text || '未填写';
+    };
+    const primaryModuleOf = (bug: { technicalModules?: string | null }) => {
+      const modules = this.splitBugModules(String(bug.technicalModules || '')).map((item) => normalizeTechnicalModuleName(item)).filter(Boolean);
+      return modules[0] || '未填写';
+    };
+    const buildModuleTrendSeries = (scope: (bug: { technicalModules?: string | null; severity?: string | null; rawSeverityText?: string | null }) => boolean) => {
+      const scopedBugs = bugs.filter(scope);
+      const moduleTotals = new Map<string, number>();
+      scopedBugs.forEach((bug) => {
+        const moduleName = primaryModuleOf(bug);
+        moduleTotals.set(moduleName, (moduleTotals.get(moduleName) || 0) + 1);
+      });
+      const moduleNames = Array.from(moduleTotals.entries())
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([name]) => name);
+      return moduleNames.map((moduleName, index) => ({
+        name: moduleName,
+        color: moduleColorPalette[index % moduleColorPalette.length],
+        values: days.map((day) => scopedBugs.filter((bug) => createdOnOrBefore(bug, day) && primaryModuleOf(bug) === moduleName).length)
+      }));
+    };
+    const allModuleSeries = buildModuleTrendSeries((bug) => isP0(bug) || isP1(bug));
+    const p0ModuleSeries = buildModuleTrendSeries((bug) => isP0(bug));
+    const p1ModuleSeries = buildModuleTrendSeries((bug) => isP1(bug));
+    const newValues = days.map((day) => bugs.filter((bug) => this.dateOnly(bug.createdAt) === day).length);
+    const closedValues = days.map((day) => bugs.filter((bug) => closedOn(bug, day)).length);
+    const netValues = days.map((_, index) => newValues[index] - closedValues[index]);
+    const lastThreeNew = newValues.slice(-3).reduce((sum, value) => sum + value, 0);
+    const lastThreeClosed = closedValues.slice(-3).reduce((sum, value) => sum + value, 0);
+    const netConclusionTone: 'good' | 'warn' | 'danger' = lastThreeClosed >= lastThreeNew ? 'good' : lastThreeClosed >= lastThreeNew * 0.8 ? 'warn' : 'danger';
+    const netConclusion = netConclusionTone === 'good'
+      ? '当前判断：最近 3 天关闭量已覆盖新增量，缺陷开始收敛'
+      : netConclusionTone === 'warn'
+        ? '当前判断：新增与关闭接近，仍需持续观察'
+        : '当前判断：最近 3 天新增缺陷高于关闭缺陷，仍处扩散状态';
+    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, days[0]);
+    const p0Values = days.map((day) => bugs.filter((bug) => isP0(bug) && createdOnOrBefore(bug, day) && isAdjustedRemaining(bug)).length);
+    const p1Values = days.map((day) => bugs.filter((bug) => isP1(bug) && createdOnOrBefore(bug, day) && isAdjustedRemaining(bug)).length);
+    const p0Start = p0Values[0] || 0;
+    const p0TargetValues = days.map((day) => this.projectWeeklyP0TargetValue(p0Start, days[0], day, p0TargetDate));
+    const p0TargetLabel = p0TargetDate ? `P0 目标线（${p0TargetDate.slice(5)}清零）` : 'P0 目标线';
     return [
       {
-        title: '缺陷闭环趋势',
-        unit: '闭环',
-        color: 'good' as const,
-        days: days.map((day) => ({ day: day.slice(5), value: bugs.filter((bug) => this.dateOnly(bug.closedAt || bug.resolvedAt) === day).length }))
-      },
-      {
+        id: 'net',
+        label: '缺陷净增',
         title: '缺陷净增趋势',
-        unit: '净增',
-        color: 'danger' as const,
-        days: days.map((day) => ({
-          day: day.slice(5),
-          value: bugs.filter((bug) => this.dateOnly(bug.createdAt) === day).length - bugs.filter((bug) => this.dateOnly(bug.closedAt || bug.resolvedAt) === day).length
-        }))
+        description: '每日新增、每日关闭和净增缺陷同图对比，判断问题是在收敛还是发散。',
+        value: '价值：判断收敛/发散',
+        unit: '条',
+        chart: 'line' as const,
+        conclusion: netConclusion,
+        conclusionTone: netConclusionTone,
+        days: days.map((day) => day.slice(5)),
+        series: [
+          { name: '每日新增缺陷', color: '#e5484d', values: newValues },
+          { name: '每日关闭缺陷', color: '#16a36a', values: closedValues },
+          { name: '净增缺陷', color: '#e29a00', values: netValues }
+        ]
       },
       {
-        title: '风险项变化',
-        unit: '打开',
-        color: 'warn' as const,
-        days: days.map((day) => ({
-          day: day.slice(5),
-          value: bugs.filter((bug) => highRiskBugCreatedOn(bug, day)).length
-        }))
+        id: 'p0p1',
+        label: 'P0/P1 遗留',
+        title: 'P0/P1 遗留趋势',
+        description: '每天剩余 P0、P1 数量同图展示，并叠加 P0 目标线，观察高优问题是否下降。',
+        value: '价值：管理层关注高优问题下降',
+        unit: '条',
+        chart: 'line' as const,
+        conclusion: p0Values[p0Values.length - 1] < p0Start ? '当前判断：P0 存量下降，高优问题正在收敛' : '当前判断：P0 存量未下降，清零目标仍有压力',
+        conclusionTone: p0Values[p0Values.length - 1] < p0Start ? 'good' as const : 'warn' as const,
+        days: days.map((day) => day.slice(5)),
+        series: [
+          { name: '剩余 P0', color: '#e5484d', values: p0Values },
+          { name: '剩余 P1', color: '#7257d6', values: p1Values },
+          { name: p0TargetLabel, color: '#16a36a', dashed: true, values: p0TargetValues }
+        ]
       },
       {
-        title: '测试通过率趋势',
-        unit: '通过率',
-        color: 'good' as const,
-        days: days.map((day) => {
-          const executed = testPlanItems.filter((item) => item.executedAt && this.dateOnly(item.executedAt) <= day);
-          const passed = executed.filter((item) => item.result === 'passed');
-          return { day: day.slice(5), value: executed.length > 0 ? Math.round((passed.length / executed.length) * 100) : 0 };
-        })
+        id: 'completion',
+        label: '任务完成率',
+        title: '任务完成率趋势',
+        description: '按天统计预计当天完成的缺陷中，验证通过占比；同时展示计划数和验证通过数。',
+        value: '价值：看团队每天兑现计划的能力',
+        unit: '',
+        chart: 'line' as const,
+        conclusion: '当前判断：对比计划处理数和验证通过数，识别每日计划兑现能力。',
+        conclusionTone: 'warn' as const,
+        days: days.map((day) => day.slice(5)),
+        series: [
+          { name: '计划处理数', color: '#3177f6', unit: '条', values: days.map((day) => bugs.filter((bug) => expectedOn(bug, day)).length) },
+          { name: '验证通过数', color: '#16a36a', unit: '条', values: days.map((day) => bugs.filter((bug) => verifiedOn(bug, day)).length) },
+          {
+            name: '任务完成率',
+            color: '#e29a00',
+            unit: '%',
+            values: days.map((day) => {
+              const planned = bugs.filter((bug) => expectedOn(bug, day)).length;
+              const verified = bugs.filter((bug) => verifiedOn(bug, day)).length;
+              return planned > 0 ? Math.round((verified / planned) * 100) : 0;
+            })
+          }
+        ]
+      },
+      {
+        id: 'overdue',
+        label: '延期缺陷',
+        title: '延期缺陷趋势',
+        description: '统计预计修复时间早于当天且仍未闭环的缺陷数量，并拆出其中 P0/P1。',
+        value: '价值：识别交付节奏是否失控',
+        unit: '条',
+        chart: 'line' as const,
+        conclusion: '当前判断：延期缺陷和高优延期同步上升时，需要管理层推动资源和依赖闭环。',
+        conclusionTone: 'danger' as const,
+        days: days.map((day) => day.slice(5)),
+        series: [
+          { name: '延期缺陷', color: '#e5484d', values: days.map((day) => bugs.filter((bug) => expectedBefore(bug, day) && activeOnDay(bug, day)).length) },
+          { name: '延期 P0', color: '#b91c1c', values: days.map((day) => bugs.filter((bug) => isP0(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length) },
+          { name: '延期 P1', color: '#e29a00', values: days.map((day) => bugs.filter((bug) => isP1(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length) }
+        ]
+      },
+      {
+        id: 'issueType',
+        label: '技术模块分布',
+        title: '技术模块分布趋势',
+        description: '按缺陷表「技术模块」的第一项归属统计，确保每条缺陷只计入一个模块。',
+        value: '价值：识别模块风险结构',
+        unit: '条',
+        chart: 'stacked' as const,
+        conclusion: '当前判断：技术模块缺陷集中度偏高时，需要按专项拆解责任和闭环计划。',
+        conclusionTone: 'warn' as const,
+        days: days.map((day) => day.slice(5)),
+        series: allModuleSeries,
+        variants: [
+          { key: 'all', label: '全部', series: allModuleSeries },
+          { key: 'p0', label: 'P0', series: p0ModuleSeries },
+          { key: 'p1', label: 'P1', series: p1ModuleSeries }
+        ]
       }
     ];
   }

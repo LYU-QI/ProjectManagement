@@ -1,0 +1,989 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>周报多指标趋势图原型</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: rgba(255, 255, 255, 0.72);
+      --card-strong: rgba(255, 255, 255, 0.9);
+      --text: #172033;
+      --muted: #667085;
+      --line: rgba(199, 214, 237, 0.72);
+      --blue: #3177f6;
+      --red: #e5484d;
+      --green: #16a36a;
+      --cyan: #0ea5b7;
+      --orange: #e29a00;
+      --purple: #7257d6;
+      --shadow: 0 22px 70px rgba(24, 39, 75, 0.12);
+      --radius: 18px;
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 2%, rgba(49, 119, 246, 0.18), transparent 30rem),
+        radial-gradient(circle at 90% 18%, rgba(22, 163, 106, 0.12), transparent 28rem),
+        linear-gradient(180deg, #fbfdff 0%, #f4f7fb 48%, #eef3fa 100%);
+    }
+
+    .page {
+      width: min(1440px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .glass-card {
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      background: var(--card);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      padding: 28px 30px;
+      border-radius: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: clamp(32px, 4vw, 46px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .muted {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 12px;
+      border: 1px solid #d9e4f6;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.76);
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .pill.red {
+      border-color: rgba(229, 72, 77, 0.32);
+      background: rgba(255, 240, 239, 0.86);
+      color: #b42318;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      border: 1px solid rgba(199, 214, 237, 0.9);
+      border-radius: 13px;
+      background: rgba(255, 255, 255, 0.72);
+      color: #24324a;
+      padding: 11px 14px;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(24, 39, 75, 0.08);
+    }
+
+    button.primary {
+      border-color: var(--blue);
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+
+    .metric-card {
+      position: relative;
+      min-height: 142px;
+      padding: 20px 18px;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0.18));
+      pointer-events: none;
+    }
+
+    .metric-card > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .metric-label {
+      color: #596980;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .metric-help {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      color: rgba(103, 115, 139, 0.36);
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .metric-value {
+      margin-top: 18px;
+      color: #252d3a;
+      font-size: 50px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .metric-delta {
+      position: absolute;
+      right: 16px;
+      bottom: 15px;
+      color: #16a36a;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .metric-delta.down {
+      color: #d92d20;
+    }
+
+    .metric-delta.flat {
+      color: #8a97aa;
+    }
+
+    .section {
+      margin-top: 20px;
+      padding: 24px;
+      border-radius: 24px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 18px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+    }
+
+    .trend-conclusion {
+      min-width: 220px;
+      padding: 12px 14px;
+      border: 1px solid rgba(226, 154, 0, 0.32);
+      border-radius: 16px;
+      background: rgba(255, 247, 224, 0.76);
+      color: #875700;
+      font-size: 13px;
+      font-weight: 900;
+      text-align: right;
+    }
+
+    .trend-conclusion.good {
+      border-color: rgba(22, 163, 106, 0.28);
+      background: rgba(232, 248, 240, 0.8);
+      color: #087443;
+    }
+
+    .trend-conclusion.danger {
+      border-color: rgba(229, 72, 77, 0.28);
+      background: rgba(255, 240, 239, 0.82);
+      color: #b42318;
+    }
+
+    .segmented {
+      display: inline-flex;
+      gap: 6px;
+      max-width: 100%;
+      margin-bottom: 16px;
+      padding: 5px;
+      border: 1px solid rgba(199, 214, 237, 0.8);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.62);
+      overflow-x: auto;
+    }
+
+    .segmented button {
+      min-width: 104px;
+      border: 0;
+      box-shadow: none;
+      border-radius: 999px;
+      background: transparent;
+      color: #52627a;
+      padding: 9px 14px;
+      white-space: nowrap;
+    }
+
+    .segmented button.active {
+      background: #3177f6;
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(49, 119, 246, 0.24);
+    }
+
+    .trend-card {
+      position: relative;
+      padding: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.64);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.58);
+      overflow: hidden;
+    }
+
+    .trend-card-head {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+
+    .trend-card-head h3 {
+      margin-bottom: 6px;
+      font-size: 18px;
+    }
+
+    .trend-card-head p {
+      max-width: 760px;
+      margin: 0;
+      color: #667085;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.6;
+    }
+
+    .trend-value-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
+      padding: 6px 12px;
+      border: 1px solid rgba(199, 214, 237, 0.84);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.72);
+      color: #344054;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .trend-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(49, 119, 246, 0.1), transparent 30%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.14));
+      pointer-events: none;
+    }
+
+    .trend-chart-wrap {
+      position: relative;
+      min-width: 940px;
+      height: 430px;
+    }
+
+    .trend-scroll {
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .axis-line {
+      stroke: rgba(148, 163, 184, 0.4);
+      stroke-width: 1;
+    }
+
+    .grid-line {
+      stroke: rgba(148, 163, 184, 0.18);
+      stroke-width: 1;
+    }
+
+    .axis-text {
+      fill: #6a778d;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .trend-line {
+      fill: none;
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 6px 8px rgba(24, 39, 75, 0.12));
+      transition: opacity 0.18s ease;
+    }
+
+    .trend-area {
+      opacity: 0.08;
+      transition: opacity 0.18s ease;
+    }
+
+    .trend-point {
+      stroke: rgba(255, 255, 255, 0.94);
+      stroke-width: 3;
+      cursor: pointer;
+    }
+
+    .stack-bar-segment {
+      transition: opacity 0.18s ease, filter 0.18s ease;
+      cursor: pointer;
+    }
+
+    .stack-bar-segment:hover {
+      opacity: 0.82;
+      filter: drop-shadow(0 8px 12px rgba(24, 39, 75, 0.16));
+    }
+
+    .hover-line {
+      stroke: rgba(23, 32, 51, 0.22);
+      stroke-width: 1;
+      stroke-dasharray: 4 5;
+      pointer-events: none;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .legend button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 7px 11px;
+      box-shadow: none;
+      font-size: 13px;
+    }
+
+    .legend button.off {
+      opacity: 0.38;
+    }
+
+    .legend i {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      box-shadow: 0 0 0 4px rgba(49, 119, 246, 0.08);
+    }
+
+    .tooltip {
+      position: fixed;
+      z-index: 10;
+      display: none;
+      min-width: 210px;
+      max-width: 300px;
+      padding: 12px 13px;
+      border: 1px solid rgba(199, 214, 237, 0.88);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 20px 50px rgba(24, 39, 75, 0.18);
+      pointer-events: none;
+    }
+
+    .tooltip strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #172033;
+      font-size: 13px;
+    }
+
+    .tooltip-row {
+      display: grid;
+      grid-template-columns: 10px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      color: #344054;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.7;
+    }
+
+    .tooltip-row i {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+      gap: 18px;
+      margin-top: 20px;
+    }
+
+    .mini-card {
+      padding: 20px;
+      border-radius: 20px;
+    }
+
+    .mini-card h3 {
+      margin-bottom: 14px;
+      font-size: 18px;
+    }
+
+    .status-row,
+    .table-row {
+      display: grid;
+      gap: 10px;
+      align-items: center;
+      min-height: 38px;
+      border-bottom: 1px solid rgba(226, 233, 244, 0.86);
+      color: #344054;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .status-row {
+      grid-template-columns: 10px minmax(0, 1fr) 48px 56px;
+    }
+
+    .status-row:last-child,
+    .table-row:last-child {
+      border-bottom: 0;
+    }
+
+    .status-row i {
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+    }
+
+    .table-head,
+    .table-row {
+      grid-template-columns: 110px minmax(0, 1fr) 110px 110px;
+    }
+
+    .table-head {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 10px;
+      color: #667085;
+      font-size: 12px;
+      font-weight: 900;
+      border-bottom: 1px solid rgba(210, 222, 240, 0.92);
+    }
+
+    .badge {
+      display: inline-flex;
+      width: max-content;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: #eef5ff;
+      color: #255ec4;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    @media (max-width: 980px) {
+      .page {
+        width: min(100vw - 24px, 1440px);
+        padding-top: 18px;
+      }
+
+      .hero,
+      .section-head,
+      .bottom-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .trend-conclusion {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero glass-card">
+      <div>
+        <p class="eyebrow">Project weekly cockpit</p>
+        <h1>北京奔驰i2MAX量产 周报</h1>
+        <p class="muted">统计周期：2026-06-06 至 2026-06-12 · 生成时间：2026/6/13 12:10:24</p>
+        <div class="meta-row">
+          <span class="pill">PM：吕琦</span>
+          <span class="pill">阶段：测试验证</span>
+          <span class="pill red">风险灯：红灯</span>
+          <span class="pill">数据源：缺陷表 / 测试概况 / 资源投入 / 里程碑</span>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button>刷新</button>
+        <button class="primary">导出长图</button>
+      </div>
+    </header>
+
+    <section class="metric-grid">
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">问题总数</div>
+        <div class="metric-value">370</div>
+        <div class="metric-delta">今日 +2</div>
+      </article>
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">已解决问题数</div>
+        <div class="metric-value">129</div>
+        <div class="metric-delta">今日 +5</div>
+      </article>
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">待处理问题数</div>
+        <div class="metric-value">241</div>
+        <div class="metric-delta down">今日 -3</div>
+      </article>
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">总P0问题数</div>
+        <div class="metric-value">157</div>
+        <div class="metric-delta">今日 +1</div>
+      </article>
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">调整后总P0问题数</div>
+        <div class="metric-value">136</div>
+        <div class="metric-delta flat">今日 0</div>
+      </article>
+      <article class="metric-card glass-card">
+        <span class="metric-help">!</span>
+        <div class="metric-label">待处理P0问题数</div>
+        <div class="metric-value">75</div>
+        <div class="metric-delta down">今日 -4</div>
+      </article>
+    </section>
+
+    <section class="section glass-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Multi-metric trend</p>
+          <h2 class="section-title">项目趋势分析</h2>
+          <p class="muted">同一张图叠加相关指标，用趋势之间的关系判断缺陷收敛、高优问题下降、计划兑现、延期失控和技术模块风险结构。</p>
+        </div>
+      </div>
+
+      <div class="segmented" id="modeTabs"></div>
+
+      <div class="trend-card">
+        <div class="trend-card-head">
+          <div>
+            <h3 id="trendTitle">缺陷净增趋势</h3>
+            <p id="trendDescription">每日新增、每日关闭和净增缺陷同图对比，判断问题是在收敛还是发散。</p>
+          </div>
+          <span class="trend-value-pill" id="trendValuePill">价值：判断收敛/发散</span>
+        </div>
+        <div class="trend-scroll">
+          <div class="trend-chart-wrap" id="chartWrap">
+            <svg id="trendSvg" role="img" aria-label="多指标趋势图"></svg>
+          </div>
+        </div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </section>
+
+    <section class="bottom-grid">
+      <article class="mini-card glass-card">
+        <h3>P0/P1问题状态占比</h3>
+        <div id="statusList"></div>
+      </article>
+      <article class="mini-card glass-card">
+        <h3>待处理 P0/P1 问题列表</h3>
+        <div class="table-head">
+          <span>缺陷ID</span>
+          <span>问题描述</span>
+          <span>技术模块</span>
+          <span>状态</span>
+        </div>
+        <div class="table-row">
+          <span>MB-TEST-20260612-383</span>
+          <span>打开车窗 20% 左右，预期不支持，结果执行失败</span>
+          <span><b class="badge">车控FC</b></span>
+          <span><b class="badge">依赖火山</b></span>
+        </div>
+        <div class="table-row">
+          <span>MB-TEST-20260612-410</span>
+          <span>导航 picklist 拉起后向下翻页选择多项未执行</span>
+          <span><b class="badge">导航专项</b></span>
+          <span><b class="badge">新建</b></span>
+        </div>
+        <div class="table-row">
+          <span>MB-TEST-20260611-362</span>
+          <span>复杂推理任务中缺少上下文，导致结果不稳定</span>
+          <span><b class="badge">复杂推理</b></span>
+          <span><b class="badge">待验证</b></span>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <div class="tooltip" id="tooltip"></div>
+
+  <script>
+    const modes = {
+      net: {
+        label: '缺陷净增',
+        title: '缺陷净增趋势',
+        description: '每日新增、每日关闭和净增缺陷同图对比，判断问题是在收敛还是发散。',
+        value: '价值：判断收敛/发散',
+        unit: '条',
+        chart: 'line',
+        conclusion: '当前判断：新增缺陷明显高于关闭缺陷，仍处扩散状态',
+        conclusionTone: 'danger',
+        series: [
+          { name: '每日新增缺陷', color: '#e5484d', values: [13, 213, 16, 38, 8, 10, 72] },
+          { name: '每日关闭缺陷', color: '#16a36a', values: [4, 20, 18, 30, 16, 22, 52] },
+          { name: '净增缺陷', color: '#e29a00', values: [9, 193, -2, 8, -8, -12, 20] }
+        ]
+      },
+      p0p1: {
+        label: 'P0/P1 遗留',
+        title: 'P0/P1 遗留趋势',
+        description: '每天剩余 P0、P1 数量同图展示，并叠加 P0 目标线，观察高优问题是否下降。',
+        value: '价值：管理层关注高优问题下降',
+        unit: '条',
+        chart: 'line',
+        conclusion: '当前判断：P0/P1 存量仍在高位，P0 清零目标压力较大',
+        conclusionTone: 'warn',
+        series: [
+          { name: '剩余 P0', color: '#e5484d', values: [146, 149, 151, 153, 154, 156, 157] },
+          { name: '剩余 P1', color: '#7257d6', values: [88, 90, 91, 92, 93, 94, 95] },
+          { name: 'P0 目标线', color: '#16a36a', values: [120, 100, 80, 60, 40, 20, 0], dashed: true }
+        ]
+      },
+      completion: {
+        label: '任务完成率',
+        title: '任务完成率趋势',
+        description: '按天统计预计当天完成的缺陷中，验证通过占比；同时展示计划数和验证通过数。',
+        value: '价值：看团队每天兑现计划的能力',
+        unit: '',
+        chart: 'line',
+        conclusion: '当前判断：计划兑现率波动较大，06-12 验证通过仍低于计划处理量',
+        conclusionTone: 'warn',
+        series: [
+          { name: '计划处理数', color: '#3177f6', unit: '条', values: [18, 42, 35, 50, 28, 60, 70] },
+          { name: '验证通过数', color: '#16a36a', unit: '条', values: [2, 8, 15, 22, 18, 26, 32] },
+          { name: '任务完成率', color: '#e29a00', unit: '%', values: [11, 19, 43, 44, 64, 43, 46] }
+        ]
+      },
+      overdue: {
+        label: '延期缺陷',
+        title: '延期缺陷趋势',
+        description: '统计预计修复时间早于当天且仍未闭环的缺陷数量，并拆出其中 P0/P1。',
+        value: '价值：识别交付节奏是否失控',
+        unit: '条',
+        chart: 'line',
+        conclusion: '当前判断：延期缺陷持续增加，高优延期需要管理介入',
+        conclusionTone: 'danger',
+        series: [
+          { name: '延期缺陷', color: '#e5484d', values: [18, 24, 31, 39, 45, 51, 58] },
+          { name: '延期 P0/P1', color: '#e29a00', values: [9, 12, 16, 19, 23, 27, 31] }
+        ]
+      },
+      issueType: {
+        label: '技术模块分布',
+        title: '技术模块分布趋势',
+        description: '按缺陷表「技术模块」观察风险来源结构，判断问题主要集中在哪些专项模块。',
+        value: '价值：识别模块风险结构',
+        unit: '条',
+        chart: 'stacked',
+        conclusion: '当前判断：技术模块缺陷集中度偏高，需要按专项拆解责任和闭环计划',
+        conclusionTone: 'warn',
+        series: [
+          { name: '主链路', color: '#3177f6', values: [42, 46, 50, 54, 58, 62, 67] },
+          { name: '导航专项', color: '#e5484d', values: [12, 14, 15, 17, 18, 20, 21] },
+          { name: '端状态', color: '#7257d6', values: [8, 10, 11, 12, 13, 14, 15] },
+          { name: '车控 FC', color: '#e29a00', values: [20, 22, 24, 26, 29, 31, 33] },
+          { name: 'S2S语音', color: '#0ea5b7', values: [2, 3, 3, 4, 5, 5, 6] }
+        ]
+      }
+    };
+
+    const days = ['06-06', '06-07', '06-08', '06-09', '06-10', '06-11', '06-12'];
+    const activeSeries = new Set();
+    let activeMode = 'net';
+
+    const svg = document.getElementById('trendSvg');
+    const tabs = document.getElementById('modeTabs');
+    const legend = document.getElementById('legend');
+    const tooltip = document.getElementById('tooltip');
+
+    function initTabs() {
+      tabs.innerHTML = Object.entries(modes).map(([key, mode]) => (
+        `<button type="button" class="${key === activeMode ? 'active' : ''}" data-mode="${key}">${mode.label}</button>`
+      )).join('');
+      tabs.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+          activeMode = button.dataset.mode;
+          activeSeries.clear();
+          render();
+        });
+      });
+    }
+
+    function visibleSeries() {
+      return modes[activeMode].series.filter((item) => !activeSeries.has(item.name));
+    }
+
+    function pointPath(points) {
+      return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+    }
+
+    function areaPath(points, bottom) {
+      if (!points.length) return '';
+      return `${pointPath(points)} L ${points[points.length - 1].x} ${bottom} L ${points[0].x} ${bottom} Z`;
+    }
+
+    function renderLineChart(width, height, pad, series, mode) {
+      const chartW = width - pad.left - pad.right;
+      const chartH = height - pad.top - pad.bottom;
+      const allValues = series.flatMap((item) => item.values);
+      const minValue = Math.min(0, ...allValues);
+      const maxValue = Math.max(10, ...allValues);
+      const roundedMin = minValue < 0 ? Math.floor(minValue / 20) * 20 : 0;
+      const roundedMax = Math.ceil(maxValue / 20) * 20;
+      const range = roundedMax - roundedMin || 1;
+      const x = (index) => pad.left + (chartW / (days.length - 1)) * index;
+      const y = (value) => pad.top + chartH - ((value - roundedMin) / range) * chartH;
+      const yTicks = 5;
+
+      let html = '';
+      for (let i = 0; i <= yTicks; i += 1) {
+        const value = Math.round(roundedMin + (range / yTicks) * i);
+        const yy = y(value);
+        html += `<line class="grid-line" x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}" />`;
+        html += `<text class="axis-text" x="${pad.left - 14}" y="${yy + 4}" text-anchor="end">${value}</text>`;
+      }
+      if (roundedMin < 0) {
+        const zeroY = y(0);
+        html += `<line class="hover-line" x1="${pad.left}" y1="${zeroY}" x2="${width - pad.right}" y2="${zeroY}" />`;
+      }
+      html += `<line class="axis-line" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" />`;
+      html += `<line class="axis-line" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" />`;
+      days.forEach((day, index) => {
+        const xx = x(index);
+        html += `<text class="axis-text" x="${xx}" y="${height - 24}" text-anchor="middle">${day}</text>`;
+      });
+
+      series.forEach((item) => {
+        const points = item.values.map((value, index) => ({ x: x(index), y: y(value), value }));
+        if (!item.dashed) {
+          html += `<path class="trend-area" d="${areaPath(points, y(Math.max(0, roundedMin)))}" fill="${item.color}" />`;
+        }
+        html += `<path class="trend-line" d="${pointPath(points)}" stroke="${item.color}" ${item.dashed ? 'stroke-dasharray="7 7"' : ''} />`;
+        points.forEach((point, index) => {
+          html += `<circle class="trend-point" cx="${point.x}" cy="${point.y}" r="5" fill="${item.color}" data-day="${index}" />`;
+        });
+      });
+
+      days.forEach((day, index) => {
+        const xx = x(index);
+        html += `<rect x="${xx - 42}" y="${pad.top}" width="84" height="${chartH}" fill="transparent" data-hover-day="${index}" />`;
+      });
+
+      return html;
+    }
+
+    function renderStackedChart(width, height, pad, series) {
+      const chartW = width - pad.left - pad.right;
+      const chartH = height - pad.top - pad.bottom;
+      const dayTotals = days.map((_, dayIndex) => series.reduce((sum, item) => sum + item.values[dayIndex], 0));
+      const maxValue = Math.max(10, ...dayTotals);
+      const roundedMax = Math.ceil(maxValue / 20) * 20;
+      const xStep = chartW / days.length;
+      const barW = Math.min(82, xStep * 0.58);
+      const y = (value) => pad.top + chartH - (value / roundedMax) * chartH;
+      let html = '';
+
+      for (let i = 0; i <= 5; i += 1) {
+        const value = Math.round((roundedMax / 5) * i);
+        const yy = y(value);
+        html += `<line class="grid-line" x1="${pad.left}" y1="${yy}" x2="${width - pad.right}" y2="${yy}" />`;
+        html += `<text class="axis-text" x="${pad.left - 14}" y="${yy + 4}" text-anchor="end">${value}</text>`;
+      }
+
+      html += `<line class="axis-line" x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${height - pad.bottom}" />`;
+      html += `<line class="axis-line" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}" />`;
+
+      days.forEach((day, dayIndex) => {
+        const centerX = pad.left + xStep * dayIndex + xStep / 2;
+        let cursorY = height - pad.bottom;
+        series.forEach((item) => {
+          const value = item.values[dayIndex];
+          const segmentH = Math.max(2, (value / roundedMax) * chartH);
+          cursorY -= segmentH;
+          html += `<rect class="stack-bar-segment" x="${centerX - barW / 2}" y="${cursorY}" width="${barW}" height="${segmentH}" rx="9" fill="${item.color}" data-hover-day="${dayIndex}" />`;
+        });
+        html += `<text class="axis-text" x="${centerX}" y="${height - 24}" text-anchor="middle">${day}</text>`;
+        html += `<text class="axis-text" x="${centerX}" y="${cursorY - 8}" text-anchor="middle">${dayTotals[dayIndex]}</text>`;
+      });
+
+      return html;
+    }
+
+    function renderChart() {
+      const width = 1080;
+      const height = 430;
+      const pad = { top: 28, right: 34, bottom: 58, left: 58 };
+      const mode = modes[activeMode];
+      const series = visibleSeries();
+      const html = mode.chart === 'stacked'
+        ? renderStackedChart(width, height, pad, series)
+        : renderLineChart(width, height, pad, series, mode);
+
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.innerHTML = html;
+      svg.querySelectorAll('[data-hover-day], .trend-point').forEach((target) => {
+        target.addEventListener('mousemove', (event) => showTooltip(event, Number(target.dataset.hoverDay ?? target.dataset.day)));
+        target.addEventListener('mouseleave', hideTooltip);
+      });
+    }
+
+    function renderLegend() {
+      legend.innerHTML = modes[activeMode].series.map((item) => (
+        `<button type="button" class="${activeSeries.has(item.name) ? 'off' : ''}" data-series="${item.name}">
+          <i style="background:${item.color}"></i>${item.name}
+        </button>`
+      )).join('');
+      legend.querySelectorAll('button').forEach((button) => {
+        button.addEventListener('click', () => {
+          const name = button.dataset.series;
+          if (activeSeries.has(name)) {
+            activeSeries.delete(name);
+          } else {
+            activeSeries.add(name);
+          }
+          render();
+        });
+      });
+    }
+
+    function showTooltip(event, dayIndex) {
+      const mode = modes[activeMode];
+      const rows = mode.series.map((item) => (
+        `<div class="tooltip-row">
+          <i style="background:${item.color}"></i>
+          <span>${item.name}</span>
+          <b>${item.values[dayIndex]}${item.unit ?? mode.unit}</b>
+        </div>`
+      )).join('');
+      tooltip.innerHTML = `<strong>${days[dayIndex]} 指标明细</strong>${rows}`;
+      tooltip.style.display = 'block';
+      tooltip.style.left = `${Math.min(event.clientX + 16, window.innerWidth - 320)}px`;
+      tooltip.style.top = `${Math.min(event.clientY + 16, window.innerHeight - 260)}px`;
+    }
+
+    function hideTooltip() {
+      tooltip.style.display = 'none';
+    }
+
+    function renderStatusList() {
+      const rows = [
+        ['依赖MB', 11, '4.4%', '#7257d6'],
+        ['无需修复', 11, '4.4%', '#0ea5b7'],
+        ['修复中', 10, '4.0%', '#3177f6'],
+        ['重复问题', 10, '4.0%', '#64748b'],
+        ['待验证', 9, '3.6%', '#e29a00'],
+        ['不是问题', 8, '3.2%', '#16a36a'],
+        ['验证失败', 4, '1.6%', '#e5484d']
+      ];
+      document.getElementById('statusList').innerHTML = rows.map(([name, value, percent, color]) => (
+        `<div class="status-row">
+          <i style="background:${color}"></i>
+          <span>${name}</span>
+          <b>${value}</b>
+          <em>${percent}</em>
+        </div>`
+      )).join('');
+    }
+
+    function render() {
+      const mode = modes[activeMode];
+      document.getElementById('trendTitle').textContent = mode.title;
+      document.getElementById('trendDescription').textContent = mode.description;
+      document.getElementById('trendValuePill').textContent = mode.value;
+      initTabs();
+      renderChart();
+      renderLegend();
+      renderStatusList();
+    }
+
+    render();
+  </script>
+</body>
+</html>
