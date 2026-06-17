@@ -260,20 +260,45 @@ function weeklyBugCardDelta(card: ProjectWeeklyReportResponse['bugStats']['cards
 
 type ProjectWeeklyTrendMode = ProjectWeeklyReportResponse['trends'][number];
 
-function weeklyTrendPath(points: Array<{ x: number; y: number }>) {
-  return points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
+function weeklyTrendPath(points: Array<{ x: number; y: number } | null>) {
+  let started = false;
+  return points.map((point) => {
+    if (!point) {
+      started = false;
+      return '';
+    }
+    const command = started ? 'L' : 'M';
+    started = true;
+    return `${command} ${point.x} ${point.y}`;
+  }).filter(Boolean).join(' ');
 }
 
-function weeklyTrendAreaPath(points: Array<{ x: number; y: number }>, bottom: number) {
-  if (points.length === 0) return '';
-  return `${weeklyTrendPath(points)} L ${points[points.length - 1].x} ${bottom} L ${points[0].x} ${bottom} Z`;
+function weeklyTrendAreaPath(points: Array<{ x: number; y: number } | null>, bottom: number) {
+  const segments: Array<Array<{ x: number; y: number }>> = [];
+  let current: Array<{ x: number; y: number }> = [];
+  points.forEach((point) => {
+    if (!point) {
+      if (current.length > 0) segments.push(current);
+      current = [];
+      return;
+    }
+    current.push(point);
+  });
+  if (current.length > 0) segments.push(current);
+  return segments.map((segment) => {
+    if (segment.length === 0) return '';
+    return `${weeklyTrendPath(segment)} L ${segment[segment.length - 1].x} ${bottom} L ${segment[0].x} ${bottom} Z`;
+  }).filter(Boolean).join(' ');
 }
 
 function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportResponse['trends'] }) {
   const [activeTrendId, setActiveTrendId] = useState(trends[0]?.id || '');
   const [activeVariantKey, setActiveVariantKey] = useState('');
   const [hiddenSeries, setHiddenSeries] = useState<string[]>([]);
-  const [hoverState, setHoverState] = useState<{ x: number; y: number; dayIndex: number } | null>(null);
+  const [hoverState, setHoverState] = useState<{ x: number; y: number; dayIndex: number; pinned?: boolean } | null>(null);
+  const chartScrollRef = useRef<HTMLDivElement | null>(null);
+  const tooltipCloseTimerRef = useRef<number | null>(null);
+  const [chartContainerWidth, setChartContainerWidth] = useState(0);
   const activeTrend = trends.find((item) => item.id === activeTrendId) || trends[0];
 
   useEffect(() => {
@@ -285,20 +310,41 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
     }
   }, [activeTrend, trends]);
 
+  useEffect(() => {
+    const element = chartScrollRef.current;
+    if (!element) return;
+    const updateWidth = () => setChartContainerWidth(Math.floor(element.clientWidth));
+    updateWidth();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   if (!activeTrend) return null;
 
   const trendVariants = activeTrend.variants || [];
   const activeVariant = trendVariants.find((item) => item.key === activeVariantKey) || trendVariants[0];
   const activeSeries = activeVariant?.series || activeTrend.series;
-  const visibleSeries = activeSeries.filter((item) => !hiddenSeries.includes(item.name));
-  const width = 1080;
+  const minChartWidth = Math.max(1180, activeTrend.days.length * (activeTrend.chart === 'stacked' ? 112 : 96));
+  const width = Math.max(chartContainerWidth, minChartWidth);
   const height = 390;
   const pad = { top: 26, right: 34, bottom: 54, left: 58 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
   const days = activeTrend.days;
+  const now = new Date();
+  const todayLabel = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const displaySeries = activeSeries.map((item) => ({
+    ...item,
+    values: item.values.map((value, index) => item.showFuture || days[index] <= todayLabel ? value : null)
+  }));
+  const visibleSeries = displaySeries.filter((item) => !hiddenSeries.includes(item.name));
 
-  const lineValues = visibleSeries.flatMap((item) => item.values);
+  const lineValues = visibleSeries.flatMap((item) => item.values).filter((value): value is number => typeof value === 'number');
   const lineMin = Math.min(0, ...lineValues);
   const lineMax = Math.max(10, ...lineValues);
   const roundedMin = lineMin < 0 ? Math.floor(lineMin / 20) * 20 : 0;
@@ -307,26 +353,69 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
   const lineX = (index: number) => pad.left + (chartW / Math.max(days.length - 1, 1)) * index;
   const lineY = (value: number) => pad.top + chartH - ((value - roundedMin) / lineRange) * chartH;
 
-  const stackTotals = days.map((_, dayIndex) => visibleSeries.reduce((sum, item) => sum + (item.values[dayIndex] || 0), 0));
+  const stackTotals = days.map((_, dayIndex) => visibleSeries.reduce((sum, item) => sum + (typeof item.values[dayIndex] === 'number' ? item.values[dayIndex] || 0 : 0), 0));
+  const stackHasValues = days.map((_, dayIndex) => visibleSeries.some((item) => typeof item.values[dayIndex] === 'number'));
   const stackMax = Math.ceil(Math.max(10, ...stackTotals) / 20) * 20;
   const stackXStep = chartW / Math.max(days.length, 1);
   const stackBarWidth = Math.min(82, stackXStep * 0.58);
   const stackY = (value: number) => pad.top + chartH - (value / stackMax) * chartH;
 
+  const clearTrendTooltipCloseTimer = () => {
+    if (tooltipCloseTimerRef.current) {
+      window.clearTimeout(tooltipCloseTimerRef.current);
+      tooltipCloseTimerRef.current = null;
+    }
+  };
+  const closeTrendTooltip = () => {
+    clearTrendTooltipCloseTimer();
+    setHoverState(null);
+  };
+  const scheduleTrendTooltipClose = () => {
+    if (hoverState?.pinned) return;
+    clearTrendTooltipCloseTimer();
+    tooltipCloseTimerRef.current = window.setTimeout(() => setHoverState(null), 260);
+  };
+  const trendTooltipPosition = (event: ReactMouseEvent<SVGElement>) => {
+    const margin = 16;
+    const tooltipWidth = Math.min(520, window.innerWidth - margin * 2);
+    const tooltipHeight = Math.min(560, window.innerHeight - margin * 2);
+    const canOpenRight = event.clientX + margin + tooltipWidth <= window.innerWidth - margin;
+    const x = canOpenRight ? event.clientX + margin : event.clientX - tooltipWidth - margin;
+    return {
+      x: Math.max(margin, Math.min(x, window.innerWidth - tooltipWidth - margin)),
+      y: Math.max(margin, Math.min(event.clientY + margin, window.innerHeight - tooltipHeight - margin))
+    };
+  };
   const showTrendTooltip = (event: ReactMouseEvent<SVGElement>, dayIndex: number) => {
+    if (hoverState?.pinned) return;
+    clearTrendTooltipCloseTimer();
+    const position = trendTooltipPosition(event);
     setHoverState({
-      x: Math.min(event.clientX + 16, window.innerWidth - 320),
-      y: Math.min(event.clientY + 16, window.innerHeight - 260),
+      x: position.x,
+      y: position.y,
       dayIndex
     });
   };
+  const pinTrendTooltip = (event: ReactMouseEvent<SVGElement>, dayIndex: number) => {
+    clearTrendTooltipCloseTimer();
+    const position = trendTooltipPosition(event);
+    setHoverState({
+      x: position.x,
+      y: position.y,
+      dayIndex,
+      pinned: true
+    });
+  };
   const hoverRows = hoverState
-    ? activeSeries.map((item) => ({
+    ? displaySeries.map((item) => ({
       name: item.name,
       color: item.color,
-      value: item.values[hoverState.dayIndex] || 0,
+      value: item.values[hoverState.dayIndex],
       unit: item.unit ?? activeTrend.unit
     }))
+    : [];
+  const hoverBugDetails = hoverState
+    ? activeTrend.dailyBugDetails?.find((item) => item.day === activeTrend.days[hoverState.dayIndex])?.items || []
     : [];
 
   return (
@@ -381,8 +470,8 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
           )}
         </div>
       </div>
-      <div className="weekly-trend-chart-scroll">
-        <svg className="weekly-trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={activeTrend.title}>
+      <div className="weekly-trend-chart-scroll" ref={chartScrollRef}>
+        <svg className="weekly-trend-svg" style={{ width }} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={activeTrend.title}>
           {Array.from({ length: 6 }).map((_, index) => {
             const value = activeTrend.chart === 'stacked'
               ? Math.round((stackMax / 5) * index)
@@ -410,7 +499,9 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
             return (
               <g key={`stack-${day}`}>
                 {visibleSeries.map((item) => {
-                  const value = item.values[dayIndex] || 0;
+                  const rawValue = item.values[dayIndex];
+                  if (typeof rawValue !== 'number') return null;
+                  const value = rawValue || 0;
                   const segmentHeight = Math.max(value > 0 ? 2 : 0, (value / stackMax) * chartH);
                   cursorY -= segmentHeight;
                   return (
@@ -424,20 +515,23 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
                       rx={9}
                       fill={item.color}
                       onMouseMove={(event) => showTrendTooltip(event, dayIndex)}
-                      onMouseLeave={() => setHoverState(null)}
+                      onClick={(event) => pinTrendTooltip(event, dayIndex)}
+                      onMouseLeave={scheduleTrendTooltipClose}
                     />
                   );
                 })}
-                <text className="weekly-trend-axis-text" x={centerX} y={cursorY - 8} textAnchor="middle">{stackTotals[dayIndex]}</text>
+                {stackHasValues[dayIndex] && (
+                  <text className="weekly-trend-axis-text" x={centerX} y={cursorY - 8} textAnchor="middle">{stackTotals[dayIndex]}</text>
+                )}
               </g>
             );
           }) : visibleSeries.map((item) => {
-            const points = item.values.map((value, index) => ({ x: lineX(index), y: lineY(value || 0), value }));
+            const points = item.values.map((value, index) => typeof value === 'number' ? { x: lineX(index), y: lineY(value), value } : null);
             return (
               <g key={item.name}>
                 {!item.dashed && <path className="weekly-trend-area" d={weeklyTrendAreaPath(points, lineY(Math.max(0, roundedMin)))} fill={item.color} />}
                 <path className="weekly-trend-line" d={weeklyTrendPath(points)} stroke={item.color} strokeDasharray={item.dashed ? '7 7' : undefined} />
-                {points.map((point, index) => (
+                {points.map((point, index) => point ? (
                   <circle
                     className="weekly-trend-point"
                     cx={point.x}
@@ -446,9 +540,10 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
                     fill={item.color}
                     key={`${item.name}-${days[index]}`}
                     onMouseMove={(event) => showTrendTooltip(event, index)}
-                    onMouseLeave={() => setHoverState(null)}
+                    onClick={(event) => pinTrendTooltip(event, index)}
+                    onMouseLeave={scheduleTrendTooltipClose}
                   />
-                ))}
+                ) : null)}
               </g>
             );
           })}
@@ -463,7 +558,8 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
                 height={chartH}
                 fill="transparent"
                 onMouseMove={(event) => showTrendTooltip(event, index)}
-                onMouseLeave={() => setHoverState(null)}
+                onClick={(event) => pinTrendTooltip(event, index)}
+                onMouseLeave={scheduleTrendTooltipClose}
               />
             );
           })}
@@ -483,15 +579,40 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
         ))}
       </div>
       {hoverState && (
-        <div className="weekly-trend-tooltip" style={{ left: hoverState.x, top: hoverState.y }}>
-          <strong>{activeTrend.days[hoverState.dayIndex]} 指标明细</strong>
+        <div
+          className="weekly-trend-tooltip"
+          style={{ left: hoverState.x, top: hoverState.y }}
+          onMouseEnter={clearTrendTooltipCloseTimer}
+          onMouseLeave={() => {
+            if (!hoverState.pinned) closeTrendTooltip();
+          }}
+        >
+          <div className="weekly-trend-tooltip-title">
+            <strong>{activeTrend.days[hoverState.dayIndex]} 指标明细</strong>
+            {hoverState.pinned && (
+              <button type="button" onClick={closeTrendTooltip} aria-label="关闭固定浮窗">关闭</button>
+            )}
+          </div>
           {hoverRows.map((row) => (
             <div className="weekly-trend-tooltip-row" key={row.name}>
               <i style={{ background: row.color }} />
               <span>{row.name}</span>
-              <b>{row.value}{row.unit}</b>
+              <b>{typeof row.value === 'number' ? `${row.value}${row.unit}` : '-'}</b>
             </div>
           ))}
+          {activeTrend.dailyBugDetails && (
+            <div className="weekly-trend-tooltip-details">
+              <span>当天 P0/P1 验证通过明细</span>
+              {hoverBugDetails.length > 0 ? hoverBugDetails.map((bug) => (
+                <div className="weekly-trend-tooltip-bug" key={`${bug.id}-${bug.title}`}>
+                  <b>{bug.severity}</b>
+                  <em>{bug.id || '-'}</em>
+                  <p>{bug.title}</p>
+                  <small>{bug.assignee || '未分配'}</small>
+                </div>
+              )) : <p className="weekly-trend-tooltip-empty">当天暂无 P0/P1 验证通过缺陷</p>}
+            </div>
+          )}
         </div>
       )}
     </article>

@@ -311,11 +311,15 @@ export interface ProjectWeeklyReportResponse {
     conclusion: string;
     conclusionTone: Exclude<ProjectWeeklyTone, ''>;
     days: string[];
-    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; showFuture?: boolean; values: Array<number | null> }>;
+    dailyBugDetails?: Array<{
+      day: string;
+      items: Array<{ id: string; title: string; severity: string; assignee: string; status: string }>;
+    }>;
     variants?: Array<{
       key: string;
       label: string;
-      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; showFuture?: boolean; values: Array<number | null> }>;
     }>;
   }>;
   aiSummary: {

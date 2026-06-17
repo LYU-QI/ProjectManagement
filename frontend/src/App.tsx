@@ -612,15 +612,14 @@ function App() {
 
   // Reload project-specific data when selected project changes
   useEffect(() => {
-    if (token && selectedProjectId) {
-      if (skipSelectedProjectRefreshRef.current === selectedProjectId) {
-        skipSelectedProjectRefreshRef.current = null;
-        return;
-      }
-      clearProjectScopedData();
-      void refreshAll(selectedProjectId);
+    if (!token || !selectedProjectId) return;
+    if (skipSelectedProjectRefreshRef.current === selectedProjectId) {
+      skipSelectedProjectRefreshRef.current = null;
+      return;
     }
-  }, [selectedProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+    clearProjectScopedData();
+    void refreshAll(selectedProjectId);
+  }, [selectedProjectId, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   useEffect(() => {

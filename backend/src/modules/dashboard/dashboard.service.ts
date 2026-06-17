@@ -300,11 +300,15 @@ type ProjectWeeklyReportResponse = {
     conclusion: string;
     conclusionTone: 'good' | 'warn' | 'danger';
     days: string[];
-    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+    series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; showFuture?: boolean; values: Array<number | null> }>;
+    dailyBugDetails?: Array<{
+      day: string;
+      items: Array<{ id: string; title: string; severity: string; assignee: string; status: string }>;
+    }>;
     variants?: Array<{
       key: string;
       label: string;
-      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; values: number[] }>;
+      series: Array<{ name: string; color: string; unit?: string; dashed?: boolean; showFuture?: boolean; values: Array<number | null> }>;
     }>;
   }>;
   aiSummary: {
@@ -977,8 +981,8 @@ export class DashboardService {
       ? this.buildProjectWeeklyTestsFromSummaries(weeklyTests)
       : this.buildProjectWeeklyTests(testCases, testPlans, testPlanItems, failedTestItems.length, blockedTestItems.length);
     const ranks = this.buildProjectWeeklyRanks(reportBugs, overdueBugs, seriousBugs, resourceConflicts);
-    const trendPeriod = this.resolveRecentSevenDayPeriod(period.weekEnd);
-    const trends = this.buildProjectWeeklyTrends(trendPeriod.start, trendPeriod.end, reportBugs, reportMilestones);
+    const trendPeriod = this.resolveProjectTrendPeriod(period.weekStart, period.weekEnd, reportMilestones);
+    const trends = this.buildProjectWeeklyTrends(trendPeriod.start, trendPeriod.end, reportBugs, reportMilestones, trendPeriod.p0TargetStart);
     const aiSummary = this.buildProjectWeeklyAiSummary(project.name, metrics, risks, taskCompletionRate, testPassRate, openBugs.length, seriousBugs.length);
     const sourceSummary = this.projectWeeklySourceSummary(weeklySourceResults);
 
@@ -1194,6 +1198,33 @@ export class DashboardService {
     return { start: this.formatDateUtc(startDate), end };
   }
 
+  private resolveProjectTrendPeriod(
+    weekStart: string,
+    weekEnd: string,
+    milestones: Array<{ plannedDate?: string | null }> = []
+  ) {
+    const milestoneDates = milestones
+      .map((item) => this.normalizeDateText(String(item.plannedDate || '')))
+      .filter(Boolean)
+      .sort();
+    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, '0000-00-00');
+    if (p0TargetDate) {
+      const target = new Date(`${p0TargetDate}T00:00:00.000Z`);
+      const deliveryWindowFloor = new Date(target.getTime() - 14 * 86_400_000);
+      const deliveryWindowFloorText = this.formatDateUtc(deliveryWindowFloor);
+      const deliveryWindowStart = milestoneDates.find((date) => date >= deliveryWindowFloorText && date <= p0TargetDate)
+        || deliveryWindowFloorText;
+      return {
+        start: deliveryWindowStart,
+        end: p0TargetDate,
+        p0TargetStart: deliveryWindowStart
+      };
+    }
+    const fallbackStart = this.normalizeDateText(weekStart || '') || this.resolveRecentSevenDayPeriod(weekEnd || weekStart).start;
+    const fallbackEnd = this.formatDateUtc(new Date(new Date(`${fallbackStart}T00:00:00.000Z`).getTime() + 6 * 86_400_000));
+    return { start: fallbackStart, end: fallbackEnd, p0TargetStart: fallbackStart };
+  }
+
   private async readProjectFeishuTasks(project: {
     feishuAppToken?: string | null;
     feishuTableId?: string | null;
@@ -1331,6 +1362,7 @@ export class DashboardService {
       || new Date(0);
     const closedAt = this.parseWeeklyDate(this.fieldValue(fields, '关闭时间|解决时间|完成时间|closedAt'));
     const verifiedAt = this.parseWeeklyDate(this.fieldValue(fields, '验证通过时间|验收通过时间|验证时间|通过时间|复测通过时间|verifiedAt|passedAt'));
+    const updatedAt = this.parseWeeklyDate(this.fieldValue(fields, '最新更新时间|最新修改时间|最新修改日期|最后修改时间|最后修改日期|更新时间|修改时间|updatedAt|lastModifiedAt'));
     const expectedFixDate = this.normalizeDateText(this.fieldValue(fields, '预计修复时间|预计解决时间|期望修复时间|修复截止时间|预计完成时间|计划完成时间|计划修复时间|截止时间|dueDate'));
     return {
       id: bugId,
@@ -1342,6 +1374,7 @@ export class DashboardService {
       closedAt,
       resolvedAt: closedAt,
       verifiedAt,
+      updatedAt,
       expectedFixDate,
       rawStatusText: statusText,
       primaryStatusText: problemStatus || developmentStatus,
@@ -2264,26 +2297,32 @@ export class DashboardService {
     weekStart: string,
     weekEnd: string,
     bugs: Array<{
+      id?: string | number | null;
+      title?: string | null;
       createdAt: Date;
       closedAt?: Date | null;
       resolvedAt?: Date | null;
       verifiedAt?: Date | null;
+      updatedAt?: Date | null;
       severity?: string | null;
       expectedFixDate?: string | null;
       rawStatusText?: string | null;
       primaryStatusText?: string | null;
       fixStatus?: string | null;
       status: BugStatus;
+      assigneeName?: string | null;
       issueType?: string | null;
       technicalModules?: string | null;
     }>,
-    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }> = []
+    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }> = [],
+    p0TargetStartDate = weekStart
   ) {
-    const days = this.daysBetween(weekStart, weekEnd).slice(0, 7);
+    const days = this.daysBetween(weekStart, weekEnd).slice(0, 31);
     const expectedOn = (bug: { expectedFixDate?: string | null }, day: string) => this.weeklyBugExpectedDate(bug) === day;
-    const verifiedOn = (bug: { expectedFixDate?: string | null; verifiedAt?: Date | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
-      if (!this.isWeeklyBugVerified(bug)) return false;
-      return this.dateOnly(bug.verifiedAt) === day || (!bug.verifiedAt && expectedOn(bug, day));
+    const verifiedByLatestUpdateOn = (bug: { updatedAt?: Date | null; primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
+      const statusText = this.bugPrimaryStatusText(bug);
+      return this.normalizeBugText(statusText).includes(this.normalizeBugText('验证通过'))
+        && this.dateOnly(bug.updatedAt || null) === day;
     };
     const closeDate = (bug: {
       closedAt?: Date | null;
@@ -2333,11 +2372,35 @@ export class DashboardService {
       const text = this.bugSeverityText(bug);
       return this.normalizeBugText(text).includes('p1') || bug.severity === 'critical';
     };
-    const adjustedExcludeKeys = ['无需修复', '转需求', '不是问题', '有依赖项', '重复问题', '重复'];
-    const isAdjustedRemaining = (bug: { primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }) => {
-      const statusText = this.bugPrimaryStatusText(bug);
-      const normalizedStatus = this.normalizeBugText(statusText);
-      return !adjustedExcludeKeys.some((key) => normalizedStatus.includes(this.normalizeBugText(key)));
+    const pendingHighPriorityKeys = ['新建', '修复中', '待验证', '验证失败', '有依赖项', '持续跟踪', '依赖MB', '依赖火山', '待复现'];
+    const terminalHighPriorityKeys = ['验证通过', '验收通过', '已验证', '无需修复', '转需求', '不是问题', '非问题', '重复问题'];
+    const isPendingHighPriorityStatus = (bug: { primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }) => {
+      const normalizedStatus = this.normalizeBugText(this.bugPrimaryStatusText(bug));
+      return pendingHighPriorityKeys.some((key) => normalizedStatus.includes(this.normalizeBugText(key)));
+    };
+    const isTerminalHighPriorityStatus = (bug: { primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }) => {
+      const normalizedStatus = this.normalizeBugText(this.bugPrimaryStatusText(bug));
+      return terminalHighPriorityKeys.some((key) => normalizedStatus.includes(this.normalizeBugText(key)));
+    };
+    const highPriorityRemainingOnDay = (bug: {
+      createdAt: Date;
+      closedAt?: Date | null;
+      resolvedAt?: Date | null;
+      verifiedAt?: Date | null;
+      updatedAt?: Date | null;
+      primaryStatusText?: string | null;
+      rawStatusText?: string | null;
+      fixStatus?: string | null;
+      status: BugStatus;
+    }, day: string) => {
+      if (!createdOnOrBefore(bug, day)) return false;
+      const explicitClosed = this.dateOnly(bug.closedAt || bug.resolvedAt || bug.verifiedAt || null);
+      if (explicitClosed && explicitClosed <= day) return false;
+      const updatedDate = this.dateOnly(bug.updatedAt || null);
+      if (isTerminalHighPriorityStatus(bug)) {
+        return Boolean(updatedDate && updatedDate > day);
+      }
+      return isPendingHighPriorityStatus(bug);
     };
     const moduleColorPalette = ['#3177f6', '#e5484d', '#7257d6', '#e29a00', '#0ea5b7', '#16a36a', '#f97316', '#8b5cf6', '#0891b2', '#64748b', '#db2777', '#84cc16'];
     const normalizeTechnicalModuleName = (value: string) => {
@@ -2368,23 +2431,60 @@ export class DashboardService {
     const allModuleSeries = buildModuleTrendSeries((bug) => isP0(bug) || isP1(bug));
     const p0ModuleSeries = buildModuleTrendSeries((bug) => isP0(bug));
     const p1ModuleSeries = buildModuleTrendSeries((bug) => isP1(bug));
-    const newValues = days.map((day) => bugs.filter((bug) => this.dateOnly(bug.createdAt) === day).length);
-    const closedValues = days.map((day) => bugs.filter((bug) => closedOn(bug, day)).length);
-    const netValues = days.map((_, index) => newValues[index] - closedValues[index]);
-    const lastThreeNew = newValues.slice(-3).reduce((sum, value) => sum + value, 0);
-    const lastThreeClosed = closedValues.slice(-3).reduce((sum, value) => sum + value, 0);
+    const todayText = this.formatDateWithOffset(new Date(), 8);
+    const visibleTrendValue = (day: string, value: number) => day > todayText ? null : value;
+    const newRawValues = days.map((day) => bugs.filter((bug) => this.dateOnly(bug.createdAt) === day).length);
+    const closedRawValues = days.map((day) => bugs.filter((bug) => verifiedByLatestUpdateOn(bug, day)).length);
+    const p0NewRawValues = days.map((day) => bugs.filter((bug) => isP0(bug) && this.dateOnly(bug.createdAt) === day).length);
+    const p1NewRawValues = days.map((day) => bugs.filter((bug) => isP1(bug) && this.dateOnly(bug.createdAt) === day).length);
+    const p0ClosedRawValues = days.map((day) => bugs.filter((bug) => isP0(bug) && verifiedByLatestUpdateOn(bug, day)).length);
+    const p1ClosedRawValues = days.map((day) => bugs.filter((bug) => isP1(bug) && verifiedByLatestUpdateOn(bug, day)).length);
+    const dailyP0P1VerifiedDetails = days.map((day) => ({
+      day: day.slice(5),
+      items: bugs
+        .filter((bug) => (isP0(bug) || isP1(bug)) && verifiedByLatestUpdateOn(bug, day))
+        .map((bug) => ({
+          id: String(bug.id || ''),
+          title: String(bug.title || '未命名缺陷'),
+          severity: this.bugSeverityText(bug) || '未填写',
+          assignee: String(bug.assigneeName || '未分配'),
+          status: this.bugDisplayStatusText(bug) || '验证通过'
+        }))
+    }));
+    const netRawValues = days.map((_, index) => newRawValues[index] - closedRawValues[index]);
+    const actualDayIndexes = days.map((day, index) => day <= todayText ? index : -1).filter((index) => index >= 0);
+    const lastThreeIndexes = actualDayIndexes.slice(-3);
+    const lastThreeNew = lastThreeIndexes.reduce((sum, index) => sum + newRawValues[index], 0);
+    const lastThreeClosed = lastThreeIndexes.reduce((sum, index) => sum + closedRawValues[index], 0);
     const netConclusionTone: 'good' | 'warn' | 'danger' = lastThreeClosed >= lastThreeNew ? 'good' : lastThreeClosed >= lastThreeNew * 0.8 ? 'warn' : 'danger';
     const netConclusion = netConclusionTone === 'good'
       ? '当前判断：最近 3 天关闭量已覆盖新增量，缺陷开始收敛'
       : netConclusionTone === 'warn'
         ? '当前判断：新增与关闭接近，仍需持续观察'
         : '当前判断：最近 3 天新增缺陷高于关闭缺陷，仍处扩散状态';
-    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, days[0]);
-    const p0Values = days.map((day) => bugs.filter((bug) => isP0(bug) && createdOnOrBefore(bug, day) && isAdjustedRemaining(bug)).length);
-    const p1Values = days.map((day) => bugs.filter((bug) => isP1(bug) && createdOnOrBefore(bug, day) && isAdjustedRemaining(bug)).length);
-    const p0Start = p0Values[0] || 0;
-    const p0TargetValues = days.map((day) => this.projectWeeklyP0TargetValue(p0Start, days[0], day, p0TargetDate));
+    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, p0TargetStartDate || days[0]);
+    const currentPendingP0 = bugs.filter((bug) => isP0(bug) && isPendingHighPriorityStatus(bug)).length;
+    const currentPendingP1 = bugs.filter((bug) => isP1(bug) && isPendingHighPriorityStatus(bug)).length;
+    const p0RawValues = days.map((day) => day === todayText ? currentPendingP0 : bugs.filter((bug) => isP0(bug) && highPriorityRemainingOnDay(bug, day)).length);
+    const p1RawValues = days.map((day) => day === todayText ? currentPendingP1 : bugs.filter((bug) => isP1(bug) && highPriorityRemainingOnDay(bug, day)).length);
+    const p0Start = bugs.filter((bug) => isP0(bug) && highPriorityRemainingOnDay(bug, p0TargetStartDate)).length;
+    const p0TargetRawValues = days.map((day) => this.projectWeeklyP0TargetValue(p0Start, p0TargetStartDate, day, p0TargetDate));
     const p0TargetLabel = p0TargetDate ? `P0 目标线（${p0TargetDate.slice(5)}清零）` : 'P0 目标线';
+    const p0LastActualIndex = actualDayIndexes.length > 0 ? actualDayIndexes[actualDayIndexes.length - 1] : 0;
+    const p0LastActual = actualDayIndexes.length > 0 ? p0RawValues[p0LastActualIndex] : p0Start;
+    const p0ProjectionStartDate = days[p0LastActualIndex] || p0TargetStartDate;
+    const p0CurrentProjectionRawValues = days.map((day, index) => {
+      if (!p0TargetDate || index < p0LastActualIndex) return null;
+      return this.projectWeeklyP0TargetValue(p0LastActual, p0ProjectionStartDate, day, p0TargetDate);
+    });
+    const visibleValues = (values: Array<number | null>, showFuture = false) => values.map((value, index) => {
+      if (value === null) return null;
+      return showFuture ? value : visibleTrendValue(days[index], value);
+    });
+    const visibleModuleSeries = (series: Array<{ name: string; color: string; values: number[] }>) => series.map((item) => ({
+      ...item,
+      values: visibleValues(item.values)
+    }));
     return [
       {
         id: 'net',
@@ -2398,26 +2498,38 @@ export class DashboardService {
         conclusionTone: netConclusionTone,
         days: days.map((day) => day.slice(5)),
         series: [
-          { name: '每日新增缺陷', color: '#e5484d', values: newValues },
-          { name: '每日关闭缺陷', color: '#16a36a', values: closedValues },
-          { name: '净增缺陷', color: '#e29a00', values: netValues }
-        ]
+          { name: '每日新增缺陷', color: '#e5484d', values: visibleValues(newRawValues) },
+          { name: '每日关闭缺陷', color: '#16a36a', values: visibleValues(closedRawValues) },
+          { name: 'P0 新增缺陷', color: '#b91c1c', values: visibleValues(p0NewRawValues) },
+          { name: 'P1 新增缺陷', color: '#f97316', values: visibleValues(p1NewRawValues) },
+          { name: 'P0 关闭缺陷', color: '#047857', values: visibleValues(p0ClosedRawValues) },
+          { name: 'P1 关闭缺陷', color: '#0ea5b7', values: visibleValues(p1ClosedRawValues) },
+          { name: '净增缺陷', color: '#e29a00', values: visibleValues(netRawValues) }
+        ],
+        dailyBugDetails: dailyP0P1VerifiedDetails
       },
       {
         id: 'p0p1',
         label: 'P0/P1 遗留',
         title: 'P0/P1 遗留趋势',
-        description: '每天剩余 P0、P1 数量同图展示，并叠加 P0 目标线，观察高优问题是否下降。',
+        description: '每天待处理 P0、P1 数量同图展示，口径与顶部待处理 P0 问题数一致，并叠加 P0 目标线观察高优问题是否下降。',
         value: '价值：管理层关注高优问题下降',
         unit: '条',
         chart: 'line' as const,
-        conclusion: p0Values[p0Values.length - 1] < p0Start ? '当前判断：P0 存量下降，高优问题正在收敛' : '当前判断：P0 存量未下降，清零目标仍有压力',
-        conclusionTone: p0Values[p0Values.length - 1] < p0Start ? 'good' as const : 'warn' as const,
+        conclusion: p0LastActual < p0Start ? '当前判断：P0 存量下降，高优问题正在收敛' : '当前判断：P0 存量未下降，清零目标仍有压力',
+        conclusionTone: p0LastActual < p0Start ? 'good' as const : 'warn' as const,
         days: days.map((day) => day.slice(5)),
         series: [
-          { name: '剩余 P0', color: '#e5484d', values: p0Values },
-          { name: '剩余 P1', color: '#7257d6', values: p1Values },
-          { name: p0TargetLabel, color: '#16a36a', dashed: true, values: p0TargetValues }
+          { name: '剩余 P0', color: '#e5484d', values: visibleValues(p0RawValues) },
+          { name: '剩余 P1', color: '#7257d6', values: visibleValues(p1RawValues) },
+          { name: p0TargetLabel, color: '#16a36a', dashed: true, showFuture: true, values: visibleValues(p0TargetRawValues, true) },
+          {
+            name: p0TargetDate ? `当前 P0 延长线（${p0TargetDate.slice(5)}清零）` : '当前 P0 延长线',
+            color: '#ef2424',
+            dashed: true,
+            showFuture: true,
+            values: visibleValues(p0CurrentProjectionRawValues, true)
+          }
         ]
       },
       {
@@ -2432,19 +2544,22 @@ export class DashboardService {
         conclusionTone: 'warn' as const,
         days: days.map((day) => day.slice(5)),
         series: [
-          { name: '计划处理数', color: '#3177f6', unit: '条', values: days.map((day) => bugs.filter((bug) => expectedOn(bug, day)).length) },
-          { name: '验证通过数', color: '#16a36a', unit: '条', values: days.map((day) => bugs.filter((bug) => verifiedOn(bug, day)).length) },
+          { name: '计划处理数', color: '#3177f6', unit: '条', values: visibleValues(days.map((day) => bugs.filter((bug) => expectedOn(bug, day)).length)) },
+          { name: '验证通过数', color: '#16a36a', unit: '条', values: visibleValues(days.map((day) => bugs.filter((bug) => verifiedByLatestUpdateOn(bug, day)).length)) },
+          { name: 'P0 验证通过数', color: '#e5484d', unit: '条', values: visibleValues(days.map((day) => bugs.filter((bug) => isP0(bug) && verifiedByLatestUpdateOn(bug, day)).length)) },
+          { name: 'P1 验证通过数', color: '#7257d6', unit: '条', values: visibleValues(days.map((day) => bugs.filter((bug) => isP1(bug) && verifiedByLatestUpdateOn(bug, day)).length)) },
           {
             name: '任务完成率',
             color: '#e29a00',
             unit: '%',
-            values: days.map((day) => {
+            values: visibleValues(days.map((day) => {
               const planned = bugs.filter((bug) => expectedOn(bug, day)).length;
-              const verified = bugs.filter((bug) => verifiedOn(bug, day)).length;
+              const verified = bugs.filter((bug) => verifiedByLatestUpdateOn(bug, day)).length;
               return planned > 0 ? Math.round((verified / planned) * 100) : 0;
-            })
+            }))
           }
-        ]
+        ],
+        dailyBugDetails: dailyP0P1VerifiedDetails
       },
       {
         id: 'overdue',
@@ -2458,9 +2573,9 @@ export class DashboardService {
         conclusionTone: 'danger' as const,
         days: days.map((day) => day.slice(5)),
         series: [
-          { name: '延期缺陷', color: '#e5484d', values: days.map((day) => bugs.filter((bug) => expectedBefore(bug, day) && activeOnDay(bug, day)).length) },
-          { name: '延期 P0', color: '#b91c1c', values: days.map((day) => bugs.filter((bug) => isP0(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length) },
-          { name: '延期 P1', color: '#e29a00', values: days.map((day) => bugs.filter((bug) => isP1(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length) }
+          { name: '延期缺陷', color: '#e5484d', values: visibleValues(days.map((day) => bugs.filter((bug) => expectedBefore(bug, day) && activeOnDay(bug, day)).length)) },
+          { name: '延期 P0', color: '#b91c1c', values: visibleValues(days.map((day) => bugs.filter((bug) => isP0(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length)) },
+          { name: '延期 P1', color: '#e29a00', values: visibleValues(days.map((day) => bugs.filter((bug) => isP1(bug) && expectedBefore(bug, day) && activeOnDay(bug, day)).length)) }
         ]
       },
       {
@@ -2474,11 +2589,11 @@ export class DashboardService {
         conclusion: '当前判断：技术模块缺陷集中度偏高时，需要按专项拆解责任和闭环计划。',
         conclusionTone: 'warn' as const,
         days: days.map((day) => day.slice(5)),
-        series: allModuleSeries,
+        series: visibleModuleSeries(allModuleSeries),
         variants: [
-          { key: 'all', label: '全部', series: allModuleSeries },
-          { key: 'p0', label: 'P0', series: p0ModuleSeries },
-          { key: 'p1', label: 'P1', series: p1ModuleSeries }
+          { key: 'all', label: '全部', series: visibleModuleSeries(allModuleSeries) },
+          { key: 'p0', label: 'P0', series: visibleModuleSeries(p0ModuleSeries) },
+          { key: 'p1', label: 'P1', series: visibleModuleSeries(p1ModuleSeries) }
         ]
       }
     ];
