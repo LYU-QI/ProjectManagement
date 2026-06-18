@@ -1146,8 +1146,8 @@ export default function DashboardView({
       setWeeklyCellTooltip(null);
       return;
     }
-    const maxWidth = 360;
-    const maxHeight = 180;
+    const maxWidth = Math.min(680, window.innerWidth - 32);
+    const maxHeight = Math.min(560, window.innerHeight - 32);
     setWeeklyCellTooltip({
       text: value,
       x: Math.min(event.clientX + 14, Math.max(16, window.innerWidth - maxWidth - 16)),
@@ -2439,15 +2439,6 @@ export default function DashboardView({
 
           <article className="weekly-section">
             <h3>质量与测试</h3>
-            <div className="weekly-quality-grid">
-              {projectWeeklyReport.qualityCards.map((metric) => (
-                <article className={`weekly-metric-card ${weeklyToneClass(metric.tone)}`} key={metric.label}>
-                  <span>{metric.label}</span>
-                  <strong>{metric.value}</strong>
-                  <p>{metric.sub}</p>
-                </article>
-              ))}
-            </div>
             <div className="weekly-table-wrap">
               <table className="weekly-table">
                 <thead>
