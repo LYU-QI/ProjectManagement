@@ -851,6 +851,7 @@ export class DashboardService {
       weeklyResourceResult,
       weeklyMilestoneResult,
       weeklyDiscussionResult,
+      weeklyFeatureListResult,
       clusterResult,
       resourceResult
     ] = await Promise.all([
@@ -871,11 +872,12 @@ export class DashboardService {
       this.readProjectWeeklySource(project, 'resources', '资源投入表'),
       this.readProjectWeeklySource(project, 'milestones', '交付里程碑表'),
       this.readProjectWeeklySource(project, 'discussion_plans', '专项讨论计划清单'),
+      this.readProjectWeeklySource(project, 'feature_list', 'Feature List 验收表'),
       this.clusterRiskBoard(actor).catch((err) => this.emptyClusterRiskBoard('error', err?.message || '集群风险状态大看板数据加载失败。')),
       this.resourceCalendar(actor).catch((err) => this.emptyResourceCalendar('error', err?.message || '项目资源日历大看板数据加载失败。'))
     ]);
 
-    const weeklySourceResults = [statusRiskResult, weeklyBugResult, weeklyTestResult, weeklyResourceResult, weeklyMilestoneResult, weeklyDiscussionResult];
+    const weeklySourceResults = [statusRiskResult, weeklyBugResult, weeklyTestResult, weeklyResourceResult, weeklyMilestoneResult, weeklyDiscussionResult, weeklyFeatureListResult];
     const weeklyStatusItem = statusRiskResult.items[0]?.fields
       ? this.normalizeWeeklyStatusRisk(statusRiskResult.items[0].fields, project)
       : undefined;
@@ -940,6 +942,19 @@ export class DashboardService {
       weeklyDiscussionResult.items.map((record) => this.normalizeWeeklyDiscussion(record.fields || {})),
       reportBugs
     );
+    const featureListItems = weeklyFeatureListResult.items
+      .map((record) => this.normalizeFeatureListItem(record.fields || {}))
+      .filter((item) => item.featureId || item.query || item.domain);
+    const effectiveFeatureListItems = featureListItems.filter((item) => !this.isFeatureListExcluded(item));
+    const acceptedFeatureCount = effectiveFeatureListItems.filter((item) => item.isClosed).length;
+    const failedFeatureCount = effectiveFeatureListItems.filter((item) => this.isFeatureListFailed(item)).length;
+    const pendingFeatureCount = Math.max(0, effectiveFeatureListItems.length - acceptedFeatureCount);
+    const linkedBugFeatureCount = effectiveFeatureListItems.filter((item) => item.linkedBugIds).length;
+    const featureCaseCount = effectiveFeatureListItems.reduce((sum, item) => sum + item.caseCount, 0);
+    const featureAveragePassRate = this.averagePercent(effectiveFeatureListItems.map((item) => item.passRate));
+    const featureClosureRate = effectiveFeatureListItems.length > 0
+      ? Math.round((acceptedFeatureCount / effectiveFeatureListItems.length) * 100)
+      : 0;
 
     const riskLight = clusterItem?.riskLight || '未填';
     const riskCount = [
@@ -1013,9 +1028,9 @@ export class DashboardService {
       discussions,
       risks,
       qualityCards: [
-        { label: '缺陷新增 / 关闭', value: `${newBugs.length} / ${closedBugs.length}`, sub: `净变化 ${newBugs.length - closedBugs.length}`, tone: newBugs.length > closedBugs.length ? 'warn' : 'good' },
-        { label: '未关闭缺陷', value: String(openBugs.length), sub: `严重缺陷 ${seriousBugs.length} 个`, tone: seriousBugs.length > 0 ? 'danger' : openBugs.length > 0 ? 'warn' : 'good' },
-        { label: '测试执行 / 通过', value: `${testExecutionRate}% / ${testPassRate}%`, sub: `失败 ${weeklyTests.length > 0 ? weeklyTestFailed : failedTestItems.length}，阻塞 ${weeklyTests.length > 0 ? weeklyTestBlocked : blockedTestItems.length}`, tone: blockedTestItems.length > 0 || testPassRate < 70 ? 'danger' : testPassRate < 85 ? 'warn' : 'good' }
+        { label: '验收通过 / Fail', value: `${acceptedFeatureCount} / ${failedFeatureCount}`, sub: `闭环率 ${featureClosureRate}%`, tone: failedFeatureCount > 0 ? 'danger' : featureClosureRate >= 85 ? 'good' : 'warn' },
+        { label: '待闭环 Feature', value: String(pendingFeatureCount), sub: `有效 Feature ${effectiveFeatureListItems.length} 个`, tone: pendingFeatureCount > 0 ? 'warn' : 'good' },
+        { label: 'CASE / 通过率', value: `${featureCaseCount} / ${featureAveragePassRate}%`, sub: `关联缺陷 ${linkedBugFeatureCount} 个`, tone: featureAveragePassRate >= 85 ? 'good' : featureAveragePassRate >= 70 ? 'warn' : 'danger' }
       ],
       tests,
       ranks,
@@ -1278,13 +1293,7 @@ export class DashboardService {
       return { sourceType, label, source: 'config_missing', error: `${label}未配置。`, items: [] };
     }
     try {
-      const data = sourceType === 'feature_list'
-        ? await this.listAllFeatureListRecords(appToken, tableId, viewId || undefined)
-        : await this.feishuService.listRecords({
-            pageSize: 500,
-            viewId: viewId || undefined,
-            opts: { appToken, tableId }
-          });
+      const data = await this.listAllProjectWeeklySourceRecords(appToken, tableId, viewId || undefined);
       const records = (data.items || []).map((item: any) => ({ fields: item?.fields || {} }));
       const items = sourceType === 'feature_list'
         ? records
@@ -1300,7 +1309,7 @@ export class DashboardService {
     }
   }
 
-  private async listAllFeatureListRecords(appToken: string, tableId: string, viewId?: string) {
+  private async listAllProjectWeeklySourceRecords(appToken: string, tableId: string, viewId?: string) {
     const items: Array<Record<string, unknown>> = [];
     let pageToken: string | undefined;
 
@@ -1615,7 +1624,8 @@ export class DashboardService {
 
   private calculateProjectWeeklyBugMetricValues(bugs: unknown[]): ProjectWeeklyBugMetricValues {
     const solvedKeys = ['无需修复', '验证通过', '不是问题'];
-    const adjustedP0ExcludeKeys = ['无需修复', '转需求', '不是问题', '有依赖项', '重复问题', '重复'];
+    const pendingExcludeKeys = ['无需修复', '验证通过', '转需求', '不是问题'];
+    const adjustedP0ExcludeKeys = ['无需修复', '转需求', '不是问题', '重复问题', '重复'];
 
     const containsAny = (text: string, keys: string[]) => {
       const normalized = this.normalizeBugText(text);
@@ -1632,7 +1642,7 @@ export class DashboardService {
     const statusText = (bug: unknown) => this.bugPrimaryStatusText(bug);
 
     const solvedBugs = bugs.filter((bug) => containsAny(statusText(bug), solvedKeys));
-    const pendingBugs = bugs.filter((bug) => !containsAny(statusText(bug), solvedKeys));
+    const pendingBugs = bugs.filter((bug) => !containsAny(statusText(bug), pendingExcludeKeys));
     const p0Bugs = bugs.filter(isP0);
     const adjustedP0Bugs = p0Bugs.filter((bug) => !containsAny(statusText(bug), adjustedP0ExcludeKeys));
     const pendingP0Bugs = this.filterProjectWeeklyPendingP0Bugs(bugs);
@@ -1685,10 +1695,10 @@ export class DashboardService {
       cards: [
         { label: '问题总数', value: values.totalIssues, explain: '缺陷表读取到的全量问题记录数。', delta: cardDelta('totalIssues'), baselineValue: baseline.totalIssues, baselineDate: today },
         { label: '已解决问题数', value: values.solvedIssues, explain: '问题状态包含「无需修复、验证通过、不是问题」的问题数。', delta: cardDelta('solvedIssues'), baselineValue: baseline.solvedIssues, baselineDate: today },
-        { label: '待处理问题数', value: values.pendingIssues, explain: '问题状态不包含「无需修复、验证通过、不是问题」的问题数。', delta: cardDelta('pendingIssues'), baselineValue: baseline.pendingIssues, baselineDate: today },
+        { label: '待处理问题数', value: values.pendingIssues, explain: '问题状态不包含「无需修复、验证通过、转需求、不是问题」的问题数。', delta: cardDelta('pendingIssues'), baselineValue: baseline.pendingIssues, baselineDate: today },
         { label: '总P0问题数', value: values.totalP0Issues, explain: '严重等级包含 P0 的问题数。', delta: cardDelta('totalP0Issues'), baselineValue: baseline.totalP0Issues, baselineDate: today },
-        { label: '调整后总P0问题数', value: values.adjustedTotalP0Issues, explain: '严重等级包含 P0，且问题状态不包含「无需修复、转需求、不是问题、有依赖项、重复问题」的问题数。', delta: cardDelta('adjustedTotalP0Issues'), baselineValue: baseline.adjustedTotalP0Issues, baselineDate: today },
-        { label: '待处理P0问题数', value: values.pendingP0Issues, explain: '严重等级包含 P0，且问题状态包含「新建、修复中、待验证、验证失败、有依赖项、持续跟踪、依赖MB、依赖火山、待复现」的问题数。', delta: cardDelta('pendingP0Issues'), baselineValue: baseline.pendingP0Issues, baselineDate: today }
+        { label: '调整后总P0问题数', value: values.adjustedTotalP0Issues, explain: '问题状态不包含「无需修复、转需求、不是问题、重复问题」，且严重等级为 P0 的问题数。', delta: cardDelta('adjustedTotalP0Issues'), baselineValue: baseline.adjustedTotalP0Issues, baselineDate: today },
+        { label: '待处理P0问题数', value: values.pendingP0Issues, explain: '问题状态包含「新建、修复中、待验证、验证失败、持续跟踪、待复现」，且严重等级为 P0 的问题数。', delta: cardDelta('pendingP0Issues'), baselineValue: baseline.pendingP0Issues, baselineDate: today }
       ],
       p0p1StatusDistribution: buildStatusDistribution(p0p1Bugs),
       p0StatusDistribution: buildStatusDistribution(p0Bugs),
@@ -1798,7 +1808,7 @@ export class DashboardService {
   }
 
   private filterProjectWeeklyPendingP0P1Bugs(bugs: unknown[]): unknown[] {
-    const pendingP0Keys = ['新建', '修复中', '待验证', '验证失败', '有依赖项', '持续跟踪', '依赖MB', '依赖火山', '待复现'];
+    const pendingP0Keys = ['新建', '修复中', '待验证', '验证失败', '持续跟踪', '待复现'];
     return bugs.filter((bug) => {
       const severityText = this.bugSeverityText(bug);
       const isP0 = this.normalizeBugText(severityText).includes('p0') || String((bug as { severity?: unknown })?.severity || '') === 'blocker';
@@ -2372,7 +2382,7 @@ export class DashboardService {
       const text = this.bugSeverityText(bug);
       return this.normalizeBugText(text).includes('p1') || bug.severity === 'critical';
     };
-    const pendingHighPriorityKeys = ['新建', '修复中', '待验证', '验证失败', '有依赖项', '持续跟踪', '依赖MB', '依赖火山', '待复现'];
+    const pendingHighPriorityKeys = ['新建', '修复中', '待验证', '验证失败', '持续跟踪', '待复现'];
     const terminalHighPriorityKeys = ['验证通过', '验收通过', '已验证', '无需修复', '转需求', '不是问题', '非问题', '重复问题'];
     const isPendingHighPriorityStatus = (bug: { primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }) => {
       const normalizedStatus = this.normalizeBugText(this.bugPrimaryStatusText(bug));
