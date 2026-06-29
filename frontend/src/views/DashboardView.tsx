@@ -378,12 +378,14 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
   const trendTooltipPosition = (event: ReactMouseEvent<SVGElement>) => {
     const margin = 16;
     const tooltipWidth = Math.min(520, window.innerWidth - margin * 2);
-    const tooltipHeight = Math.min(560, window.innerHeight - margin * 2);
+    const tooltipHeight = Math.min(activeTrend.dailyBugDetails ? 520 : 340, window.innerHeight - margin * 2);
     const canOpenRight = event.clientX + margin + tooltipWidth <= window.innerWidth - margin;
     const x = canOpenRight ? event.clientX + margin : event.clientX - tooltipWidth - margin;
+    const canOpenAbove = event.clientY - tooltipHeight - margin >= margin;
+    const y = canOpenAbove ? event.clientY - tooltipHeight - margin : event.clientY + margin;
     return {
       x: Math.max(margin, Math.min(x, window.innerWidth - tooltipWidth - margin)),
-      y: Math.max(margin, Math.min(event.clientY + margin, window.innerHeight - tooltipHeight - margin))
+      y: Math.max(margin, Math.min(y, window.innerHeight - tooltipHeight - margin))
     };
   };
   const showTrendTooltip = (event: ReactMouseEvent<SVGElement>, dayIndex: number) => {
@@ -578,7 +580,7 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
           </button>
         ))}
       </div>
-      {hoverState && (
+      {hoverState && createPortal((
         <div
           className="weekly-trend-tooltip"
           style={{ left: hoverState.x, top: hoverState.y }}
@@ -614,7 +616,7 @@ function ProjectWeeklyTrendPanel({ trends }: { trends: ProjectWeeklyReportRespon
             </div>
           )}
         </div>
-      )}
+      ), document.body)}
     </article>
   );
 }
@@ -1126,6 +1128,7 @@ export default function DashboardView({
   const [weeklyImageExporting, setWeeklyImageExporting] = useState(false);
   const [weeklyImageExportError, setWeeklyImageExportError] = useState('');
   const weeklyBoardRef = useRef<HTMLElement | null>(null);
+  const projectWeeklyRequestingRef = useRef(false);
   const [roadmapFullscreen, setRoadmapFullscreen] = useState(false);
   const [roadmapRefreshing, setRoadmapRefreshing] = useState(false);
   const [resourceRoleFilter, setResourceRoleFilter] = useState('all');
@@ -1202,6 +1205,8 @@ export default function DashboardView({
       return;
     }
     let cancelled = false;
+    if (projectWeeklyRequestingRef.current) return;
+    projectWeeklyRequestingRef.current = true;
     setProjectWeeklyLoading(true);
     setProjectWeeklyError('');
     apiGet<ProjectWeeklyReportResponse>(`/dashboard/project-weekly-report?projectId=${selectedProjectId}`)
@@ -1215,6 +1220,7 @@ export default function DashboardView({
         }
       })
       .finally(() => {
+        projectWeeklyRequestingRef.current = false;
         if (!cancelled) setProjectWeeklyLoading(false);
       });
     return () => {
@@ -1226,6 +1232,8 @@ export default function DashboardView({
     if (dashboardBoardTab !== 'weekly' || !selectedProjectId) return;
     let cancelled = false;
     const timer = window.setInterval(() => {
+      if (projectWeeklyRequestingRef.current) return;
+      projectWeeklyRequestingRef.current = true;
       apiGet<ProjectWeeklyReportResponse>(`/dashboard/project-weekly-report?projectId=${selectedProjectId}`)
         .then((data) => {
           if (!cancelled) {
@@ -1235,6 +1243,9 @@ export default function DashboardView({
         })
         .catch((err: Error) => {
           if (!cancelled) setProjectWeeklyError(err.message || '项目周报自动刷新失败');
+        })
+        .finally(() => {
+          projectWeeklyRequestingRef.current = false;
         });
     }, 60_000);
     return () => {
@@ -1273,6 +1284,8 @@ export default function DashboardView({
 
   async function refreshProjectWeeklyReport() {
     if (!selectedProjectId) return;
+    if (projectWeeklyRequestingRef.current) return;
+    projectWeeklyRequestingRef.current = true;
     setProjectWeeklyLoading(true);
     setProjectWeeklyError('');
     try {
@@ -1282,6 +1295,7 @@ export default function DashboardView({
       setProjectWeeklyError(err instanceof Error ? err.message : '项目周报加载失败');
       setProjectWeeklyReport(null);
     } finally {
+      projectWeeklyRequestingRef.current = false;
       setProjectWeeklyLoading(false);
     }
   }

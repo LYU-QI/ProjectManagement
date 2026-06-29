@@ -392,6 +392,11 @@ type ProjectWeeklySourceResult = {
   items: Array<{ fields?: Record<string, unknown> }>;
 };
 
+type ProjectWeeklySourceCache = {
+  cachedAt: string;
+  items: Array<{ fields?: Record<string, unknown> }>;
+};
+
 const CLUSTER_FIELD_MAP: Record<keyof Omit<ClusterRiskBoardItem, 'hasKeyDemo'> | 'keyDemo', string> = {
   recordId: 'record_id',
   index: '序号',
@@ -492,6 +497,9 @@ const RESOURCE_CALENDAR_FIELD_MAP: Record<string, string> = {
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
   private readonly cacheTtl = 300; // 5 minutes
+  private readonly projectWeeklySourceTimeoutMs = 45_000;
+  private readonly projectWeeklySourceFreshCacheTtl = 55;
+  private readonly projectWeeklySourceStaleCacheTtl = 86_400;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -1214,30 +1222,20 @@ export class DashboardService {
   }
 
   private resolveProjectTrendPeriod(
-    weekStart: string,
-    weekEnd: string,
-    milestones: Array<{ plannedDate?: string | null }> = []
+    _weekStart: string,
+    _weekEnd: string,
+    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }> = []
   ) {
-    const milestoneDates = milestones
-      .map((item) => this.normalizeDateText(String(item.plannedDate || '')))
-      .filter(Boolean)
-      .sort();
-    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, '0000-00-00');
-    if (p0TargetDate) {
-      const target = new Date(`${p0TargetDate}T00:00:00.000Z`);
-      const deliveryWindowFloor = new Date(target.getTime() - 14 * 86_400_000);
-      const deliveryWindowFloorText = this.formatDateUtc(deliveryWindowFloor);
-      const deliveryWindowStart = milestoneDates.find((date) => date >= deliveryWindowFloorText && date <= p0TargetDate)
-        || deliveryWindowFloorText;
-      return {
-        start: deliveryWindowStart,
-        end: p0TargetDate,
-        p0TargetStart: deliveryWindowStart
-      };
-    }
-    const fallbackStart = this.normalizeDateText(weekStart || '') || this.resolveRecentSevenDayPeriod(weekEnd || weekStart).start;
-    const fallbackEnd = this.formatDateUtc(new Date(new Date(`${fallbackStart}T00:00:00.000Z`).getTime() + 6 * 86_400_000));
-    return { start: fallbackStart, end: fallbackEnd, p0TargetStart: fallbackStart };
+    const today = this.formatDateWithOffset(new Date(), 8);
+    const year = today.slice(0, 4);
+    const fixedStart = `${year}-06-08`;
+    const finalLockDate = this.resolveFinalLockTrendEndDate(milestones, fixedStart);
+    const end = finalLockDate || today;
+    return {
+      start: fixedStart,
+      end: end < fixedStart ? fixedStart : end,
+      p0TargetStart: fixedStart
+    };
   }
 
   private async readProjectFeishuTasks(project: {
@@ -1292,8 +1290,23 @@ export class DashboardService {
     if (!appToken || !tableId) {
       return { sourceType, label, source: 'config_missing', error: `${label}未配置。`, items: [] };
     }
+    const freshCacheKey = this.projectWeeklySourceCacheKey('fresh', project.id, sourceType, appToken, tableId, viewId);
+    const staleCacheKey = this.projectWeeklySourceCacheKey('stale', project.id, sourceType, appToken, tableId, viewId);
+    const freshCached = await this.redisService.get<ProjectWeeklySourceCache>(freshCacheKey);
+    if (freshCached?.items?.length) {
+      return { sourceType, label, source: 'feishu', error: '', items: freshCached.items };
+    }
     try {
-      const data = await this.listAllProjectWeeklySourceRecords(appToken, tableId, viewId || undefined);
+      const startedAt = Date.now();
+      const data = await this.withProjectWeeklySourceTimeout(
+        this.listAllProjectWeeklySourceRecords(appToken, tableId, viewId || undefined),
+        sourceType,
+        label
+      );
+      const durationMs = Date.now() - startedAt;
+      if (durationMs > 5000) {
+        this.logger.warn(`Project weekly source loaded slowly: ${label} (${sourceType}) ${durationMs}ms`);
+      }
       const records = (data.items || []).map((item: any) => ({ fields: item?.fields || {} }));
       const items = sourceType === 'feature_list'
         ? records
@@ -1303,9 +1316,49 @@ export class DashboardService {
             if (!rowProjectId && !rowProjectName) return true;
             return this.matchesProjectIdentity(rowProjectId, rowProjectName, project);
           });
+      const cachePayload: ProjectWeeklySourceCache = { cachedAt: new Date().toISOString(), items };
+      await Promise.all([
+        this.redisService.set(freshCacheKey, cachePayload, this.projectWeeklySourceFreshCacheTtl),
+        this.redisService.set(staleCacheKey, cachePayload, this.projectWeeklySourceStaleCacheTtl)
+      ]);
       return { sourceType, label, source: 'feishu', error: '', items };
     } catch (err: any) {
+      const staleCached = await this.redisService.get<ProjectWeeklySourceCache>(staleCacheKey);
+      if (staleCached?.items?.length) {
+        this.logger.warn(`Project weekly source fallback to cached data: ${label} (${sourceType}) cachedAt=${staleCached.cachedAt}`);
+        return { sourceType, label, source: 'feishu', error: '', items: staleCached.items };
+      }
       return { sourceType, label, source: 'error', error: err?.message || `${label}读取失败。`, items: [] };
+    }
+  }
+
+  private projectWeeklySourceCacheKey(
+    kind: 'fresh' | 'stale',
+    projectId: number,
+    sourceType: ProjectWeeklySourceType,
+    appToken: string,
+    tableId: string,
+    viewId?: string
+  ) {
+    return `dashboard:project-weekly-source:${kind}:${projectId}:${sourceType}:${appToken}:${tableId}:${viewId || 'default'}`;
+  }
+
+  private async withProjectWeeklySourceTimeout<T>(promise: Promise<T>, sourceType: ProjectWeeklySourceType, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error(`${label}读取超过${Math.round(this.projectWeeklySourceTimeoutMs / 1000)}秒，已跳过本次刷新。请稍后重试或检查该飞书表格。`));
+          }, this.projectWeeklySourceTimeoutMs);
+        })
+      ]);
+    } catch (err) {
+      this.logger.warn(`Project weekly source failed: ${label} (${sourceType}) ${err instanceof Error ? err.message : String(err)}`);
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -1314,18 +1367,34 @@ export class DashboardService {
     let pageToken: string | undefined;
 
     for (let page = 0; page < 50; page += 1) {
-      const data = await this.feishuService.listRecords({
-        pageSize: 500,
-        pageToken,
-        viewId,
-        opts: { appToken, tableId }
-      });
+      const data = await this.listProjectWeeklySourceRecordsPage(appToken, tableId, viewId, pageToken);
       items.push(...(data.items || []));
       pageToken = data.has_more ? data.page_token : undefined;
       if (!pageToken) break;
     }
 
     return { items };
+  }
+
+  private async listProjectWeeklySourceRecordsPage(appToken: string, tableId: string, viewId?: string, pageToken?: string) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      try {
+        return await this.feishuService.listRecords({
+          pageSize: 200,
+          pageToken,
+          viewId,
+          opts: { appToken, tableId }
+        });
+      } catch (err: any) {
+        lastError = err;
+        const message = String(err?.message || '');
+        const dataNotReady = message.includes('数据暂未准备好') || /Data not ready/i.test(message) || message.includes('1254607');
+        if (!dataNotReady || attempt === 5) break;
+        await new Promise((resolve) => setTimeout(resolve, 1200 * (attempt + 1)));
+      }
+    }
+    throw lastError;
   }
 
   private projectWeeklySourceSummary(results: ProjectWeeklySourceResult[]) {
@@ -1889,7 +1958,7 @@ export class DashboardService {
   }
 
   private resolveP0ClearTargetDate(
-    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }>,
+    milestones: Array<{ milestoneType?: string | null; name?: string | null; milestoneName?: string | null; plannedDate?: string | null }>,
     baseDate: string
   ): string {
     const candidates = milestones
@@ -1900,22 +1969,44 @@ export class DashboardService {
         return { text, plannedDate };
       })
       .filter((item) => item.plannedDate && item.plannedDate >= baseDate)
-      .filter((item) => item.text === this.normalizeBugText('最终锁板'))
+      .filter((item) => item.text.includes(this.normalizeBugText('最终锁板')))
+      .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate));
+
+    return candidates[0]?.plannedDate || '';
+  }
+
+  private resolveFinalLockTrendEndDate(
+    milestones: Array<{ milestoneType?: string | null; name?: string | null; milestoneName?: string | null; plannedDate?: string | null }>,
+    baseDate: string
+  ): string {
+    const candidates = milestones
+      .map((item) => {
+        const milestoneType = String(item.milestoneType || '');
+        const text = this.normalizeBugText(milestoneType);
+        const plannedDate = this.normalizeDateText(String(item.plannedDate || ''));
+        return { text, plannedDate };
+      })
+      .filter((item) => item.plannedDate && item.plannedDate >= baseDate)
+      .filter((item) => item.text.includes(this.normalizeBugText('最终锁板')))
       .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate));
 
     return candidates[0]?.plannedDate || '';
   }
 
   private projectWeeklyP0TargetValue(p0Start: number, startDate: string, currentDate: string, targetDate: string): number {
-    if (!targetDate || !startDate || !currentDate) return p0Start;
+    return this.projectWeeklyLinearTargetValue(p0Start, 0, startDate, currentDate, targetDate);
+  }
+
+  private projectWeeklyLinearTargetValue(startValue: number, targetValue: number, startDate: string, currentDate: string, targetDate: string): number {
+    if (!targetDate || !startDate || !currentDate) return startValue;
     const start = Date.parse(`${startDate}T00:00:00.000Z`);
     const current = Date.parse(`${currentDate}T00:00:00.000Z`);
     const target = Date.parse(`${targetDate}T00:00:00.000Z`);
-    if (!Number.isFinite(start) || !Number.isFinite(current) || !Number.isFinite(target)) return p0Start;
-    if (target <= start) return current >= target ? 0 : p0Start;
+    if (!Number.isFinite(start) || !Number.isFinite(current) || !Number.isFinite(target)) return startValue;
+    if (target <= start) return current >= target ? targetValue : startValue;
 
     const progress = Math.max(0, Math.min(1, (current - start) / (target - start)));
-    return Math.max(0, Math.round(p0Start * (1 - progress)));
+    return Math.max(0, Math.round(startValue + (targetValue - startValue) * progress));
   }
 
   private isWeeklyBugVerified(bug: { rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }): boolean {
@@ -2324,10 +2415,10 @@ export class DashboardService {
       issueType?: string | null;
       technicalModules?: string | null;
     }>,
-    milestones: Array<{ milestoneType?: string | null; plannedDate?: string | null }> = [],
+    milestones: Array<{ milestoneType?: string | null; name?: string | null; milestoneName?: string | null; plannedDate?: string | null }> = [],
     p0TargetStartDate = weekStart
   ) {
-    const days = this.daysBetween(weekStart, weekEnd).slice(0, 31);
+    const days = this.daysBetween(weekStart, weekEnd).slice(0, 90);
     const expectedOn = (bug: { expectedFixDate?: string | null }, day: string) => this.weeklyBugExpectedDate(bug) === day;
     const verifiedByLatestUpdateOn = (bug: { updatedAt?: Date | null; primaryStatusText?: string | null; rawStatusText?: string | null; fixStatus?: string | null; status: BugStatus }, day: string) => {
       const statusText = this.bugPrimaryStatusText(bug);
@@ -2472,21 +2563,30 @@ export class DashboardService {
       : netConclusionTone === 'warn'
         ? '当前判断：新增与关闭接近，仍需持续观察'
         : '当前判断：最近 3 天新增缺陷高于关闭缺陷，仍处扩散状态';
-    const p0TargetDate = this.resolveP0ClearTargetDate(milestones, p0TargetStartDate || days[0]);
     const currentPendingP0 = bugs.filter((bug) => isP0(bug) && isPendingHighPriorityStatus(bug)).length;
     const currentPendingP1 = bugs.filter((bug) => isP1(bug) && isPendingHighPriorityStatus(bug)).length;
     const p0RawValues = days.map((day) => day === todayText ? currentPendingP0 : bugs.filter((bug) => isP0(bug) && highPriorityRemainingOnDay(bug, day)).length);
     const p1RawValues = days.map((day) => day === todayText ? currentPendingP1 : bugs.filter((bug) => isP1(bug) && highPriorityRemainingOnDay(bug, day)).length);
-    const p0Start = bugs.filter((bug) => isP0(bug) && highPriorityRemainingOnDay(bug, p0TargetStartDate)).length;
-    const p0TargetRawValues = days.map((day) => this.projectWeeklyP0TargetValue(p0Start, p0TargetStartDate, day, p0TargetDate));
-    const p0TargetLabel = p0TargetDate ? `P0 目标线（${p0TargetDate.slice(5)}清零）` : 'P0 目标线';
-    const p0LastActualIndex = actualDayIndexes.length > 0 ? actualDayIndexes[actualDayIndexes.length - 1] : 0;
-    const p0LastActual = actualDayIndexes.length > 0 ? p0RawValues[p0LastActualIndex] : p0Start;
-    const p0ProjectionStartDate = days[p0LastActualIndex] || p0TargetStartDate;
-    const p0CurrentProjectionRawValues = days.map((day, index) => {
-      if (!p0TargetDate || index < p0LastActualIndex) return null;
-      return this.projectWeeklyP0TargetValue(p0LastActual, p0ProjectionStartDate, day, p0TargetDate);
+    const targetYear = todayText.slice(0, 4);
+    const p0TargetDate = `${targetYear}-06-30`;
+    const p1TargetDate = `${targetYear}-07-24`;
+    const targetStartDate = `${targetYear}-06-23`;
+    const targetStartP0 = bugs.filter((bug) => isP0(bug) && highPriorityRemainingOnDay(bug, targetStartDate)).length;
+    const targetStartP1 = bugs.filter((bug) => isP1(bug) && highPriorityRemainingOnDay(bug, targetStartDate)).length;
+    const p0TargetRawValues = days.map((day) => {
+      if (day < targetStartDate) return null;
+      return this.projectWeeklyP0TargetValue(targetStartP0, targetStartDate, day, p0TargetDate);
     });
+    const p1TargetRemaining = Math.ceil(targetStartP1 * 0.1);
+    const p1TargetRawValues = days.map((day) => {
+      if (day < targetStartDate) return null;
+      return this.projectWeeklyLinearTargetValue(targetStartP1, p1TargetRemaining, targetStartDate, day, p1TargetDate);
+    });
+    const p0TargetLabel = `P0 目标线（${p0TargetDate.slice(5)}清零）`;
+    const p1TargetLabel = `P1 目标线（${p1TargetDate.slice(5)}解决率90%）`;
+    const p0LastActualIndex = actualDayIndexes.length > 0 ? actualDayIndexes[actualDayIndexes.length - 1] : 0;
+    const p0LastActual = actualDayIndexes.length > 0 ? p0RawValues[p0LastActualIndex] : currentPendingP0;
+    const p0FirstActual = actualDayIndexes.length > 0 ? p0RawValues[actualDayIndexes[0]] : currentPendingP0;
     const visibleValues = (values: Array<number | null>, showFuture = false) => values.map((value, index) => {
       if (value === null) return null;
       return showFuture ? value : visibleTrendValue(days[index], value);
@@ -2522,24 +2622,18 @@ export class DashboardService {
         id: 'p0p1',
         label: 'P0/P1 遗留',
         title: 'P0/P1 遗留趋势',
-        description: '每天待处理 P0、P1 数量同图展示，口径与顶部待处理 P0 问题数一致，并叠加 P0 目标线观察高优问题是否下降。',
+        description: '每天待处理 P0、P1 数量同图展示，口径与顶部待处理 P0 问题数一致，并叠加 P0/P1 目标线观察高优问题是否下降。',
         value: '价值：管理层关注高优问题下降',
         unit: '条',
         chart: 'line' as const,
-        conclusion: p0LastActual < p0Start ? '当前判断：P0 存量下降，高优问题正在收敛' : '当前判断：P0 存量未下降，清零目标仍有压力',
-        conclusionTone: p0LastActual < p0Start ? 'good' as const : 'warn' as const,
+        conclusion: p0LastActual < p0FirstActual ? '当前判断：P0 存量下降，高优问题正在收敛' : '当前判断：P0 存量未下降，清零目标仍有压力',
+        conclusionTone: p0LastActual < p0FirstActual ? 'good' as const : 'warn' as const,
         days: days.map((day) => day.slice(5)),
         series: [
           { name: '剩余 P0', color: '#e5484d', values: visibleValues(p0RawValues) },
           { name: '剩余 P1', color: '#7257d6', values: visibleValues(p1RawValues) },
           { name: p0TargetLabel, color: '#16a36a', dashed: true, showFuture: true, values: visibleValues(p0TargetRawValues, true) },
-          {
-            name: p0TargetDate ? `当前 P0 延长线（${p0TargetDate.slice(5)}清零）` : '当前 P0 延长线',
-            color: '#ef2424',
-            dashed: true,
-            showFuture: true,
-            values: visibleValues(p0CurrentProjectionRawValues, true)
-          }
+          { name: p1TargetLabel, color: '#0ea5b7', dashed: true, showFuture: true, values: visibleValues(p1TargetRawValues, true) }
         ]
       },
       {
